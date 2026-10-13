@@ -86,7 +86,7 @@ test('the app shell holds everything the launcher needs to open offline', () => 
   for (const url of ['/', '/index.html', '/launcher.js', '/styles.css', '/manifest.json', '/registry.json', '/icons/apple-touch-icon.png']) {
     assert.ok(core.includes(url), `${url} missing from the app shell`);
   }
-  for (const url of ['/shared/i18n.js', '/shared/storage.js', '/shared/sw-client.js', '/shared/ui.js']) {
+  for (const url of ['/shared/app.js', '/shared/i18n.js', '/shared/storage.js', '/shared/sw-client.js', '/shared/ui.js']) {
     assert.ok(core.includes(url), `${url} missing from the app shell`);
   }
   assert.ok(!core.some((u) => u.startsWith('/games/')), 'no game file is installed with the shell');
@@ -171,5 +171,16 @@ test('every page keeps the iOS status bar solid instead of blurred', async () =>
     assert.match(html, /<meta name="apple-mobile-web-app-status-bar-style" content="black">/, name);
     // The fixed strip iOS 26+ takes the status bar colour from (see .status-tint in styles.css).
     assert.match(html, /<body[^>]*>\s*<div class="status-tint" aria-hidden="true"><\/div>/, name);
+  }
+});
+
+test('every page gets the no-zoom viewport and the app script from the build', async () => {
+  for (const file of (await walk(DIST)).filter((f) => f.endsWith('.html'))) {
+    const html = await readFile(file, 'utf8');
+    const name = path.relative(DIST, file);
+    const viewports = html.match(/<meta name="viewport"[^>]*>/g) ?? [];
+    assert.equal(viewports.length, 1, `${name} has one viewport meta`);
+    assert.match(viewports[0], /maximum-scale=1, user-scalable=no, viewport-fit=cover/, name);
+    assert.match(html, /<head>[\s\S]*<script type="module" src="\/shared\/app\.js"><\/script>[\s\S]*<\/head>/, name);
   }
 });

@@ -5,8 +5,10 @@ import {
   checkForUpdate,
   countCached,
   downloadPacks,
+  dropBrowserCopy,
   ensurePersisted,
   getManifest,
+  isStandalone,
   probeHost,
   registerSW,
   watchForUpdates,
@@ -28,8 +30,6 @@ const progress = new Map(); // id -> { done, total, started } while downloading 
 const failed = new Set(); // ids whose last download failed
 let bulk = null; // { done, total } while "Download all" runs
 
-const isStandalone = () =>
-  navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -469,24 +469,36 @@ window.addEventListener('offline', checkHost);
 setInterval(() => {
   if (document.visibilityState === 'visible') checkHost();
 }, HOST_POLL_MS);
+// Chrome can turn this very tab into the app window when it installs.
 matchMedia('(display-mode: standalone)').addEventListener?.('change', () => {
   renderAll();
   checkHost();
+  startApp();
 });
+
+let started = false;
+
+/** The offline machinery: only in the installed app, never in a browser tab. */
+async function startApp() {
+  if (started || !isStandalone()) return;
+  started = true;
+  reg = await registerSW();
+  watchOfflineStatus(reg, (status) => {
+    offline = status;
+    renderStatus();
+    if (status.state === 'ready') loadPacks();
+  });
+  watchForUpdates(reg, () => {
+    $('updateBanner').hidden = false;
+  });
+  // Quiet update check: fails silently while offline, which is a normal state.
+  if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
+
+  persisted = await ensurePersisted();
+  renderStatus();
+  renderGames();
+}
 
 checkHost();
-reg = await registerSW();
-watchOfflineStatus(reg, (status) => {
-  offline = status;
-  renderStatus();
-  if (status.state === 'ready') loadPacks();
-});
-watchForUpdates(reg, () => {
-  if (isStandalone()) $('updateBanner').hidden = false;
-});
-// Quiet update check: fails silently while offline, which is a normal state.
-if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
-
-persisted = await ensurePersisted();
-renderStatus();
-renderGames();
+if (await dropBrowserCopy()) location.reload();
+else startApp();

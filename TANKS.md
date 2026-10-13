@@ -342,9 +342,10 @@ introduced in missions designed for them (12 and 15). Starts are in 9 different 
 Mirror match (10) is mirrored, on purpose. Crates are gates (Crate gate, Switchbacks, Fortress),
 holes are a lane (Across the pits), turrets sit in pockets (Crossfire, Pillboxes), and the
 mortar missions keep open ground. Every map passes the M3 checks and the AI tests, and was
-playtested with a scripted bot in two modes: an expert that wins every mission at least 6
-times in 8, and a weaker one that showed the difficulty curve (gentle to mission 6, then a
-climb, with easier introductions for Red and Olive).
+playtested with the bot in `scripts/playtest.mjs` (`npm run playtest`) in two modes: an expert
+that wins every mission at least 6 times in 8, and a casual one that shows the difficulty
+curve (easy through mission 9, then a climb to a finale it rarely wins, with easier
+introductions for Red and Olive).
 
 **Not met:** density. Most maps are 76–89% open, so the 75% nudge fires on 19 of 20. Denser
 drafts gave Pinks and Violets many more walls to bank off, and the middle of the campaign got
@@ -384,8 +385,9 @@ map tiles and viewer. The missions: 1 First contact, 2 Crossfire, 3 Patrol, 4 Cr
 **Status:** idea · **Size:** M
 
 The guide already bundles `engine.js`, `ai.js` and `rules.js`, so a Play button could run the
-map being edited with keyboard controls. A playtest bot like the one used for M2 (expert and
-casual modes) could also report a win rate per map, to compare difficulty while editing.
+map being edited with keyboard controls. The playtest bot (`scripts/playtest.mjs`) already plays
+a draft from the command line (`npm run playtest -- --map draft.txt`); bundled into the page
+too, it could show a win rate per map while editing.
 
 ## Suggested order
 

@@ -23,7 +23,6 @@
   background: var(--rule);
   border-radius: 2px;
   container-type: inline-size;
-  touch-action: manipulation;
 }
 
 .box {
@@ -303,6 +302,7 @@
   word-break: break-all;
   user-select: all;
   -webkit-user-select: all;
+  -webkit-touch-callout: default;
 }
 
 @media (max-width: 380px) {

@@ -53,6 +53,7 @@ cache-only/
     shared/
       storage.js          # namespaced save/load + export/import
       sw-client.js        # registration, update prompt, "ready offline" check, downloads, online check
+      app.js              # app feel on every page (no zoom); the build adds it, never link it by hand
     icons/
       apple-touch-icon.png  # 180x180, no transparency
       icon-192.png
@@ -65,7 +66,9 @@ cache-only/
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
+    lan.mjs               # build + serve dist/ over HTTPS to phones on the same Wi-Fi (testing)
     guide.mjs             # builds the Tanks field guide (not part of the app)
+    playtest.mjs          # a bot plays Tanks missions: winnable? how hard? (not part of the app)
   guide/
     page.html             # field guide template: layout, styles, page code (draws with the game's art.js)
     enemies.mjs           # field guide text and card scene per enemy kind
@@ -82,7 +85,10 @@ service worker with scope `/` covers everything.
 
 ## Build (`scripts/build.mjs`)
 
-1. Wipe `dist/` and copy `src/` into it, excluding `sw.template.js`.
+1. Wipe `dist/` and copy `src/` into it, excluding `sw.template.js`. Into every `.html` page,
+   right after `<meta charset="utf-8">`, insert the viewport meta and
+   `<script type="module" src="/shared/app.js">` (`APP_HEAD`). A page with its own viewport meta
+   fails the build, so there is one source of truth.
 2. Walk `dist/` and split the files into packs: everything under `/games/<id>/` is game `<id>`'s
    pack (a game folder without a `registry.json` entry fails the build), everything else is
    the app shell (`core`). In each pack, every `.../index.html` also gets its directory URL
@@ -110,6 +116,21 @@ service worker with scope `/` covers everything.
   directory URL without its trailing slash gets a 404, not a 301.
 - Sends `Cache-Control: no-cache` on `sw.js`, `index.html` files and `version.json`.
 - Logs each request so installs can be watched live.
+
+## Testing on a phone without deploying (`scripts/lan.mjs`)
+
+- `npm run lan` builds, then serves `dist/` with the same handler as `serve.mjs` over HTTPS at
+  `https://<mac>.local:8443/` (the Mac's Bonjour name, stable across networks) on every
+  interface. Service workers need HTTPS, and plain `http://<lan-ip>` isn't a secure context.
+- The certificate comes from a local CA made once with the system `openssl` and kept in `.lan/`
+  (gitignored). Its name constraints allow only `.local`, `localhost` and private IPs, so its key
+  can't impersonate a real site. The server certificate is reissued by itself when the Mac's
+  address changes; phones that trust the CA need nothing new.
+- `http://<mac>.local:8081/` is the setup page: it hands out the CA and says how to trust it
+  (iPhone: install the profile, then switch it on under Certificate Trust Settings).
+- That origin is not the real app's: test installs and saves stay separate from
+  `https://cache-only.github.io`. No tunnels or public exposure: it's reachable only on the
+  local network.
 
 ## Service worker (`sw.template.js`)
 
@@ -144,6 +165,13 @@ service worker with scope `/` covers everything.
 - **In a browser tab** (not standalone: `navigator.standalone !== true` and not
   `display-mode: standalone`) the launcher shows only how to install: "Tap Share, then Add to
   Home Screen, then open the app from the new icon." No game list and nothing to download.
+  A tab also keeps no offline copy: `registerSW()` does nothing outside the installed app, and
+  `dropBrowserCopy()` unregisters any worker and deletes every cache left by an earlier visit,
+  then reloads once if that old copy served the page. So the tab always shows the current
+  release, and an app installed from it starts from the host. It leaves storage alone when any
+  `/games/` file is cached, because then the tab shares storage with an installed app (Chrome,
+  Android) whose downloaded games must survive. When Chrome turns the tab into the app window,
+  the `display-mode` change starts the worker.
 - **In the installed app**, a list of games from `registry.json` (`id`, `name`, `path`,
   `description`). A game is on this device (Play, plus a resume hint if it has a saved
   session), downloadable (Download with its size), downloading (a percentage, or "Queued"), or
@@ -164,7 +192,8 @@ service worker with scope `/` covers everything.
 
 ## iOS / PWA requirements
 
-- `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`
+- Viewport (added to every page by the build, never written in a page):
+  `width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover`
 - `<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">`
 - `<meta name="apple-mobile-web-app-capable" content="yes">` plus `mobile-web-app-capable`
 - `<meta name="apple-mobile-web-app-status-bar-style" content="black">`. Not `black-translucent`:
@@ -186,8 +215,11 @@ service worker with scope `/` covers everything.
 - `manifest.json`: `display: "standalone"`, `start_url: "/"`, `scope: "/"`, `id: "/"`, plus
   `theme_color`, `background_color` and the icons.
 - Respect safe areas with `env(safe-area-inset-*)` padding on the app shell.
-- Add `touch-action: manipulation` on interactive elements (kills double-tap zoom) and
-  `user-select: none` on game boards. Touch targets are at least 44×44 pt.
+- No zoom, no web-page feel, globally: the viewport has `maximum-scale=1, user-scalable=no`, every element
+  gets `touch-action: pan-x pan-y` (no pinch or double-tap zoom; boards that need raw touches use
+  `none`), and `shared/app.js` cancels iOS `gesture*` events and ctrl+wheel, since iOS ignores
+  `user-scalable=no`. Text selection and long-press callouts are off except in `input`/`textarea`
+  (and anything that opts back in, like Sudoku's share code). Touch targets are at least 44×44 pt.
 - iOS has no `navigator.vibrate`, so don't rely on haptics.
 - Support both light and dark mode via `prefers-color-scheme`.
 
@@ -282,6 +314,9 @@ service worker with scope `/` covers everything.
   Each mission has one idea, a name and a one-line briefing (`tanks.name.<n>`, `tanks.brief.<n>`),
   shown on its banner. Every map must pass `guide/mapcheck.mjs` (the tests run it): every enemy
   reachable, no enemy with a clear shot at your start, no two missions with the same blocks.
+  Playtest new or changed maps with `npm run playtest` (`scripts/playtest.mjs`): its expert bot
+  should win each mission at least 6 times in 8, and its casual bot shows how hard the mission is
+  next to the others. `--map file` plays a draft copied from the field guide's editor.
 - **Input:** touch has a floating drive stick (left), an aim stick that fires on release (right), a
   round mine button, and tap-to-fire on the arena. Keyboard and mouse: WASD/arrows, mouse to aim,
   click to fire, Space or right-click for a mine, P to pause. The on-screen controls only appear on
@@ -334,7 +369,8 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ## Adding a game later
 
 1. Create `src/games/<id>/` with an `index.html` that links the shared `styles.css`, starts its
-   `<body>` with the `status-tint` strip, and uses `shared/storage.js` with namespace `<id>`.
+   `<body>` with the `status-tint` strip, and uses `shared/storage.js` with namespace `<id>`. No
+   viewport meta: the build adds it and the no-zoom script to every page.
    Everything the game needs that isn't shared (scripts, workers, images) lives in its folder.
 2. Add an entry to `src/registry.json`. The build fails if a game folder has no entry.
 3. Run `npm run build`. The game's pack, its size and the version update automatically.
@@ -346,7 +382,9 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ```bash
 npm run build                 # node scripts/build.mjs
 npm run serve                 # node scripts/serve.mjs  (dist/ on :8080, local testing)
+npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi
 npm run guide                 # rebuild the Tanks field guide into guide/out/ (then republish it)
+npm run playtest              # Tanks: a bot plays every mission (--missions 4,12  --map draft.txt)
 npm test                      # every test file, one at a time
 ```
 
@@ -400,6 +438,8 @@ Friends see the update within about 10 minutes, the next time they open the app 
   no text or scene, a mission has no name or briefing, a colour is missing, or the page script
   doesn't parse. It also checks that the game code bundled into the page behaves exactly like the
   game.
+- Playtest: `tests/playtest.test.mjs` keeps the bot working against the engine: it wins the first
+  mission and mines its way into Crate gate's vault.
 - Downloads: `tests/sw.test.mjs` runs the built service worker against an in-memory cache and a
   fake host. The shell installs alone, games download on request and resume after a failure,
   every file is fetched as `?v=<hash>` and a stale CDN copy is refused, and updates keep the games a device has (re-fetching only those that changed), including

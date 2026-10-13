@@ -5,11 +5,18 @@ export function swSupported() {
   return 'serviceWorker' in navigator && 'caches' in window && window.isSecureContext;
 }
 
+/** The installed app (home screen or app window), as opposed to a browser tab. */
+export const isStandalone = () =>
+  navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
 let registration = null;
 
-/** Registers /sw.js once per page. Resolves to the registration, or null. */
+/**
+ * Registers /sw.js once per page. Resolves to the registration, or null. Only the installed
+ * app gets a worker: a browser tab only shows how to install, so it keeps no offline copy.
+ */
 export function registerSW() {
-  if (!swSupported()) return Promise.resolve(null);
+  if (!swSupported() || !isStandalone()) return Promise.resolve(null);
   registration ??= navigator.serviceWorker
     .register('/sw.js', { scope: '/', updateViaCache: 'none' })
     .catch((err) => {
@@ -17,6 +24,38 @@ export function registerSW() {
       return null;
     });
   return registration;
+}
+
+/**
+ * In a browser tab, removes the worker and caches left by an earlier visit, so the tab shows
+ * the current release and the app installed from it starts from the host, not from an old
+ * copy. Leaves everything alone when any game file is cached: the tab then shares its storage
+ * with an installed app (Chrome, Android) whose offline games matter more. Resolves to true
+ * when the page itself came from the old copy and should reload once.
+ */
+export async function dropBrowserCopy() {
+  if (!swSupported() || isStandalone()) return false;
+  try {
+    const names = await caches.keys();
+    for (const name of names) {
+      const keys = await (await caches.open(name)).keys();
+      if (keys.some((r) => new URL(r.url).pathname.startsWith('/games/'))) return false;
+    }
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+    await Promise.all(names.map((name) => caches.delete(name)));
+  } catch {
+    return false;
+  }
+  if (!navigator.serviceWorker.controller) return false;
+  // One reload per tab session, in case the browser keeps the old worker for it anyway.
+  try {
+    if (sessionStorage.getItem('gh-dropped')) return false;
+    sessionStorage.setItem('gh-dropped', '1');
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 /** postMessage with a reply port. Rejects after `timeout` ms. */

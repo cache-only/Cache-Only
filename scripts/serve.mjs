@@ -59,53 +59,56 @@ async function resolveFile(urlPath) {
   return s?.isFile() ? { file: target, size: s.size } : null;
 }
 
-export function createServer() {
-  return http.createServer(async (req, res) => {
-    const started = Date.now();
-    const send = (status, body, headers = {}) => {
-      res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache', ...headers });
-      res.end(req.method === 'HEAD' ? undefined : body);
-      log(req, status, body.length, started);
-    };
+// The request handler, shared with scripts/lan.mjs (the same files over HTTPS on the network).
+export async function handle(req, res) {
+  const started = Date.now();
+  const send = (status, body, headers = {}) => {
+    res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache', ...headers });
+    res.end(req.method === 'HEAD' ? undefined : body);
+    log(req, status, body.length, started);
+  };
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return send(405, 'Method not allowed\n', { Allow: 'GET, HEAD' });
-    }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return send(405, 'Method not allowed\n', { Allow: 'GET, HEAD' });
+  }
 
-    let urlPath;
-    try {
-      urlPath = new URL(req.url, 'http://localhost').pathname;
-    } catch {
-      return send(400, 'Bad request\n');
-    }
+  let urlPath;
+  try {
+    urlPath = new URL(req.url, 'http://localhost').pathname;
+  } catch {
+    return send(400, 'Bad request\n');
+  }
 
-    let found;
-    try {
-      found = await resolveFile(urlPath);
-    } catch {
-      found = null;
-    }
-    if (!found) return send(404, 'Not found\n');
+  let found;
+  try {
+    found = await resolveFile(urlPath);
+  } catch {
+    found = null;
+  }
+  if (!found) return send(404, 'Not found\n');
 
-    const type = MIME[path.extname(found.file).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, {
-      'Content-Type': type,
-      'Content-Length': found.size,
-      // no-cache on everything, not just sw.js / index.html / version.json: the files are
-      // tiny and unhashed, so a plain browser tab must never mix two versions.
-      'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'no-referrer',
-    });
-    if (req.method === 'HEAD') {
-      res.end();
-      return log(req, 200, 0, started);
-    }
-    createReadStream(found.file)
-      .on('error', () => res.destroy())
-      .on('end', () => log(req, 200, found.size, started))
-      .pipe(res);
+  const type = MIME[path.extname(found.file).toLowerCase()] || 'application/octet-stream';
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': found.size,
+    // no-cache on everything, not just sw.js / index.html / version.json: the files are
+    // tiny and unhashed, so a plain browser tab must never mix two versions.
+    'Cache-Control': 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
   });
+  if (req.method === 'HEAD') {
+    res.end();
+    return log(req, 200, 0, started);
+  }
+  createReadStream(found.file)
+    .on('error', () => res.destroy())
+    .on('end', () => log(req, 200, found.size, started))
+    .pipe(res);
+}
+
+export function createServer() {
+  return http.createServer(handle);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

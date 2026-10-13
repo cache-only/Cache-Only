@@ -1,4 +1,4 @@
-// Renders the app icons (signal-yellow square, ink paper plane) to PNG with
+// Renders the app icons (a pixel cent sign: white dots on #111) to PNG with
 // Node built-ins only. Run once with `npm run icons`; the PNGs are committed.
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,54 +8,68 @@ import { deflateSync } from 'node:zlib';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'src/icons');
 
-const BG = [0xff, 0xc4, 0x00];
-const INK = [0x16, 0x18, 0x1d];
+const BG = [0x11, 0x11, 0x11];
+const INK = [0xff, 0xff, 0xff];
 
-// Same geometry as the #i-plane symbol (32-unit box).
-const SHAPES = [
-  { pts: [[28, 5], [3.5, 15.2], [13.2, 18.5]], alpha: 1 },
-  { pts: [[28, 5], [14.6, 19.7], [18.6, 28]], alpha: 1 },
-  { pts: [[13.2, 18.5], [14.6, 19.7], [13.7, 26]], alpha: 0.55 },
+// Same grid as the #i-mark symbol in index.html. The stem is two dots wide.
+const GLYPH = [
+  '.....##...',
+  '...######.',
+  '..########',
+  '.###.##.##',
+  '###..##...',
+  '##...##...',
+  '##...##...',
+  '##...##...',
+  '###..##...',
+  '.###.##.##',
+  '..########',
+  '...######.',
+  '.....##...',
 ];
-const CENTER = [15.75, 16.5];
+const COLS = GLYPH[0].length;
+const ROWS = GLYPH.length;
+// The C's open right side weighs less than its left, so centring the outline
+// looks too far right. Shift left by this share of the grid pitch.
+const NUDGE = 0.5;
+const DOT = 0.85; // dot size, as a share of the grid pitch
+const ROUND = 0.2; // corner radius, as a share of the dot
 
-function inTriangle(x, y, [a, b, c]) {
-  const s = (p, q) => (x - q[0]) * (p[1] - q[1]) - (p[0] - q[0]) * (y - q[1]);
-  const d1 = s(a, b);
-  const d2 = s(b, c);
-  const d3 = s(c, a);
-  const neg = d1 < 0 || d2 < 0 || d3 < 0;
-  const pos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(neg && pos);
+function inRoundRect(x, y, x0, y0, w, r) {
+  const dx = Math.max(x0 + r - x, 0, x - (x0 + w - r));
+  const dy = Math.max(y0 + r - y, 0, y - (y0 + w - r));
+  if (x < x0 || x > x0 + w || y < y0 || y > y0 + w) return false;
+  return dx * dx + dy * dy <= r * r;
 }
 
-function render(size, planeWidthRatio) {
-  const scale = (size * planeWidthRatio) / 24.5; // plane is 24.5 units wide
+// Pitch and dot are whole pixels so every dot lands on the pixel grid.
+function render(size, pitchRatio) {
+  const pitch = Math.round(size * pitchRatio);
+  const dot = Math.round(pitch * DOT);
+  const r = dot * ROUND;
+  const ox = Math.round((size - (COLS - 1) * pitch - dot) / 2 - NUDGE * pitch);
+  const oy = Math.round((size - (ROWS - 1) * pitch - dot) / 2);
+  const dots = [];
+  GLYPH.forEach((row, j) => {
+    [...row].forEach((ch, i) => {
+      if (ch === '#') dots.push([ox + i * pitch, oy + j * pitch]);
+    });
+  });
   const SS = 4;
   const rgb = Buffer.alloc(size * size * 3);
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
+      let hits = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const x = (px + (sx + 0.5) / SS - size / 2) / scale + CENTER[0];
-          const y = (py + (sy + 0.5) / SS - size / 2) / scale + CENTER[1];
-          let c = BG;
-          for (const shape of SHAPES) {
-            if (!inTriangle(x, y, shape.pts)) continue;
-            c = c.map((v, k) => v + (INK[k] - v) * shape.alpha);
-          }
-          r += c[0];
-          g += c[1];
-          b += c[2];
+          const x = px + (sx + 0.5) / SS;
+          const y = py + (sy + 0.5) / SS;
+          if (dots.some(([x0, y0]) => inRoundRect(x, y, x0, y0, dot, r))) hits++;
         }
       }
+      const a = hits / (SS * SS);
       const o = (py * size + px) * 3;
-      rgb[o] = Math.round(r / (SS * SS));
-      rgb[o + 1] = Math.round(g / (SS * SS));
-      rgb[o + 2] = Math.round(b / (SS * SS));
+      for (let k = 0; k < 3; k++) rgb[o + k] = Math.round(BG[k] + (INK[k] - BG[k]) * a);
     }
   }
   return encodePng(size, size, rgb);
@@ -102,22 +116,33 @@ function encodePng(width, height, rgb) {
   ]);
 }
 
+function svgDots(pitch, cx, cy) {
+  const d = +(pitch * DOT).toFixed(2);
+  const r = +(d * ROUND).toFixed(2);
+  const out = [];
+  GLYPH.forEach((row, j) => {
+    [...row].forEach((ch, i) => {
+      if (ch !== '#') return;
+      const x = +(cx + (i - (COLS - 1) / 2 - NUDGE) * pitch - d / 2).toFixed(2);
+      const y = +(cy + (j - (ROWS - 1) / 2) * pitch - d / 2).toFixed(2);
+      out.push(`<rect x="${x}" y="${y}" width="${d}" height="${d}" rx="${r}"/>`);
+    });
+  });
+  return out.join('');
+}
+
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#ffc400"/>
-  <g fill="#16181d" transform="translate(16 16) scale(.82) translate(-15.75 -16.5)">
-    <path d="M28 5 3.5 15.2l9.7 3.3z"/>
-    <path d="M28 5 14.6 19.7l4 8.3z"/>
-    <path d="m13.2 18.5 1.4 1.2-.9 6.3z" opacity=".55"/>
-  </g>
+  <rect width="32" height="32" rx="7" fill="#111"/>
+  <g fill="#fff">${svgDots(1.9, 16, 16)}</g>
 </svg>
 `;
 
 const jobs = [
-  ['apple-touch-icon.png', 180, 0.62],
-  ['icon-192.png', 192, 0.62],
-  ['icon-512.png', 512, 0.62],
-  // Maskable: keep the plane inside the central 80% safe circle.
-  ['icon-maskable-512.png', 512, 0.5],
+  ['apple-touch-icon.png', 180, 0.05],
+  ['icon-192.png', 192, 0.05],
+  ['icon-512.png', 512, 0.05],
+  // Maskable: keep the glyph inside the central 80% safe circle.
+  ['icon-maskable-512.png', 512, 0.045],
 ];
 
 for (const [name, size, ratio] of jobs) {

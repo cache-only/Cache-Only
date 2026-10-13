@@ -1,9 +1,6 @@
 // Small shared UI helpers: sheets (native <dialog>) and a confirm prompt.
 import { t } from './i18n.js';
 
-// iOS Safari only applies :active styles when a touchstart listener exists.
-document.addEventListener('touchstart', () => {}, { passive: true });
-
 /** Makes a <dialog> close when its backdrop is tapped. */
 export function setupSheet(dialog) {
   dialog.addEventListener('click', (event) => {

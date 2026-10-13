@@ -13,7 +13,9 @@ No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used fo
 ```bash
 npm run build     # src/ -> dist/, splits it into packs, writes dist/sw.js (VERSION + PACKS) and dist/version.json
 npm run serve     # serve dist/ on http://127.0.0.1:8080 (local testing)
+npm run lan       # build + serve over HTTPS to phones on the same Wi-Fi (setup page: http://<mac>.local:8081/)
 npm test          # Sudoku uniqueness, 2048 merge rules, Tanks engine + AI, build + server checks, service-worker downloads
+npm run playtest  # Tanks: a scripted bot plays the missions (winnable? how hard?); --map draft.txt for a draft
 npm run icons     # re-render src/icons/*.png (only needed if the icon design changes)
 ```
 
@@ -86,7 +88,9 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
 - `src/shared/sw-client.js` registers the worker, shows the update prompt, reports "Ready offline" only
   after checking every app-shell file is cached, runs downloads with progress, and checks whether it's
   online (by fetching `/version.json`, which is never cached).
-- `src/launcher.js` shows only the install guide in a browser tab. In the installed app it lists each
+- `src/launcher.js` shows only the install guide in a browser tab, and the tab keeps no offline copy: it
+  registers no service worker and clears one left by an earlier visit (unless games are downloaded in
+  it), so installing always starts from the latest release. In the installed app it lists each
   game as Play, Download (with its size) or "Go online to download", plus "Download all".
 - Every page starts with a fixed `status-tint` strip in the header's black: iOS 26+ takes the status
   bar colour from it instead of blurring the top of the app.
