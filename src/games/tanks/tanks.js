@@ -1,7 +1,8 @@
 import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
-import { confirmDialog, setupSideMenu } from '../../shared/ui.js';
+import { closeSheet, confirmDialog, modalOpen, openSheet, setupSideMenu } from '../../shared/ui.js';
+import { tapTarget } from './ai.js';
 import { drawBadge } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
@@ -150,29 +151,23 @@ function queueMine() {
   input.mineUntil = world.time + 0.3;
 }
 
-/** Turns the turret straight at the nearest enemy you can see: no ricochets, no lead. */
+/**
+ * Turns the turret straight at the nearest enemy in sight within TAP_RANGE (no ricochets, no
+ * lead). With none, the aim stays put and the shot goes where you last aimed.
+ */
 function aimAtNearest() {
   const p = world.tanks[0];
-  let best = null;
-  let bestD = Infinity;
-  for (const t of world.tanks) {
-    // An invisible tank stays hidden: the auto-aim doesn't give it away.
-    if (t.slot < 0 || !t.alive || TYPES[t.type].invisible) continue;
-    const d = Math.hypot(t.x - p.x, t.y - p.y);
-    if (d < bestD) {
-      bestD = d;
-      best = t;
-    }
-  }
-  if (!best) return;
-  input.aimDir = Math.atan2(best.y - p.y, best.x - p.x);
+  const target = tapTarget(world);
+  if (!target) return;
+  input.aimDir = Math.atan2(target.y - p.y, target.x - p.x);
   input.aimPoint = null;
 }
 
-// Touch: Brawl Stars-style floating sticks over the whole play area. A thumb anywhere on the
-// left half drives, with the stick centred where it lands. On the right half, drag to aim and
-// let go to fire, drag back to the middle to cancel, or just tap to fire at the nearest tank.
-// The round button on the right edge, above the aim stick, lays a mine.
+// Touch: Brawl Stars-style floating sticks over the bottom half of the screen. A thumb anywhere
+// on its left half drives, with the stick centred where it lands. On its right half, drag to aim
+// and let go to fire, drag back to the middle to cancel, or just tap to fire at the nearest tank
+// in sight (or, with none close, where you last aimed).
+// The round button (right edge in landscape, between the sticks in portrait) lays a mine.
 //
 // The sticks follow touches by identifier, and every touch event carries the full list of
 // fingers still on the screen. A stick whose finger isn't on that list is let go, so a lost
@@ -275,6 +270,34 @@ const aimStick = makeStick(aimEl, {
   },
 });
 
+/** The enemy a tap on the aim stick would fire at right now, or null. */
+function tapAim() {
+  if (!touchUI || phase !== 'play') return null;
+  // A thumb that has dragged aims by hand, and the one that started the mission fires nothing.
+  if (aimStick.id !== null && (aimed || aimQuiet)) return null;
+  return tapTarget(world);
+}
+
+/**
+ * While a tap would fire at an enemy, the aim stick shines and the turret follows that enemy,
+ * with the stick's shell pointing the same way. Once a thumb drags the stick, it aims by hand.
+ */
+function showTapAim() {
+  const target = tapAim();
+  aimEl.classList.toggle('ready', !!target);
+  if (!target) {
+    if (!(aimStick.id !== null && aimed)) aimEl.style.removeProperty('--ka');
+    return;
+  }
+  const p = world.tanks[0];
+  const dx = target.x - p.x;
+  const dy = target.y - p.y;
+  input.aimDir = Math.atan2(dy, dx);
+  input.aimPoint = null;
+  const v = renderer.vecToScreen(dx, dy);
+  aimEl.style.setProperty('--ka', `${Math.atan2(v.x, -v.y)}rad`);
+}
+
 const sticks = [moveStick, aimStick];
 let mineTouch = null;
 
@@ -309,6 +332,8 @@ pads.addEventListener(
         queueMine();
         continue;
       }
+      // The sticks start only on the bottom half of the screen, where the thumbs rest.
+      if (touch.clientY < window.innerHeight / 2) continue;
       const stick = touch.clientX < box.left + box.width / 2 ? moveStick : aimStick;
       if (stick.id === null) stick.begin(touch, quiet);
     }
@@ -418,7 +443,7 @@ wrap.addEventListener('pointerdown', () => {
 document.addEventListener('keydown', (event) => {
   // macOS sends no keyup for keys let go while Cmd is down, so a held key would stick.
   if (event.key === 'Meta') input.keys.clear();
-  if (document.querySelector('dialog[open]') || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (modalOpen() || event.metaKey || event.ctrlKey || event.altKey) return;
   audio.unlock();
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   if (key === 'p' || key === 'Escape') {
@@ -468,7 +493,7 @@ document.addEventListener('keyup', (event) => {
 
 function renderHud() {
   if (campaign) {
-    $('missionStat').textContent = String(campaign.mission + 1).padStart(2, '0');
+    $('missionStat').textContent = String(campaign.mission + 1);
     $('livesStat').textContent = String(campaign.lives);
   }
   renderPips();
@@ -521,27 +546,34 @@ function hideBanner() {
   $('banner').hidden = true;
 }
 
-const overlays = { menu: $('ovMenu'), over: $('ovOver') };
+// The campaign menu and the results are docked sheets: the header and its side menu still work.
+const sheets = { menu: $('startSheet'), over: $('overSheet') };
 
 function showOverlay(name) {
-  for (const [key, el] of Object.entries(overlays)) el.hidden = key !== name;
+  for (const [key, el] of Object.entries(sheets)) {
+    if (key === name) openSheet(el, { docked: true });
+    else closeSheet(el);
+  }
 }
 
 function renderCheckpoints(box) {
   const open = CHECKPOINTS.filter((cp) => cp > 1 && cp <= stats.checkpoint);
+  box.hidden = !open.length;
   if (!open.length) return box.replaceChildren();
-  const label = document.createElement('span');
-  label.className = 'label';
+  const label = document.createElement('h3');
+  label.className = 'eyebrow';
   label.textContent = t('tanks.startAt');
-  const buttons = open.map((cp) => {
+  const row = document.createElement('div');
+  row.className = 'sheet-actions';
+  for (const cp of open) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn';
     b.textContent = t('tanks.missionN', { n: cp });
     b.addEventListener('click', () => chooseStart(cp - 1));
-    return b;
-  });
-  box.replaceChildren(label, ...buttons);
+    row.append(b);
+  }
+  box.replaceChildren(label, row);
 }
 
 function renderTally(box, kills) {
@@ -613,6 +645,7 @@ function frame(now) {
 }
 
 function draw() {
+  showTapAim();
   const s = world || backdrop;
   if (!s) return;
   const playing = phase === 'play';
@@ -824,7 +857,8 @@ function hold() {
     stopLoop();
   }
   const held = ['paused', 'brief', 'ending'].includes(phase);
-  $('menuTitle').hidden = !held;
+  $('menuTitle').textContent =
+    held && campaign ? `${t('tanks.paused')} · ${t('tanks.missionN', { n: campaign.mission + 1 })}` : t('common.menu');
   $('resumeBtn').hidden = !held;
   $('quitBtn').hidden = phase !== 'paused' && phase !== 'brief';
   $('soundToggle').checked = prefs.sound;
@@ -893,12 +927,6 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', () => {
   releaseInput();
   if (phase === 'play') menu.open();
-});
-
-matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
-  renderer.readPalette();
-  for (const el of document.querySelectorAll('canvas.badge')) paintBadge(el);
-  draw();
 });
 
 // Sizing: the arena as big as the play area allows, under the header, turned upright on a

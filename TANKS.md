@@ -90,7 +90,7 @@ so the guide no longer keeps its own copy of `drawTank`.
 Once R2 carries the abilities, colour only has to tell kinds apart.
 
 - **Off limits:** the player's blue family, fire orange (explosions and rocket flames), and the
-  crate yellow next to the existing yellow tank.
+  crate yellow next to the existing yellow tank (crate grey since 2026-10-14, see R4).
 - **Next colours:** crimson red for W1 (it matches the missile's red light) and olive drab for
   W2 (artillery). Still free after those: sand/tan, maroon, navy (if it stays clearly apart from
   the player), lime.
@@ -105,6 +105,18 @@ The plan is written above the colours in `tanks/styles.css`, shown in the guide,
 a test in both modes: every kind at least 10 apart (OKLab ×100) from every other kind and from
 the off-limits colours (your blue, fire orange, crate yellow, which Yellow is exempt from), and
 chip text at 4.5:1 or better.
+
+### R4. Grey crates that join like walls
+**Status:** done 2026-10-14 · **Size:** S
+
+Crates were yellow hazard squares, each with its own border, so a row of them read as separate
+tiles. Now a crate is a lighter grey than a wall (`--tk-crate`, with `--tk-crate-lit`,
+`--tk-crate-dark` and `--tk-stripe`), and crates that touch draw as one block the way walls do:
+one fill, edges lit and shaded only on the outside. The diagonal stripes are anchored to the arena,
+not to each cell, so they run on unbroken across a group, rising to the right on screen whichever
+way the arena is turned. Crate grey replaces crate yellow as an off-limits colour, and Yellow no
+longer needs its exemption. The field guide's map legend, source grid and editor brushes show the
+stripes too.
 
 ---
 
@@ -399,7 +411,8 @@ missions only padded with blank floor; it went back to 4:3, which is shorter whe
 phone, and the maps to their 20 columns. On a phone in portrait it is turned upright and
 fills the width right under the header; any room left below stays empty. In landscape there is
 no header band: the home button floats in the top-left corner and mission and lives in the
-top-right, each on a black plate, and the arena fills the height, centred on the screen. (A rail
+top-right, and the arena fills the height, centred on the screen. (Since 2026-10-14 every game
+page does this in landscape, from the shared header.) (A rail
 down the right side came first, but it pushed the arena and the aim stick off centre.) The
 controls float over the play area instead of taking a band of their own.
 
@@ -408,13 +421,15 @@ controls float over the play area instead of taking a band of their own.
 
 - The touch controls float over the whole play area at 20% opacity (`--pad-alpha`). The sticks
   rest in the bottom corners and jump to wherever a thumb lands on their half, in portrait and
-  landscape alike.
+  landscape alike. Since 2026-10-14 only the bottom half of the screen starts a stick; touches
+  higher up do nothing.
 - Left half: drive. Right half: drag to aim (the aiming guide shows), let go to fire; drag back
   into the middle quarter of the stick's reach to cancel (the knob, a shell pointing along the
   aim, goes hollow). A tap that never leaves the middle fires straight at the nearest enemy you
-  can see, with no ricochet or lead.
+  can see, with no ricochet or lead (since 2026-10-14: only one in sight within 6.5 cells, see C5).
   Invisible tanks are skipped, so the auto-aim can't give them away.
-- The mine button sits on the right edge, halfway down, in line with the aim stick.
+- The mine button sits on the right edge, halfway down, in line with the aim stick (in portrait,
+  since 2026-10-14: in the middle of the bottom row, between the two sticks).
 - Touching the arena no longer fires. The mouse still aims and clicks to fire.
 
 ### C3. A drive stick that stayed stuck
@@ -441,6 +456,27 @@ a close icon only repeated it (dropped 2026-10-14). The list holds Resume, Sound
 while a mission is on. Leaving the app opens it, so a killed app reopens with it open. The menu
 is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku and 2048
 can switch to it too.
+
+### C5. A tap that doesn't waste its shot on a wall
+**Status:** done 2026-10-14 · **Size:** S
+
+A tap on the aim stick fired at the nearest enemy, even one behind a wall, so the shell died on
+the wall. Now it picks the nearest enemy a straight shell would reach (`tapTarget` in `ai.js`):
+one behind a wall or crate is passed over for the next nearest in sight, while holes don't hide
+anything because shells fly over them. Only enemies within 6.5 cells count (`TAP_RANGE` in
+`rules.js`; it shipped at 5, then 8, and settled on 6.5 the same day). With none, the turret stays
+where you last aimed and the tap fires that way. Invisible tanks are still skipped.
+
+### C6. A stick that shows when a tap will hit
+**Status:** done 2026-10-14 · **Size:** S
+
+While a tap would fire at an enemy (C5), the aim stick shines: it leaves the controls' 20%
+opacity for a brighter rim, its shell turns white with a glow, and a ring keeps spreading from the
+shell out to the rim. The turret follows that enemy and the shell points at it, so you see where a
+tap will go. As soon as a thumb drags the stick it aims by hand and the stick looks as usual; the
+thumb that started the mission (which can't fire) doesn't make it shine either. Under reduced
+motion the ring doesn't spread; the rest still shows. `showTapAim` in `tanks.js`, `.stick-aim.ready`
+in `tanks/styles.css`.
 
 ## Suggested order
 

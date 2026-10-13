@@ -164,13 +164,13 @@ test('the server sends the right MIME types and cache headers', async () => {
   assert.equal((await probe.json()).version, info.version);
 });
 
-test('every page keeps the iOS status bar solid instead of blurred', async () => {
+test('every page asks iOS for the default status bar, with no strip of its own', async () => {
   for (const file of (await walk(DIST)).filter((f) => f.endsWith('.html'))) {
     const html = await readFile(file, 'utf8');
     const name = path.relative(DIST, file);
-    assert.match(html, /<meta name="apple-mobile-web-app-status-bar-style" content="black">/, name);
-    // The fixed strip iOS 26+ takes the status bar colour from (see .status-tint in styles.css).
-    assert.match(html, /<body[^>]*>\s*<div class="status-tint" aria-hidden="true"><\/div>/, name);
+    assert.match(html, /<meta name="apple-mobile-web-app-status-bar-style" content="default">/, name);
+    assert.match(html, /<meta name="theme-color" content="#000000">/, name);
+    assert.doesNotMatch(html, /status-tint/, name);
   }
 });
 

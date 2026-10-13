@@ -14,6 +14,7 @@ import {
   ROWS,
   SHELL_R,
   TANK_R,
+  TAP_RANGE,
   TAU,
   TYPES,
   angleDiff,
@@ -156,6 +157,33 @@ export function shotTarget(s, shooter, angle, bounces) {
     if (target) return target;
   }
   return null;
+}
+
+/** Whether a straight shell from tank a would reach tank b, d away, before any wall or crate. */
+function inSight(grid, a, b, d) {
+  const angle = Math.atan2(b.y - a.y, b.x - a.x);
+  if (muzzleBlocked(grid, a.x, a.y, angle)) return false;
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  // The shell hits once its centre comes within HIT_R + SHELL_R of the target's.
+  const reach = d - MUZZLE - HIT_R - SHELL_R;
+  return reach <= 0 || !nextContact(grid, a.x + ux * MUZZLE, a.y + uy * MUZZLE, ux, uy, SHELL_R, reach);
+}
+
+/**
+ * Who a tap on the aim stick fires at: the nearest enemy within `range` cells that a straight
+ * shell would reach. One behind a wall or crate is passed over for the next nearest in sight.
+ * Invisible tanks are skipped, so the auto-aim can't give them away. Null if there is none.
+ */
+export function tapTarget(s, range = TAP_RANGE) {
+  const p = s.tanks[0];
+  const near = s.tanks
+    .filter((t) => t.slot >= 0 && t.alive && !TYPES[t.type].invisible)
+    .map((t) => ({ t, d: Math.hypot(t.x - p.x, t.y - p.y) }))
+    .filter((o) => o.d <= range)
+    .sort((a, b) => a.d - b.d);
+  const seen = near.find((o) => inSight(s.grid, p, o.t, o.d));
+  return seen ? seen.t : null;
 }
 
 /** Whether this tank ever notices this shell. Fixed per pair so a dull tank stays dull. */

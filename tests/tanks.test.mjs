@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { intercept, predict } from '../src/games/tanks/ai.js';
+import { intercept, predict, tapTarget } from '../src/games/tanks/ai.js';
 import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../guide/mapcheck.mjs';
 import { createWorld, fire, isWorld, lob, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
 import { CHECKPOINTS, MISSIONS } from '../src/games/tanks/missions.js';
@@ -338,6 +338,27 @@ test('enemies shoot a player in their line of fire, even round a wall by ricoche
   assert.equal(g.phase, 'lost');
 });
 
+test('a tap aims at the nearest enemy in sight within 6.5 cells, passing over one behind a wall', () => {
+  const kinds = (rows) => {
+    const t = tapTarget(createWorld(level(rows)));
+    return t && t.type;
+  };
+  // Brown is nearest but behind a wall; ash is in the open, 4 cells away.
+  assert.equal(kinds(['', '', '', '', '..b', '..#', '', '..@...a']), 'ash');
+  // A crate hides it just the same; a hole doesn't (shells fly over holes).
+  assert.equal(kinds(['', '', '', '', '..b', '..x', '', '..@...a']), 'ash');
+  assert.equal(kinds(['', '', '', '', '..b', '..o', '', '..@...a']), 'brown');
+  // 6 cells away is in range and 7 is not; across a diagonal, 6.3 is and 6.7 is not.
+  assert.equal(kinds(['', '', '', '', '', '', '', '..@.....a']), 'ash');
+  assert.equal(kinds(['', '', '', '', '', '', '', '..@......a']), null);
+  assert.equal(kinds(['', '', '', '', '', '........a', '', '..@']), 'ash');
+  assert.equal(kinds(['', '', '', '', '........a', '', '', '..@']), null);
+  // With the near one hidden and the far one out of range, nothing is picked.
+  assert.equal(kinds(['', '', '', '', '..b', '..#', '', '..@......a']), null);
+  // An invisible tank is never picked, even in the open right next to you.
+  assert.equal(kinds(['', '', '', '', '', '', '...w', '..@...a']), 'ash');
+});
+
 /* ---------- R1: weapons ---------- */
 
 test('every kind names its weapon, shots carry it, and nothing infers it from speed', async () => {
@@ -649,34 +670,32 @@ function distance(a, b) {
 }
 
 test('every kind has its own colour, clear of the off-limits ones, that chip text reads on', async () => {
+  // The app is dark only, so the arena has one palette: the .page-tanks block.
   const css = await readFile(new URL('../src/games/tanks/styles.css', import.meta.url), 'utf8');
   const block = (opener) => {
     const at = css.indexOf(opener);
     return css.slice(at, css.indexOf('}', at + opener.length));
   };
   const colours = (text) => Object.fromEntries([...text.matchAll(/--tk-([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map((m) => [m[1], m[2].toLowerCase()]));
-  const light = colours(block('.page-tanks {'));
-  const dark = { ...light, ...colours(block('@media (prefers-color-scheme: dark)')) };
+  assert.ok(!css.includes('prefers-color-scheme'), 'the arena has no light-mode palette');
+  const set = colours(block('.page-tanks {'));
   const kinds = Object.keys(TYPES);
   const ink = { dark: '#16181d', light: '#faf8f2' }; // the field guide's chip text colours
-  for (const [mode, set] of [['light', light], ['dark', dark]]) {
-    for (const k of kinds) assert.match(set[k] || '', /^#[0-9a-f]{6}$/, `--tk-${k} (${mode})`);
-    for (let i = 0; i < kinds.length; i++) {
-      for (let j = i + 1; j < kinds.length; j++) {
-        const d = distance(set[kinds[i]], set[kinds[j]]);
-        assert.ok(d >= 10, `${mode}: ${kinds[i]} and ${kinds[j]} are too alike (${d.toFixed(1)})`);
-      }
+  for (const k of kinds) assert.match(set[k] || '', /^#[0-9a-f]{6}$/, `--tk-${k}`);
+  for (let i = 0; i < kinds.length; i++) {
+    for (let j = i + 1; j < kinds.length; j++) {
+      const d = distance(set[kinds[i]], set[kinds[j]]);
+      assert.ok(d >= 10, `${kinds[i]} and ${kinds[j]} are too alike (${d.toFixed(1)})`);
     }
-    for (const k of kinds) {
-      // The guide picks the chip text from the light colour and uses it in both modes.
-      const text = contrast(light[k], ink.dark) >= contrast(light[k], ink.light) ? ink.dark : ink.light;
-      assert.ok(contrast(set[k], text) >= 4.5, `${mode}: chip text on ${k} is ${contrast(set[k], text).toFixed(2)}:1`);
-      if (k === 'player') continue;
-      // Off limits: your blue, fire orange and crate yellow (the yellow tank was there first).
-      for (const [name, c] of [['player', light.player], ['fire', light.fire], ['crate', light.crate]]) {
-        if (name === 'crate' && k === 'yellow') continue;
-        assert.ok(distance(set[k], c) >= 10, `${mode}: ${k} is too close to the ${name} colour`);
-      }
+  }
+  for (const k of kinds) {
+    // The guide picks whichever chip text reads better on the colour.
+    const text = contrast(set[k], ink.dark) >= contrast(set[k], ink.light) ? ink.dark : ink.light;
+    assert.ok(contrast(set[k], text) >= 4.5, `chip text on ${k} is ${contrast(set[k], text).toFixed(2)}:1`);
+    if (k === 'player') continue;
+    // Off limits: your blue, fire orange and crate grey (a tank must never pass for a crate).
+    for (const name of ['player', 'fire', 'crate']) {
+      assert.ok(distance(set[k], set[name]) >= 10, `${k} is too close to the ${name} colour`);
     }
   }
 });

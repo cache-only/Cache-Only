@@ -10,6 +10,8 @@
 import { BOMB_R, CRATE, HOLE, MUZZLE, TYPES, WALL } from './rules.js';
 
 export const ART = 1.1; // tanks are drawn a little larger than their hit circle, like toys
+const STRIPE_GAP = 0.27; // cells between a crate's stripes, across them
+const STRIPE_W = 0.11;
 
 /** The CSS custom properties the art is painted with, by palette key. */
 export const TOKENS = {
@@ -21,6 +23,8 @@ export const TOKENS = {
   wallDark: '--tk-wall-dark',
   shadow: '--tk-shadow',
   crate: '--tk-crate',
+  crateLit: '--tk-crate-lit',
+  crateDark: '--tk-crate-dark',
   stripe: '--tk-stripe',
   hole: '--tk-hole',
   holeRim: '--tk-hole-rim',
@@ -157,44 +161,58 @@ export function drawGround(c, pal, { cols, rows, kindAt, up = { x: 0, y: -1 }, p
   c.fill();
   c.restore();
 
-  // Walls: flat ink blocks with a lit top edge and a shaded bottom edge.
-  c.fillStyle = pal.wall;
-  c.beginPath();
-  each(WALL, (col, r) => c.rect(col, r, 1, 1));
-  c.fill();
-  c.fillStyle = pal.wallLit;
-  c.beginPath();
-  each(WALL, (col, r) => {
-    if (kindAt(col + up.x, r + up.y) !== WALL) c.rect(...edge(col, r, up, 0.09));
-  });
-  c.fill();
-  c.fillStyle = pal.wallDark;
-  c.beginPath();
-  each(WALL, (col, r) => {
-    if (kindAt(col + down.x, r + down.y) !== WALL) c.rect(...edge(col, r, down, 0.09));
-  });
-  c.fill();
+  // Walls and crates: flat blocks, lit on the edge that faces up on screen and shaded on the
+  // edge that faces down. Blocks of a kind that touch join into one, edged only outside.
+  const block = (type, fill, lit, dark, inside) => {
+    let n = 0;
+    c.fillStyle = fill;
+    c.beginPath();
+    each(type, (col, r) => {
+      c.rect(col, r, 1, 1);
+      n++;
+    });
+    if (!n) return;
+    c.fill();
+    if (inside) {
+      c.save();
+      c.clip();
+      inside();
+      c.restore();
+    }
+    c.fillStyle = lit;
+    c.beginPath();
+    each(type, (col, r) => {
+      if (kindAt(col + up.x, r + up.y) !== type) c.rect(...edge(col, r, up, 0.09));
+    });
+    c.fill();
+    c.fillStyle = dark;
+    c.beginPath();
+    each(type, (col, r) => {
+      if (kindAt(col + down.x, r + down.y) !== type) c.rect(...edge(col, r, down, 0.09));
+    });
+    c.fill();
+  };
+  block(WALL, pal.wall, pal.wallLit, pal.wallDark);
 
-  // Crates: hazard stripes, one bordered block each.
-  each(CRATE, (col, r) => {
-    c.save();
-    c.beginPath();
-    c.rect(col + 0.04, r + 0.04, 0.92, 0.92);
-    c.clip();
-    c.fillStyle = pal.crate;
-    c.fillRect(col, r, 1, 1);
+  // Crates: a lighter grey with diagonal stripes, anchored to the arena rather than to each
+  // cell, so they run on unbroken across crates that touch. They rise to the right on screen
+  // whichever way the arena is turned.
+  const right = { x: -up.y, y: up.x };
+  const along = { x: (right.x + up.x) / Math.SQRT2, y: (right.y + up.y) / Math.SQRT2 };
+  const across = { x: (right.x - up.x) / Math.SQRT2, y: (right.y - up.y) / Math.SQRT2 };
+  block(CRATE, pal.crate, pal.crateLit, pal.crateDark, () => {
+    const spread = [0, cols].flatMap((x) => [0, rows].map((y) => x * across.x + y * across.y));
+    const reach = cols + rows;
     c.strokeStyle = pal.stripe;
-    c.lineWidth = 0.13;
+    c.lineWidth = STRIPE_W;
     c.beginPath();
-    for (let k = -1; k <= 2; k += 0.36) {
-      c.moveTo(col + k, r);
-      c.lineTo(col + k - 1, r + 1);
+    for (let k = Math.floor(Math.min(...spread) / STRIPE_GAP); k <= Math.ceil(Math.max(...spread) / STRIPE_GAP); k++) {
+      const x = across.x * k * STRIPE_GAP;
+      const y = across.y * k * STRIPE_GAP;
+      c.moveTo(x - along.x * reach, y - along.y * reach);
+      c.lineTo(x + along.x * reach, y + along.y * reach);
     }
     c.stroke();
-    c.restore();
-    c.strokeStyle = pal.stripe;
-    c.lineWidth = 0.08;
-    c.strokeRect(col + 0.08, r + 0.08, 0.84, 0.84);
   });
 }
 

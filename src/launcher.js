@@ -1,4 +1,6 @@
-import { formatBytes, formatNumber, formatPercent, formatTime, getLang, localize, pick, setLang, t } from './shared/i18n.js';
+import { formatPercent, getLang, localize, pick, setLang, t } from './shared/i18n.js';
+import { gameArt } from './shared/game-art.js';
+import { createLogo, setLogoHaze, setLogoProgress } from './shared/logo.js';
 import { createStore, exportAll, importAll, isSaveFile } from './shared/storage.js';
 import {
   applyUpdate,
@@ -14,10 +16,11 @@ import {
   watchForUpdates,
   watchOfflineStatus,
 } from './shared/sw-client.js';
-import { confirmDialog, openSheet, setupSheet } from './shared/ui.js';
+import { blurLayers, confirmDialog, openSheet, setupSheet } from './shared/ui.js';
 
 const $ = (id) => document.getElementById(id);
 const HOST_POLL_MS = 15000;
+const appStore = createStore('app');
 
 let registry = [];
 let reg = null;
@@ -28,7 +31,10 @@ let host = 'unknown'; // 'online' | 'offline' | 'unknown': does the host answer 
 const onDevice = new Set(); // games whose every file is cached
 const progress = new Map(); // id -> { done, total, started } while downloading or queued
 const failed = new Set(); // ids whose last download failed
-let bulk = null; // { done, total } while "Download all" runs
+let batch = null; // ids of the downloads running now, for the overall percentage
+let bulk = false; // "Download all" is running
+let heroId = null;
+let updateWaiting = false; // a new worker is installed and waits for a reload
 
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -51,20 +57,25 @@ function svgIcon(id) {
   return svg;
 }
 
-/* ---------- Games list ---------- */
+/* ---------- Play counter: the suggested game is the one played most ---------- */
 
-function sessionDetail(summary) {
-  const parts = [];
-  if (summary.difficulty) parts.push(t(`difficulty.${summary.difficulty}`));
-  if (typeof summary.time === 'number') parts.push(formatTime(summary.time));
-  if (typeof summary.score === 'number') parts.push(t('launcher.score', { score: formatNumber(summary.score) }));
-  if (typeof summary.mission === 'number') parts.push(t('launcher.mission', { n: summary.mission }));
-  return parts.join(' · ');
+function plays() {
+  const p = appStore.load('plays', 1);
+  return p && typeof p === 'object' ? p : {};
 }
 
+/** Counted when a game is opened from the launcher. */
+function countPlay(id) {
+  const p = plays();
+  p[id] = (Number(p[id]) || 0) + 1;
+  appStore.save('plays', 1, p);
+}
+
+/* ---------- Games ---------- */
+
 /**
- * ready: on this device, playable. downloading: in progress. remote: downloadable now.
- * unavailable: not on this device and the host is out of reach. waiting: not known yet.
+ * ready: on this device, playable. downloading: in progress or queued. remote: downloadable
+ * now. unavailable: not on this device and the host is out of reach. waiting: not known yet.
  */
 function stateOf(game) {
   if (!reg && offline.state !== 'checking') return 'ready'; // no service worker: plain online play
@@ -75,104 +86,137 @@ function stateOf(game) {
   return host === 'offline' ? 'unavailable' : 'waiting';
 }
 
-function downloadPill(id) {
-  const pill = el('span', 'flight-action');
+const fraction = (id) => {
   const p = progress.get(id);
-  if (p) {
-    const fraction = p.total ? p.done / p.total : 0;
-    pill.textContent = formatPercent(fraction);
-    pill.style.setProperty('--p', `${Math.round(fraction * 100)}%`);
-  } else {
-    pill.append(t('launcher.download'), svgIcon('i-download'));
-  }
-  return pill;
+  return p && p.total ? p.done / p.total : 0;
+};
+
+function hasSession(id) {
+  return !!createStore(id).peek('session')?.summary;
 }
 
-function renderRow({ game, i, state }) {
-  const ready = state === 'ready';
-  const summary = ready ? createStore(game.id).peek('session')?.summary : null;
-  const pack = manifest && manifest.games[game.id];
-  const li = el('li', `flight is-${state}${summary ? ' has-session' : ''}`);
-  li.dataset.id = game.id;
+/** The most played game on this device; ties and no history go by registry order. */
+function suggested() {
+  const p = plays();
+  const ready = registry.filter((g) => stateOf(g) === 'ready');
+  ready.sort((a, b) => (Number(p[b.id]) || 0) - (Number(p[a.id]) || 0) || registry.indexOf(a) - registry.indexOf(b));
+  return ready[0] || null;
+}
 
-  let row;
-  if (ready) {
-    row = el('a', 'flight-link');
-    row.href = game.path;
+function tileLabel(game, state) {
+  const name = pick(game.name);
+  if (state === 'ready') return t(hasSession(game.id) ? 'launcher.resumeGame' : 'launcher.playGame', { name });
+  if (state === 'downloading') {
+    const p = progress.get(game.id);
+    return p.started ? t('launcher.downloadingGame', { name, p: formatPercent(fraction(game.id)) }) : t('launcher.queuedGame', { name });
+  }
+  if (state === 'remote') return t(failed.has(game.id) ? 'launcher.retryGame' : 'launcher.downloadGame', { name });
+  if (state === 'unavailable') return t('launcher.needsHostGame', { name });
+  return name;
+}
+
+function renderTile(game) {
+  const state = stateOf(game);
+  let tile;
+  if (state === 'ready') {
+    tile = el('a', 'game-tile');
+    tile.href = game.path;
+    tile.dataset.play = game.id;
   } else if (state === 'remote' || state === 'downloading') {
-    row = el('button', 'flight-link');
-    row.type = 'button';
-    row.dataset.download = game.id;
-    row.disabled = state === 'downloading';
-    row.setAttribute('aria-label', t('launcher.downloadGame', { name: pick(game.name), size: formatBytes(pack.bytes) }));
+    tile = el('button', 'game-tile');
+    tile.type = 'button';
+    tile.dataset.download = game.id;
+    if (state === 'downloading') tile.setAttribute('aria-disabled', 'true');
   } else {
-    row = el('div', 'flight-link');
-    row.setAttribute('aria-disabled', 'true');
+    tile = el('div', 'game-tile');
+    tile.setAttribute('role', 'img');
   }
+  tile.classList.add(`is-${state}`);
+  tile.dataset.id = game.id;
+  tile.setAttribute('aria-label', tileLabel(game, state));
+  if (state === 'downloading') tile.style.setProperty('--haze', `${((1 - fraction(game.id)) * 8).toFixed(1)}px`);
 
-  const code = el('span', 'flight-code', game.code || `GP ${String(i + 1).padStart(2, '0')}`);
-  code.setAttribute('aria-hidden', 'true');
-  const main = el('span', 'flight-main');
-  main.append(el('span', 'flight-name', pick(game.name)), el('span', 'flight-desc', pick(game.description)));
-
-  const status = el('span', 'flight-status');
-  if (ready) {
-    const action = el('span', 'flight-action', t(summary ? 'launcher.resume' : 'launcher.play'));
-    action.append(svgIcon('i-arrow'));
-    status.append(action);
-    const detail = summary && sessionDetail(summary);
-    if (detail) status.append(el('span', 'flight-detail', detail));
-  } else if (state === 'remote' || state === 'downloading') {
-    status.append(downloadPill(game.id));
-    let note = formatBytes(pack.bytes);
-    if (state === 'downloading') note = t(progress.get(game.id).started ? 'launcher.downloading' : 'launcher.queued');
-    else if (failed.has(game.id)) note = t('launcher.downloadFailed');
-    status.append(el('span', `flight-detail${failed.has(game.id) && state === 'remote' ? ' is-error' : ''}`, note));
-  } else if (state === 'unavailable') {
-    status.append(el('span', 'flight-detail', t('launcher.needsHost')));
+  const art = el('span', 'game-tile-art');
+  art.append(gameArt(game.id, 'tile'));
+  tile.append(art, blurLayers('tile'));
+  if (state === 'remote' || state === 'unavailable' || state === 'waiting') {
+    const icon = el('span', 'game-tile-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.append(svgIcon('i-download'));
+    tile.append(icon);
   }
-
-  row.append(code, main, status);
-  li.append(row);
+  const name = el('span', 'game-tile-name', pick(game.name));
+  name.setAttribute('aria-hidden', 'true');
+  tile.append(name);
+  const li = el('li');
+  li.append(tile);
   return li;
 }
 
-function renderGames() {
-  const rows = registry.map((game, i) => ({ game, i, state: stateOf(game) }));
-  // Out of reach of the host, the games on this device come first and the rest wait below.
-  if (host === 'offline') {
-    rows.sort((a, b) => (a.state === 'unavailable') - (b.state === 'unavailable') || a.i - b.i);
+function renderSuggest(game) {
+  $('suggest').hidden = !game;
+  if (game !== null && heroId !== game?.id) {
+    heroId = game.id;
+    $('hero').replaceChildren(gameArt(game.id, 'hero'));
+  } else if (!game) {
+    heroId = null;
+    $('hero').replaceChildren();
   }
-  $('games').replaceChildren(...rows.map(renderRow));
-  renderDownloadAll();
-  $('factGames').textContent = manifest ? `${onDevice.size} / ${registry.length}` : '—';
-}
-
-/** Updates one row's percentage in place, so the list doesn't flicker while downloading. */
-function renderProgress(id) {
-  const row = $('games').querySelector(`[data-id="${CSS.escape(id)}"]`);
-  const pill = row && row.querySelector('.flight-action');
-  if (pill) pill.replaceWith(downloadPill(id));
+  if (!game) return;
+  $('suggestName').textContent = pick(game.name);
+  const btn = $('suggestBtn');
+  btn.href = game.path;
+  btn.dataset.play = game.id;
+  btn.textContent = t(hasSession(game.id) ? 'launcher.resume' : 'launcher.play');
+  // One primary per screen: while an update waits, the white Update pill is the one.
+  btn.classList.toggle('btn-primary', $('reloadBtn').hidden);
 }
 
 function missingGames() {
   return manifest ? registry.filter((g) => manifest.games[g.id] && !onDevice.has(g.id)) : [];
 }
 
+function renderGames() {
+  if (document.body.dataset.view !== 'home') return renderStatus();
+  const top = suggested();
+  renderSuggest(top);
+  const rows = registry.filter((g) => g !== top).map((game, i) => ({ game, i, state: stateOf(game) }));
+  // Out of reach of the host, the games on this device come first and the rest wait below.
+  if (host === 'offline') rows.sort((a, b) => (a.state === 'unavailable') - (b.state === 'unavailable') || a.i - b.i);
+  $('games').replaceChildren(...rows.map((r) => renderTile(r.game)));
+  $('gamesSection').hidden = !registry.length;
+  renderDownloadAll();
+  renderNote();
+  renderStatus();
+}
+
+/** Updates one tile's focus in place, so the grid doesn't flicker while downloading. */
+function renderProgress(id) {
+  const tile = $('games').querySelector(`[data-id="${CSS.escape(id)}"]`);
+  const game = registry.find((g) => g.id === id);
+  if (tile && game) {
+    tile.style.setProperty('--haze', `${((1 - fraction(id)) * 8).toFixed(1)}px`);
+    tile.setAttribute('aria-label', tileLabel(game, 'downloading'));
+  }
+  renderStatus();
+}
+
 function renderDownloadAll() {
   const missing = missingGames();
-  const show = isStandalone() && host === 'online' && missing.length > 0;
-  $('downloadAll').hidden = !show;
-  if (!show) return;
   const btn = $('downloadAllBtn');
-  if (bulk) {
-    btn.disabled = true;
-    $('downloadAllText').textContent = t('launcher.downloadingAll', { done: Math.min(bulk.done + 1, bulk.total), total: bulk.total });
-  } else {
-    btn.disabled = progress.size > 0;
-    const bytes = missing.reduce((n, g) => n + manifest.games[g.id].bytes, 0);
-    $('downloadAllText').textContent = t('launcher.downloadAll', { size: formatBytes(bytes) });
+  btn.hidden = !isStandalone() || !manifest || !missing.length;
+  // Dimmed, not removed, while the host is out of reach or something is downloading.
+  btn.disabled = host !== 'online' || bulk || progress.size > 0;
+}
+
+function renderNote() {
+  let note = '';
+  if (!reg && offline.state !== 'checking') note = t('status.unsupportedHint');
+  else if (manifest && reg) {
+    if ([...failed].some((id) => !onDevice.has(id) && !progress.has(id))) note = t('launcher.downloadFailed');
+    else if (missingGames().length && host === 'offline') note = t('status.hostOffline');
   }
+  $('homeNote').textContent = note;
 }
 
 async function loadRegistry() {
@@ -182,6 +226,7 @@ async function loadRegistry() {
   } catch {
     registry = [];
   }
+  renderGhosts();
   renderGames();
 }
 
@@ -205,7 +250,20 @@ async function loadPacks() {
   }
   await refreshPacks();
   renderGames();
-  renderStatus();
+}
+
+/** Everything the running downloads have fetched so far, from 0 to 1. */
+function batchProgress() {
+  if (!batch || !manifest) return 1;
+  let done = 0;
+  let total = 0;
+  for (const id of batch) {
+    const files = manifest.games[id].files.length;
+    total += files;
+    if (onDevice.has(id)) done += files;
+    else if (progress.has(id)) done += progress.get(id).done;
+  }
+  return total ? done / total : 1;
 }
 
 async function download(ids) {
@@ -215,6 +273,7 @@ async function download(ids) {
     failed.delete(id);
     progress.set(id, { done: 0, total: manifest.games[id].files.length, started: false });
   }
+  batch = [...(batch || []), ...ids];
   renderGames();
   await downloadPacks(reg, ids, (msg) => {
     if (msg.type === 'progress' && progress.has(msg.id)) {
@@ -225,7 +284,6 @@ async function download(ids) {
     } else if (msg.type === 'game') {
       progress.delete(msg.id);
       if (msg.ok) onDevice.add(msg.id);
-      if (bulk) bulk.done++;
       renderGames();
     }
   });
@@ -233,30 +291,36 @@ async function download(ids) {
   // Trust the cache, not the messages.
   await refreshPacks();
   for (const id of ids) if (!onDevice.has(id)) failed.add(id);
+  if (!progress.size) batch = null;
   // A newer version may be installed and waiting for a reload: it gets the same games,
   // so taking the update doesn't drop them.
   for (const worker of [reg.waiting, reg.installing]) worker?.postMessage({ type: 'DOWNLOAD', ids });
   renderGames();
-  renderStatus();
   if (ids.some((id) => failed.has(id))) checkHost();
 }
 
 async function downloadAll() {
   const ids = missingGames().map((g) => g.id);
   if (!ids.length || bulk) return;
-  bulk = { done: 0, total: ids.length };
+  bulk = true;
   renderDownloadAll();
   try {
     await download(ids);
   } finally {
-    bulk = null;
+    bulk = false;
     renderGames();
   }
 }
 
 $('games').addEventListener('click', (event) => {
-  const btn = event.target.closest('[data-download]');
-  if (btn && !btn.disabled) download([btn.dataset.download]);
+  const tile = event.target.closest('[data-download]');
+  if (tile && tile.getAttribute('aria-disabled') !== 'true') download([tile.dataset.download]);
+});
+
+// Opening a game from the launcher counts towards the suggestion.
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-play]');
+  if (link) countPlay(link.dataset.play);
 });
 
 $('downloadAllBtn').addEventListener('click', downloadAll);
@@ -274,58 +338,106 @@ async function checkHost() {
   const next = (await probing) ? 'online' : 'offline';
   if (next === host) return;
   host = next;
-  renderStatus();
   renderGames();
 }
 
-/* ---------- Offline status ---------- */
+/* ---------- Status: the header line, the logo, first launch ---------- */
+
+const barLogo = createLogo();
+$('barLogo').append(barLogo);
+
+const prepareLogo = createLogo({ size: 'lg' });
+$('prepareMark').querySelector('.intro-logo').append(createLogo({ size: 'lg', glow: true }), prepareLogo);
+prepareLogo.setAttribute('role', 'progressbar');
+prepareLogo.removeAttribute('aria-hidden');
+
+function statusText() {
+  const s = offline;
+  if (s.state === 'checking') return t('status.checking');
+  if (s.state === 'unsupported' || (s.state === 'failed' && !reg)) return t('status.unsupported');
+  if (s.state === 'failed') return t('status.failed');
+  if (s.state === 'downloading') return t('status.preparing', { done: s.done ?? 0, total: s.total ?? '…' });
+  if (batch) return t('status.line.downloading', { p: formatPercent(batchProgress()) });
+  const n = registry.filter((g) => onDevice.has(g.id)).length;
+  if (manifest && n === registry.length) return t('status.line.all');
+  const counts = { n, total: registry.length };
+  return host === 'offline' ? t('status.line.offline', counts) : t('status.line.ready', counts);
+}
 
 function renderStatus() {
   const s = offline;
-  const box = $('status');
-  box.hidden = !isStandalone();
-  box.dataset.state = s.state;
-  const text = {
-    checking: t('status.checking'),
-    downloading: t('status.preparing', { done: s.done ?? 0, total: s.total ?? '…' }),
-    ready: t('status.ready'),
-    failed: t('status.failed'),
-    unsupported: t('status.unsupported'),
-  }[s.state];
-  let ready = '';
-  if (host === 'offline') ready = t('status.hostOffline');
-  else if (host === 'online') ready = manifest && !missingGames().length ? t('status.allReady') : t('status.hostOnline');
-  const hint = {
-    checking: '',
-    downloading: t('status.downloadingHint'),
-    ready,
-    failed: t('status.failedHint'),
-    unsupported: t('status.unsupportedHint'),
-  }[s.state];
-  $('statusText').textContent = text;
-  $('statusVersion').textContent = s.state === 'ready' && s.version ? s.version : '';
-  $('statusHint').textContent = hint;
-  $('footVersion').textContent = s.version ? `v ${s.version}` : '';
+  $('statusLine').textContent = isStandalone() ? statusText() : '';
+  // The logo comes into focus as the app and its games download.
+  const shellDone = s.state === 'ready' || s.state === 'checking' || !reg;
+  setLogoProgress(barLogo, shellDone ? batchProgress() : (s.done ?? 0) / (s.total || 1));
+
+  if (document.body.dataset.view === 'prepare') {
+    const total = s.total || 0;
+    const p = s.state === 'ready' ? 1 : total ? (s.done ?? 0) / total : 0;
+    setLogoProgress(prepareLogo, p);
+    prepareLogo.setAttribute('aria-label', t('status.preparingTitle'));
+    prepareLogo.setAttribute('aria-valuemin', '0');
+    prepareLogo.setAttribute('aria-valuemax', String(total));
+    prepareLogo.setAttribute('aria-valuenow', String(s.done ?? 0));
+    const failedNow = s.state === 'failed';
+    $('prepareCount').textContent = !failedNow && total ? t('status.files', { done: s.done ?? 0, total }) : '';
+    $('prepareTitle').textContent = failedNow ? t('status.failed') : t('status.preparingTitle');
+    $('prepareText').textContent = failedNow ? t('status.failedHint') : t('status.downloadingHint');
+  }
 
   $('factVersion').textContent = s.version || '—';
-  $('factOffline').textContent = text;
+  $('factOffline').textContent = s.state === 'ready' ? t('settings.offlineReady') : statusText();
+  $('factGames').textContent = manifest ? `${onDevice.size} / ${registry.length}` : '—';
   $('factPersisted').textContent =
     persisted == null ? t('settings.unsupported') : persisted ? t('common.yes') : t('common.no');
 }
 
-/* ---------- Browser vs installed app ---------- */
+function renderGhosts() {
+  $('ghostTiles').replaceChildren(...registry.map(() => el('span')));
+}
 
-// In a browser tab there is nothing to play or download: only how to install the app.
-function renderMode() {
-  const app = isStandalone();
-  $('installCard').hidden = app;
-  $('gamesSection').hidden = !app;
-  $('openSettings').hidden = !app;
-  if (!app) {
-    $('updateBanner').hidden = true;
-    $('installText').textContent = isIOS() ? t('install.ios') : t('install.other');
-    $('installSteps').hidden = !isIOS();
+/* ---------- Browser tab, first launch or home ---------- */
+
+function viewOf() {
+  if (!isStandalone()) return 'install';
+  if (reg && (offline.state === 'downloading' || offline.state === 'failed')) return 'prepare';
+  return 'home';
+}
+
+function renderInstall() {
+  const ios = isIOS();
+  const steps = ios
+    ? [['i-share', 'install.step.share'], ['i-add', 'install.step.add'], [null, 'install.step.open']]
+    : [['i-dots', 'install.step.menu'], ['i-add', 'install.step.install'], [null, 'install.step.open']];
+  $('installSteps').replaceChildren(
+    ...steps.map(([icon, key], i) => {
+      const li = el('li', 'glass-row');
+      li.append(el('span', 'eyebrow', String(i + 1)), icon ? svgIcon(icon) : createLogo({ size: 'xs' }), el('span', '', t(key)));
+      return li;
+    }),
+  );
+}
+
+const installLogo = createLogo({ size: 'lg' });
+setLogoHaze(installLogo);
+$('installMark').querySelector('.intro-logo').append(createLogo({ size: 'lg', glow: true }), installLogo);
+
+function renderView() {
+  const view = viewOf();
+  const changed = document.body.dataset.view !== view;
+  document.body.dataset.view = view;
+  $('install').hidden = view !== 'install';
+  $('prepare').hidden = view !== 'prepare';
+  $('barActions').hidden = view === 'install';
+  renderUpdate();
+  if (view !== 'home') {
+    $('suggest').hidden = true;
+    $('gamesSection').hidden = true;
+    $('hero').replaceChildren();
+    heroId = null;
   }
+  if (view === 'install') renderInstall();
+  if (changed && view === 'home') renderGames();
 }
 
 /* ---------- Language ---------- */
@@ -339,7 +451,7 @@ function renderLang() {
 function renderAll() {
   localize();
   renderLang();
-  renderMode();
+  renderView();
   renderStatus();
   renderGames();
 }
@@ -357,6 +469,7 @@ const settings = setupSheet($('settings'));
 $('openSettings').addEventListener('click', () => {
   $('savesMsg').textContent = '';
   $('updateMsg').textContent = '';
+  renderStatus();
   openSheet(settings);
 });
 
@@ -422,12 +535,26 @@ $('importFile').addEventListener('change', async (event) => {
     const written = importAll(blob);
     savesMessage(t('settings.imported', { n: written }));
     // The language may have come with the import.
-    setLang(createStore('app').peek('lang') || getLang());
+    setLang(appStore.peek('lang') || getLang());
+    heroId = null;
     renderAll();
   } catch {
     savesMessage(t('settings.importError'), true);
   }
 });
+
+/** The settings button grows to the left into an Update pill while a new version waits. */
+function renderUpdate() {
+  const show = updateWaiting && document.body.dataset.view === 'home';
+  $('reloadBtn').hidden = !show;
+  $('barActions').classList.toggle('has-update', show);
+}
+
+function showUpdate() {
+  updateWaiting = true;
+  renderUpdate();
+  renderGames();
+}
 
 $('checkUpdateBtn').addEventListener('click', async () => {
   const msg = $('updateMsg');
@@ -442,7 +569,7 @@ $('checkUpdateBtn').addEventListener('click', async () => {
     unreachable: t('settings.unreachable'),
     failed: t('settings.updateFailed'),
   }[result];
-  if (result === 'available') $('updateBanner').hidden = false;
+  if (result === 'available') showUpdate();
   checkHost();
 });
 
@@ -453,13 +580,16 @@ $('reloadBtn').addEventListener('click', () => applyUpdate(reg));
 renderAll();
 loadRegistry();
 
-// Coming back from a game (bfcache or app switch): refresh resume hints and downloads.
+// Coming back from a game (bfcache or app switch): refresh the suggestion, art and downloads.
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted) renderGames();
+  if (!event.persisted) return;
+  heroId = null;
+  renderGames();
 });
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   await refreshPacks();
+  heroId = null;
   renderGames();
   checkHost();
   if (reg) reg.update().catch(() => {});
@@ -485,16 +615,16 @@ async function startApp() {
   reg = await registerSW();
   watchOfflineStatus(reg, (status) => {
     offline = status;
+    renderView();
     renderStatus();
     if (status.state === 'ready') loadPacks();
   });
-  watchForUpdates(reg, () => {
-    $('updateBanner').hidden = false;
-  });
+  watchForUpdates(reg, showUpdate);
   // Quiet update check: fails silently while offline, which is a normal state.
   if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
 
   persisted = await ensurePersisted();
+  renderView();
   renderStatus();
   renderGames();
 }

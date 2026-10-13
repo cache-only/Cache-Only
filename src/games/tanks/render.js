@@ -77,6 +77,11 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     return view.rot ? { x: -dy, y: dx } : { x: dx, y: dy };
   }
 
+  /** A world direction -> the same direction on screen (the inverse of vecToWorld). */
+  function vecToScreen(wx, wy) {
+    return view.rot ? { x: wy, y: -wx } : { x: wx, y: wy };
+  }
+
   /* ---------- Palette ---------- */
 
   function readPalette() {
@@ -504,6 +509,6 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.restore();
   }
 
-  return { layout, toWorld, vecToWorld, readPalette, palette, events, update, reset, draw };
+  return { layout, toWorld, vecToWorld, vecToScreen, readPalette, palette, events, update, reset, draw };
 }
 

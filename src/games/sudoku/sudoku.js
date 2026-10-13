@@ -1,7 +1,7 @@
 import { formatTime, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
-import { confirmDialog, fitBoard, openSheet, setupSheet } from '../../shared/ui.js';
+import { closeSheet, confirmDialog, fitBoard, modalOpen, openSheet, setupSheet, setupSideMenu } from '../../shared/ui.js';
 import { LEVELS, analyze, generate } from './generator.js';
 import { BOX, COL, PEERS, ROW } from './solver.js';
 
@@ -90,7 +90,7 @@ const savePrefs = () => store.save('prefs', 1, prefs);
 /* ---------- Clock ---------- */
 
 function startClock() {
-  if (running || !S || S.completed || paused || busy || document.hidden || document.querySelector('dialog[open]')) return;
+  if (running || !S || S.completed || paused || busy || document.hidden || modalOpen()) return;
   running = true;
   startedAt = performance.now();
 }
@@ -244,16 +244,18 @@ function render() {
   }
 
   for (const key of document.querySelectorAll('.key[data-d]')) {
-    key.classList.toggle('done', counts[Number(key.dataset.d)] >= 9);
+    const done = counts[Number(key.dataset.d)] >= 9;
+    key.classList.toggle('is-done', done);
+    key.setAttribute('aria-label', done ? t('sudoku.allPlaced', { d: key.dataset.d }) : key.dataset.d);
   }
-  $('pad').classList.toggle('notes-mode', !!S?.notesMode);
+  $('pad').classList.toggle('is-notes', !!S?.notesMode);
   $('notesBtn').setAttribute('aria-pressed', String(!!S?.notesMode));
   const playing = !!S && !S.completed;
   $('undoBtn').disabled = !playing || !S.undo.length;
   $('redoBtn').disabled = !playing || !S.redo.length;
   $('hintBtn').disabled = !playing;
   $('notesBtn').disabled = !playing;
-  $('pauseBtn').disabled = !playing;
+  $('eraseBtn').disabled = !playing;
   $('levelLabel').textContent = S ? t(`difficulty.${S.difficulty}`) : ' ';
   renderTimer();
 }
@@ -262,13 +264,52 @@ function renderTimer() {
   $('timer').textContent = formatTime(elapsed());
 }
 
-/* ---------- Overlays ---------- */
+/* ---------- Sheets: new puzzle, solved, enter, share ---------- */
 
-const overlays = { start: $('ovStart'), gen: $('ovGen'), pause: $('ovPause'), done: $('ovDone') };
+const newSheet = setupSheet($('newSheet'));
+const doneSheet = setupSheet($('doneSheet'));
+const enterSheet = setupSheet($('enterSheet'));
+const shareSheet = setupSheet($('shareSheet'));
+const sheets = [newSheet, doneSheet, enterSheet, shareSheet];
 
-function showOverlay(name) {
-  for (const [key, el] of Object.entries(overlays)) el.hidden = key !== name;
-  board.classList.toggle('masked', name === 'pause' || name === 'gen');
+function closeSheets() {
+  for (const d of sheets) closeSheet(d);
+}
+
+for (const d of sheets) {
+  // The clock stops while a sheet covers the game.
+  d.addEventListener('close', () => setTimeout(startClock, 0));
+}
+
+let pickedLevel = 'medium';
+
+function renderLevels() {
+  $('levels').replaceChildren(
+    ...LEVEL_IDS.map((id) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.level = id;
+      btn.textContent = t(`difficulty.${id}`);
+      btn.setAttribute('aria-pressed', String(id === pickedLevel));
+      return btn;
+    }),
+  );
+  const [min, max] = LEVELS[pickedLevel];
+  const info = [t('sudoku.givens', { min, max })];
+  if (stats.best[pickedLevel]) info.push(t('sudoku.bestTime', { time: formatTime(stats.best[pickedLevel]) }));
+  $('levelInfo').textContent = info.join(' · ');
+}
+
+/** No puzzle going: the sheet is docked and can't be closed. Mid-puzzle: a modal sheet. */
+function openNew() {
+  menu.close();
+  if (S && S.difficulty in LEVELS) pickedLevel = S.difficulty;
+  renderLevels();
+  const idle = !S || S.completed;
+  $('newClose').hidden = idle;
+  closeSheet(doneSheet);
+  stopClock();
+  openSheet(newSheet, { docked: idle });
 }
 
 function showDone() {
@@ -276,35 +317,12 @@ function showDone() {
   $('doneTime').textContent = formatTime(S.elapsed);
   $('doneHints').textContent = String(S.hints);
   $('newBest').hidden = !S.newBest;
-  showOverlay('done');
+  openSheet(doneSheet, { docked: true });
 }
 
-function renderLevels() {
-  for (const container of document.querySelectorAll('[data-levels]')) {
-    container.replaceChildren(
-      ...LEVEL_IDS.map((id) => {
-        const [min, max] = LEVELS[id];
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'level';
-        btn.dataset.level = id;
-        const name = document.createElement('span');
-        name.className = 'level-name';
-        name.textContent = t(`difficulty.${id}`);
-        const meta = document.createElement('span');
-        meta.className = 'level-meta';
-        meta.textContent = t('sudoku.givens', { min, max });
-        btn.append(name, meta);
-        if (stats.best[id]) {
-          const best = document.createElement('span');
-          best.className = 'level-best';
-          best.textContent = `★ ${formatTime(stats.best[id])}`;
-          btn.append(best);
-        }
-        return btn;
-      }),
-    );
-  }
+function setGenerating(on) {
+  board.classList.toggle('masked', on);
+  $('genNote').hidden = !on;
 }
 
 /* ---------- Game flow ---------- */
@@ -336,7 +354,8 @@ function startSession({ difficulty, seed, puzzle, solution }) {
   };
   running = false;
   paused = false;
-  showOverlay(null);
+  closeSheets();
+  menu.close();
   render();
   saver.flush();
   startClock();
@@ -347,7 +366,7 @@ async function newGame(difficulty) {
   closeSheets();
   stopClock();
   busy = true;
-  showOverlay('gen');
+  setGenerating(true);
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
   const t0 = performance.now();
   try {
@@ -355,17 +374,21 @@ async function newGame(difficulty) {
     const wait = MIN_GENERATING_MS - (performance.now() - t0);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     busy = false;
+    setGenerating(false);
     startSession({ difficulty, seed, puzzle: result.puzzle, solution: result.solution });
   } catch (err) {
     console.error(err);
     busy = false;
-    showOverlay(S && !S.completed ? null : 'start');
+    setGenerating(false);
+    if (!S || S.completed) openNew();
     startClock();
   }
 }
 
 async function chooseLevel(level) {
   if (inProgress() && !(await confirmDialog(t('sudoku.confirmNew'), { ok: t('sudoku.newPuzzle') }))) return;
+  stats.lastLevel = level;
+  saveStats();
   newGame(level);
 }
 
@@ -520,50 +543,33 @@ function complete() {
   }
   saver.flush();
   render();
-  renderLevels();
   showDone();
 }
 
+/* ---------- Side menu: opening it pauses ---------- */
+
 function pause() {
-  if (!S || S.completed || busy || paused) return;
   stopClock();
-  paused = true;
-  showOverlay('pause');
+  if (S && !S.completed && !busy) paused = true;
+  $('menuTitle').textContent = paused ? `${t('sudoku.paused')} · ${formatTime(elapsed())}` : t('common.menu');
+  $('resumeBtn').hidden = !paused;
+  $('shareBtn').disabled = !S;
+  $('conflictsToggle').checked = !!prefs.showConflicts;
   render();
   saver.flush();
 }
 
 function resume() {
-  if (!paused) return;
+  document.activeElement?.blur?.();
   paused = false;
-  showOverlay(null);
   startClock();
   render();
 }
 
-/* ---------- Sheets ---------- */
-
-const menuSheet = setupSheet($('menuSheet'));
-const enterSheet = setupSheet($('enterSheet'));
-const shareSheet = setupSheet($('shareSheet'));
-
-function closeSheets() {
-  for (const d of [menuSheet, enterSheet, shareSheet]) if (d.open) d.close();
-}
-
-for (const d of [menuSheet, enterSheet, shareSheet]) {
-  // The clock stops while a sheet covers the game.
-  d.addEventListener('close', () => setTimeout(startClock, 0));
-}
-
-function openMenu() {
-  stopClock();
-  $('conflictsToggle').checked = !!prefs.showConflicts;
-  $('shareBtn').disabled = !S;
-  openSheet(menuSheet);
-}
+const menu = setupSideMenu($('sideMenu'), $('homeBtn'), { onOpen: pause, onClose: resume });
 
 function openEnter() {
+  menu.close();
   closeSheets();
   stopClock();
   $('enterMsg').textContent = '';
@@ -573,6 +579,7 @@ function openEnter() {
 
 function openShare() {
   if (!S) return;
+  menu.close();
   closeSheets();
   stopClock();
   $('shareCode').textContent = S.puzzle;
@@ -598,6 +605,7 @@ async function submitEntered() {
   msg.textContent = '';
   enterSheet.close();
   if (inProgress() && !(await confirmDialog(t('sudoku.confirmNew'), { ok: t('sudoku.enterPlay') }))) {
+    if (!S || S.completed) openNew();
     startClock();
     return;
   }
@@ -614,34 +622,39 @@ board.addEventListener('pointerdown', (event) => {
 
 $('pad').addEventListener('click', (event) => {
   const key = event.target.closest('.key');
-  if (!key) return;
-  if (key.id === 'eraseBtn') erase();
-  else place(Number(key.dataset.d));
+  if (key) place(Number(key.dataset.d));
 });
 
 $('undoBtn').addEventListener('click', undo);
 $('redoBtn').addEventListener('click', redo);
 $('notesBtn').addEventListener('click', toggleNotes);
 $('hintBtn').addEventListener('click', hint);
-$('pauseBtn').addEventListener('click', pause);
-$('resumeBtn').addEventListener('click', resume);
-$('menuBtn').addEventListener('click', openMenu);
+$('eraseBtn').addEventListener('click', erase);
+$('resumeBtn').addEventListener('click', () => menu.close());
+$('menuNewBtn').addEventListener('click', openNew);
+$('menuEnterBtn').addEventListener('click', openEnter);
+$('shareBtn').addEventListener('click', openShare);
+$('newEnterBtn').addEventListener('click', openEnter);
+$('doneNewBtn').addEventListener('click', openNew);
+$('startBtn').addEventListener('click', () => chooseLevel(pickedLevel));
+$('levels').addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-level]');
+  if (!btn) return;
+  pickedLevel = btn.dataset.level;
+  renderLevels();
+});
+$('newSheet').addEventListener('close', () => {
+  // Closing it with nothing to play would leave an empty board: it comes back.
+  if (!S && !busy) setTimeout(() => !busy && !S && openNew(), 0);
+});
+$('enterSheet').addEventListener('close', () => {
+  if ((!S || S.completed) && !busy && !newSheet.open) setTimeout(() => !busy && (!S || S.completed) && openNew(), 0);
+});
 $('enterGo').addEventListener('click', submitEntered);
 $('enterForm').addEventListener('submit', (event) => {
   if (event.submitter && event.submitter.value === 'close') return;
   event.preventDefault();
   submitEntered();
-});
-
-document.addEventListener('click', (event) => {
-  const level = event.target.closest('.level');
-  if (level) return chooseLevel(level.dataset.level);
-  const action = event.target.closest('[data-action]')?.dataset.action;
-  if (action === 'enter') openEnter();
-  else if (action === 'share') openShare();
-  else if (action === 'new') {
-    showOverlay('start');
-  }
 });
 
 $('conflictsToggle').addEventListener('change', (event) => {
@@ -674,16 +687,23 @@ $('sendBtn').addEventListener('click', async () => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (document.querySelector('dialog[open]') || !S || busy) return;
+  if (modalOpen() || busy) return;
   const k = event.key;
-  if (paused) {
-    if (k === ' ' || k === 'Enter' || k === 'p') {
+  if (k === 'Escape' || k === 'p' || k === 'P') {
+    event.preventDefault();
+    if (menu.isOpen()) menu.close();
+    else menu.open();
+    return;
+  }
+  if (menu.isOpen()) {
+    // Keys work the menu's own items; Space or Enter anywhere else closes it and plays on.
+    if ((k === ' ' || k === 'Enter') && !event.target.closest?.('.side-menu')) {
       event.preventDefault();
-      resume();
+      menu.close();
     }
     return;
   }
-  if (S.completed) return;
+  if (!S || S.completed || document.querySelector('dialog[open]')) return;
   const mod = event.metaKey || event.ctrlKey;
   if (mod && k.toLowerCase() === 'z') {
     event.preventDefault();
@@ -711,16 +731,16 @@ document.addEventListener('keydown', (event) => {
     toggleNotes();
   } else if (k === 'h' || k === 'H') {
     hint();
-  } else if (k === 'p' || k === ' ') {
+  } else if (k === ' ') {
     event.preventDefault();
-    pause();
+    menu.open();
   }
 });
 
 // Leaving the app pauses the game; the player resumes deliberately.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (S && !S.completed && !busy) pause();
+    if (S && !S.completed && !busy) menu.open();
     else stopClock();
   } else {
     startClock();
@@ -731,7 +751,7 @@ document.addEventListener('visibilitychange', () => {
 
 buildBoard();
 fitBoard($('boardWrap'), board);
-renderLevels();
+if (stats.lastLevel in LEVELS) pickedLevel = stats.lastLevel;
 
 const saved = store.load('session', SCHEMA);
 if (isValidSession(saved)) {
@@ -741,5 +761,5 @@ if (isValidSession(saved)) {
   else startClock();
 } else {
   render();
-  showOverlay('start');
+  openNew();
 }

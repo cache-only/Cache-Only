@@ -1,7 +1,7 @@
 import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
-import { confirmDialog, fitBoard } from '../../shared/ui.js';
+import { closeSheet, confirmDialog, fitBoard, modalOpen, openSheet, setupSideMenu } from '../../shared/ui.js';
 import { SIZE, WIN, newGame, step, undo as undoState } from './logic.js';
 
 const SCHEMA = 1;
@@ -99,13 +99,19 @@ function renderScore(gained = 0) {
   }
 }
 
+// Results are docked sheets: the header and its menu still work around them.
+const winSheet = $('winSheet');
+const overSheet = $('overSheet');
+
 function showOverlay(name) {
-  $('ovWin').hidden = name !== 'win';
-  $('ovOver').hidden = name !== 'over';
   if (name === 'over') $('overText').textContent = t('g2048.overText', { score: formatNumber(state.score) });
+  if (name === 'win') openSheet(winSheet, { docked: true });
+  else closeSheet(winSheet);
+  if (name === 'over') openSheet(overSheet, { docked: true });
+  else closeSheet(overSheet);
 }
 
-const overlayShown = () => !$('ovWin').hidden || !$('ovOver').hidden;
+const overlayShown = () => winSheet.open || overSheet.open;
 
 function checkEnd() {
   if (state.won && !state.keepPlaying) showOverlay('win');
@@ -179,7 +185,7 @@ function pump() {
 }
 
 function input(dir) {
-  if (overlayShown() || document.querySelector('dialog[open]')) return;
+  if (overlayShown() || modalOpen() || menu.isOpen()) return;
   queue.push(dir);
   pump();
 }
@@ -208,7 +214,24 @@ function undo() {
   reset(undoState(state));
 }
 
-$('newBtn').addEventListener('click', startNew);
+/* ---------- Side menu: opening it holds the board ---------- */
+
+const menu = setupSideMenu($('sideMenu'), $('homeBtn'), {
+  onOpen() {
+    queue.length = 0;
+    swipe = null;
+    saver.flush();
+  },
+  onClose() {
+    document.activeElement?.blur?.();
+  },
+});
+
+$('resumeBtn').addEventListener('click', () => menu.close());
+$('newBtn').addEventListener('click', () => {
+  menu.close();
+  startNew();
+});
 $('winNewBtn').addEventListener('click', () => reset(newGame(Math.random, state.best)));
 $('overNewBtn').addEventListener('click', () => reset(newGame(Math.random, state.best)));
 $('undoBtn').addEventListener('click', undo);
@@ -271,6 +294,12 @@ const KEYS = {
 };
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !modalOpen()) {
+    event.preventDefault();
+    if (menu.isOpen()) menu.close();
+    else menu.open();
+    return;
+  }
   if (event.metaKey || event.ctrlKey || event.altKey) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();

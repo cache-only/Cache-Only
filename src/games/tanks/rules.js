@@ -19,6 +19,7 @@ export const MINE_FUSE = 10; // seconds
 export const MINE_TRIGGER = 0.8; // a tank this close sets a mine off
 export const BLAST_R = 1.5;
 export const OPENING = 1.2; // seconds at the start of a mission before enemies open fire
+export const TAP_RANGE = 6.5; // cells: a tap on the aim stick fires at an enemy in sight this close
 
 export const MISSILE_TURN = 2.2; // radians per second a guided missile can turn
 export const MISSILE_FUEL = 4; // seconds a missile steers; after that it flies straight

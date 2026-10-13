@@ -96,11 +96,11 @@ export async function buildGuide() {
   const lives = Number((tanksJs.match(/const LIVES = (\d+);/) || [])[1]);
   if (!lives) throw new Error('guide: const LIVES not found in tanks.js');
 
+  // The game is dark only: one palette, drawn the same in the guide's light and dark themes.
   const light = tokens(css, '.page-tanks {');
-  const dark = tokens(css, '@media (prefers-color-scheme: dark) {\n  .page-tanks {');
   const pairs = (decls) => Object.fromEntries(decls.map((d) => d.match(/(--tk-[\w-]+):\s*([^;]+);/).slice(1)));
   const color = pairs(light);
-  const darkColor = { ...color, ...pairs(dark) };
+  const darkColor = color;
 
   const kinds = R.ENEMY_KINDS;
   const consts = {
@@ -168,7 +168,7 @@ export async function buildGuide() {
   };
   let html = page
     .replace('/*TK_LIGHT*/', light.join('\n    '))
-    .replaceAll('/*TK_DARK*/', dark.join(' '))
+    .replaceAll('/*TK_DARK*/', '')
     .replace(/\{\{(\w+)\}\}/g, (m, key) => {
       if (!(key in fill)) throw new Error(`guide: unknown placeholder ${m}`);
       return String(fill[key]);

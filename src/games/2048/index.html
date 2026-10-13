@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="theme-color" content="#000000">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Cache Only">
   <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="/manifest.json">
@@ -18,38 +18,32 @@
   <script type="module" src="/games/2048/game.js"></script>
 </head>
 <body class="game-page page-2048">
-  <div class="status-tint" aria-hidden="true"></div>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
-    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5"/></symbol>
+    <symbol id="i-games" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
     <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
 
   <div class="shell">
     <header class="bar">
-      <div class="bar-row">
-        <a class="icon-btn" href="/" data-i18n-label="common.back"><svg class="icon"><use href="#i-back"/></svg></a>
-        <div class="bar-title">
-          <span class="flight-tag">GP 02</span>
-          <h1>2048</h1>
+      <button type="button" class="icon-btn" id="homeBtn" data-i18n-label="common.menu">
+        <svg class="icon"><use href="#i-home"/></svg>
+      </button>
+      <div class="bar-stats">
+        <div class="stat">
+          <span class="stat-label" data-i18n="g2048.score"></span>
+          <span class="stat-value" id="score">0</span>
         </div>
-        <div class="bar-stat score-stat">
-          <span class="label" data-i18n="g2048.score"></span>
-          <span class="value" id="score">0</span>
-        </div>
-        <div class="bar-stat">
-          <span class="label" data-i18n="g2048.best"></span>
-          <span class="value" id="best">0</span>
+        <div class="stat">
+          <span class="stat-label" data-i18n="g2048.best"></span>
+          <span class="stat-value" id="best">0</span>
         </div>
       </div>
     </header>
 
     <main class="play">
-      <div class="actions-2048">
-        <button type="button" class="btn" id="undoBtn"><svg class="icon"><use href="#i-undo"/></svg><span data-i18n="common.undo"></span></button>
-        <button type="button" class="btn" id="newBtn"><svg class="icon"><use href="#i-new"/></svg><span data-i18n="common.newGame"></span></button>
-      </div>
-
       <div class="board-wrap" id="boardWrap">
         <div class="board board-2048" id="board" role="application" data-i18n-label="g2048.board" tabindex="0">
           <div class="cells" aria-hidden="true">
@@ -60,33 +54,53 @@
           </div>
           <div class="tiles" id="tiles"></div>
         </div>
-
-        <div class="overlay" id="ovWin" hidden>
-          <div class="overlay-card">
-            <span class="flight-tag">2048</span>
-            <p class="overlay-title" data-i18n="g2048.won"></p>
-            <p class="overlay-text" data-i18n="g2048.wonText"></p>
-            <div class="overlay-actions">
-              <button type="button" class="btn" id="winNewBtn" data-i18n="common.newGame"></button>
-              <button type="button" class="btn btn-primary" id="keepBtn" data-i18n="g2048.keepPlaying"></button>
-            </div>
-          </div>
-        </div>
-
-        <div class="overlay" id="ovOver" hidden>
-          <div class="overlay-card">
-            <p class="overlay-title" data-i18n="g2048.over"></p>
-            <p class="overlay-text" id="overText"></p>
-            <div class="overlay-actions">
-              <button type="button" class="btn" id="overUndoBtn"><svg class="icon"><use href="#i-undo"/></svg><span data-i18n="common.undo"></span></button>
-              <button type="button" class="btn btn-primary" id="overNewBtn" data-i18n="common.newGame"></button>
-            </div>
-          </div>
-        </div>
       </div>
 
-      <p class="hint-2048" data-i18n="g2048.hint"></p>
+      <div class="controls">
+        <div class="controls-row">
+          <p class="eyebrow" data-i18n="g2048.hint"></p>
+          <button type="button" class="btn" id="undoBtn"><svg class="icon"><use href="#i-undo"/></svg><span data-i18n="common.undo"></span></button>
+        </div>
+      </div>
     </main>
   </div>
+
+  <div class="side-menu" id="sideMenu" hidden>
+    <div class="side-menu-blur pblur pblur-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <nav class="side-menu-list" data-i18n-label="common.menu">
+      <p class="side-menu-title eyebrow" data-i18n="common.menu"></p>
+      <button type="button" class="side-item" id="resumeBtn">
+        <svg class="icon"><use href="#i-play"/></svg><span data-i18n="common.resume"></span>
+      </button>
+      <button type="button" class="side-item" id="newBtn">
+        <svg class="icon"><use href="#i-new"/></svg><span data-i18n="common.newGame"></span>
+      </button>
+      <a class="side-item is-exit" href="/">
+        <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
+      </a>
+    </nav>
+  </div>
+
+  <dialog class="sheet" id="winSheet" aria-labelledby="winTitle">
+    <form method="dialog" class="sheet-inner">
+      <div class="sheet-head"><h2 class="t-title" id="winTitle" data-i18n="g2048.won"></h2></div>
+      <p class="t-body" data-i18n="g2048.wonText"></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="winNewBtn" data-i18n="common.newGame"></button>
+        <button type="button" class="btn btn-primary" id="keepBtn" data-i18n="g2048.keepPlaying"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet" id="overSheet" aria-labelledby="overTitle">
+    <form method="dialog" class="sheet-inner">
+      <div class="sheet-head"><h2 class="t-title" id="overTitle" data-i18n="g2048.over"></h2></div>
+      <p class="t-body" id="overText"></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="overUndoBtn"><svg class="icon"><use href="#i-undo"/></svg><span data-i18n="common.undo"></span></button>
+        <button type="button" class="btn btn-primary" id="overNewBtn" data-i18n="common.newGame"></button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

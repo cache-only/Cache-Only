@@ -13,3 +13,13 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 document.addEventListener('wheel', (event) => {
   if (event.ctrlKey) event.preventDefault();
 }, { passive: false });
+
+// Focus rings only for keyboard use. Browsers also draw them when a sheet opens or code moves
+// focus after a tap; styles.css hides every outline unless the last input was a key.
+const root = document.documentElement;
+document.addEventListener('keydown', (event) => {
+  if (!event.metaKey && !event.ctrlKey) root.dataset.input = 'keyboard';
+}, true);
+document.addEventListener('pointerdown', () => {
+  root.dataset.input = 'pointer';
+}, true);
