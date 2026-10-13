@@ -255,7 +255,7 @@
     scroll-margin-top: 12px;
   }
   .map:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
-  .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
+  .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: {{COLS}} / {{ROWS}}; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
   .map:hover .map-art { transform: translateY(-2px); }
   .map[aria-current="true"] .map-art { outline: 3px solid var(--signal); outline-offset: 2px; }
   .map-cap { display: grid; gap: 3px; min-width: 0; }
@@ -289,9 +289,9 @@
   @media (min-width: 900px) { .viewer-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
   figcaption { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-  .viewer-map, .ed-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
+  .viewer-map, .ed-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: {{COLS}} / {{ROWS}}; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
   .src-grid {
-    display: grid; grid-template-columns: 1.6em repeat(20, minmax(0, 1fr)); gap: 1px;
+    display: grid; grid-template-columns: 1.6em repeat({{COLS}}, minmax(0, 1fr)); gap: 1px;
     font-family: var(--font-mono); font-size: clamp(9px, 1.25vw, 13px); line-height: 1;
     background: var(--surface);
   }
@@ -299,7 +299,7 @@
   .src-grid .ruler { color: var(--muted); font-size: 0.78em; }
   .src-grid .f { color: var(--muted); opacity: 0.55; }
   .src-grid .w { background: var(--tk-wall); color: var(--on-bar); }
-  .src-grid .x { background: var(--tk-crate); color: var(--tk-stripe); font-weight: 700; }
+  .src-grid .x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); font-weight: 700; }
   .src-grid .o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .src-grid .t { background: var(--c); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ring); }
   .src-grid .t[data-ink="dark"] { color: var(--chip-dark); }
@@ -317,7 +317,7 @@
   .legend .sym { width: 30px; height: 30px; display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); }
   .legend .sym.f { background: var(--tk-floor); color: var(--muted); }
   .legend .sym.w { background: var(--tk-wall); color: var(--on-bar); }
-  .legend .sym.x { background: var(--tk-crate); color: var(--tk-stripe); }
+  .legend .sym.x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); }
   .legend .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .legend b { display: block; font-size: 14px; }
   .legend p { font-size: 13.5px; color: var(--muted); }
@@ -337,7 +337,7 @@
   .brush .sym { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); font-size: 12px; }
   .brush .sym.f { background: var(--tk-floor); color: var(--muted); }
   .brush .sym.w { background: var(--tk-wall); color: var(--on-bar); }
-  .brush .sym.x { background: var(--tk-crate); color: var(--tk-stripe); }
+  .brush .sym.x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); }
   .brush .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .brush .sym.t { background: var(--c); }
   .brush .sym.t[data-ink="dark"] { color: var(--chip-dark); }
@@ -669,21 +669,20 @@ function dotted(ctx, P, pts, alpha = 0.5) {
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 }
-/** A shot drawn along `a`, with a rocket's or missile's smoke behind it on `path`. */
+/** A shot drawn along `a`, with its smoke behind it on `path`: thick for rockets and missiles, faint for shells. */
 function shotAt(ctx, P, weapon, path, d) {
   const p = pointAt(path, d);
-  if (weapon === 'rocket' || weapon === 'missile') {
-    for (const k of [0.34, 0.58, 0.86, 1.18]) {
-      if (d - k < 0) continue;
-      const q = pointAt(path, d - k);
-      ctx.globalAlpha = 0.5 * (1 - k / 1.45);
-      ctx.fillStyle = P.smoke;
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07, 0, PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
+  const heavy = weapon === 'rocket' || weapon === 'missile';
+  for (const k of heavy ? [0.34, 0.58, 0.86, 1.18] : [0.22, 0.4, 0.6]) {
+    if (d - k < 0) continue;
+    const q = pointAt(path, d - k);
+    ctx.globalAlpha = heavy ? 0.5 * (1 - k / 1.45) : 0.32 * (1 - k / 0.8);
+    ctx.fillStyle = P.smoke;
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, heavy ? (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07 : 0.035 + k * 0.05, 0, PI * 2);
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
   drawShot(ctx, P, { x: p.x, y: p.y, vx: Math.cos(p.a), vy: Math.sin(p.a), weapon }, { flame: 0.5, blink: true });
 }
 
@@ -966,13 +965,13 @@ document.getElementById('swatches').append(
     return h('div', { class: 'swatch' }, chip(kind), h('span', {}, kindName(kind)),
       h('code', {}, c.dark !== c.light ? `${c.light} · dark ${c.dark}` : c.light));
   }),
-  ...[['player', 'Your blue family'], ['fire', 'Fire orange: explosions and flames'], ['crate', 'Crate yellow: taken by Yellow']].map(([key, label]) =>
+  ...[['player', 'Your blue family'], ['fire', 'Fire orange: explosions and flames'], ['crate', 'Crate grey: a tank must never pass for a crate']].map(([key, label]) =>
     h('div', { class: 'swatch' }, h('span', { class: 'off', style: `--c: ${DATA.offLimits[key]}`, 'aria-hidden': 'true' }), h('span', {}, `Off limits · ${label}`), h('code', {}, DATA.offLimits[key]))),
 );
 document.getElementById('plan').append(
   h('p', {}, h('b', {}, 'Still free: '), 'sand, maroon, navy (kept clearly apart from your blue) and lime.'),
   h('p', {}, h('b', {}, 'Past about 12 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue.'),
-  h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind and from the off-limits colours, and chip text that reads at 4.5:1 or better, in light and dark mode.'),
+  h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind and from the off-limits colours, and chip text that reads at 4.5:1 or better. The game is dark only, so each kind has one colour.'),
 );
 
 /* ---------- Comparison board ---------- */
@@ -1181,7 +1180,7 @@ const MEANING = { '.': 'Floor', '#': 'Wall', x: 'Crate', o: 'Hole', '@': 'Your t
 const LEGEND = [
   ['f', '.', 'Floor', 'Open ground. Tanks drive, shells fly.'],
   ['w', '#', 'Wall', 'Stops tanks and shells. Shells ricochet off it, bombs fly over it, and blasts never touch it. The arena edge counts as wall.'],
-  ['x', 'x', 'Crate', 'Hazard-striped. Works like a wall until a blast clears it (a mine, or a landing bomb), which opens a new route mid-mission.'],
+  ['x', 'x', 'Crate', 'A lighter grey than walls, with diagonal stripes, and crates that touch join into one block. Works like a wall until a blast clears it (a mine, or a landing bomb), which opens a new route mid-mission.'],
   ['o', 'o', 'Hole', 'Stops tanks, but shells fly straight over it. A firing lane you can’t drive through.'],
   ['t', '@', 'You', 'Exactly one per map. You start facing right.'],
   ['e', DATA.codes[KINDS[0]], 'Enemies', `One letter per tank: ${KINDS.map((k) => `${DATA.codes[k]} ${INFO[k].name.toLowerCase()}`).join(', ')}. Each starts at the centre of its cell, facing your side with its turret aimed at you.`],

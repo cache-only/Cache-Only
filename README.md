@@ -4,7 +4,8 @@ Small games in one installable PWA, published at **https://cache-only.github.io/
 install it and download the games they want while online. After that, every downloaded game runs
 forever with no network, including in airplane mode.
 
-Games: **Sudoku**, **2048** and **Tanks**. Languages: **English** and **Català** (switch in the top bar or in Settings).
+Games: **Sudoku**, **2048** and **Tanks**. Languages: **English** and **Català** (switch in Settings).
+The design is dark and monochrome; every page is built from the one component set in `src/styles.css`.
 
 No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used for the build, server and tests.
 
@@ -13,7 +14,9 @@ No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used fo
 ```bash
 npm run build     # src/ -> dist/, splits it into packs, writes dist/sw.js (VERSION + PACKS) and dist/version.json
 npm run serve     # serve dist/ on http://127.0.0.1:8080 (local testing)
+npm run lan       # build + serve over HTTPS to phones on the same Wi-Fi (setup page: http://<mac>.local:8081/)
 npm test          # Sudoku uniqueness, 2048 merge rules, Tanks engine + AI, build + server checks, service-worker downloads
+npm run playtest  # Tanks: a scripted bot plays the missions (winnable? how hard?); --map draft.txt for a draft
 npm run icons     # re-render src/icons/*.png (only needed if the icon design changes)
 ```
 
@@ -26,10 +29,11 @@ every push to `main` (repo Settings → Pages → Source: GitHub Actions).
    tap Share, then **Add to Home Screen**.
 2. The friend opens the app **from the home-screen icon** while still online. Home-screen
    apps have their own storage, separate from Safari.
-3. Wait for "Ready offline" (in Catalan: "Llest sense connexió"), then tap **Download all**
-   ("Baixa-ho tot"), or Download on just the games they want. A game is ready when it shows Play.
+3. Wait for "Ready offline" under the logo (in Catalan: "Llest sense connexió"), then tap
+   **Download all** ("Baixa-ho tot"), or tap the tiles of just the games they want. A game is
+   ready when its tile is sharp.
 4. Turn on airplane mode, force-quit the app, reopen it and play a game. If that works,
-   they're done for good. Games they skipped show "Go online to download" until they're back
+   they're done for good. Games they skipped keep a dimmed download icon until they're back
    online.
 
 ## Releasing an update
@@ -38,8 +42,8 @@ every push to `main` (repo Settings → Pages → Source: GitHub Actions).
 2. Commit and push to `main`. The Actions run tests, builds and deploys; a failing test stops it.
    The version hash changes automatically with any file change.
 3. Within about 10 minutes (GitHub's CDN cache), friends who open the installed app online get it. It downloads the new version of the games
-   they already have (only the ones that changed) and shows "Update available. Reload to update."
-   Tapping Reload switches to the new version; downloaded games and saves are kept. Nothing ever
+   they already have (only the ones that changed) and the settings button grows into an "Update" pill.
+   Tapping Update switches to the new version; downloaded games and saves are kept. Nothing ever
    reloads mid-game. New games appear with a Download button; nothing downloads until they ask.
 4. Friends who never come online keep the old version, which keeps working.
 
@@ -48,14 +52,16 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
 
 ## Adding a game
 
-1. Create `src/games/<id>/` with an `index.html` that links `/styles.css`, starts its `<body>` with
-   `<div class="status-tint" aria-hidden="true"></div>`, and uses `createStore('<id>')` from
+1. Create `src/games/<id>/` with an `index.html` that links `/styles.css`, copies the head tags of
+   the other pages (status-bar style `default`), and uses `createStore('<id>')` from
    `/shared/storage.js`. Keep everything the game needs in its folder: the folder is its download.
    Add its strings to `src/shared/i18n.js` (both languages).
 2. Add an entry to `src/registry.json` (`id`, `code`, `name`, `path` with a trailing slash,
    `description` as `{ "en": …, "ca": … }`). The build refuses a game folder without one.
 3. If the game saves a session under the `session` key with a `summary` such as
-   `{ score }`, `{ difficulty, time }` or `{ mission }`, the launcher shows a resume hint for it.
+   `{ score }`, `{ difficulty, time }` or `{ mission }`, the launcher offers Resume instead of Play.
+   Its page uses only the shared parts in `/styles.css`; its own stylesheet draws the board. Tile
+   art for the launcher goes in `src/shared/game-art.js` (otherwise a generic pixel field).
 4. `npm run build`; the game's pack and its download size work themselves out. Then release as above.
 
 ## Testing checklist (before every release)
@@ -69,9 +75,9 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
 - `curl -I https://cache-only.github.io/games/sudoku/` returns 200. (The slashless form is a 301 on
   Pages; nothing in the app requests it.)
 - Real iPhone: install, Download all, airplane mode, force-quit, relaunch, make a move in each game.
-  Kill the app mid-game and confirm it resumes. In airplane mode, games you didn't download show
-  "Go online to download". The status bar is solid black, not blurred.
-- Update path: change a file, push, wait for the deploy plus ~10 minutes, open the installed app online, confirm "Update available",
+  Kill the app mid-game and confirm it resumes. In airplane mode, games you didn't download keep a
+  dimmed download icon. The status bar is solid black, not blurred.
+- Update path: change a file, push, wait for the deploy plus ~10 minutes, open the installed app online, confirm the "Update" pill appears,
   reload, check the new version in Settings and that every downloaded game still plays offline.
 
 ## How it fits together
@@ -86,10 +92,15 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
 - `src/shared/sw-client.js` registers the worker, shows the update prompt, reports "Ready offline" only
   after checking every app-shell file is cached, runs downloads with progress, and checks whether it's
   online (by fetching `/version.json`, which is never cached).
-- `src/launcher.js` shows only the install guide in a browser tab. In the installed app it lists each
-  game as Play, Download (with its size) or "Go online to download", plus "Download all".
-- Every page starts with a fixed `status-tint` strip in the header's black: iOS 26+ takes the status
-  bar colour from it instead of blurring the top of the app.
+- `src/launcher.js` shows only the install guide in a browser tab, and the tab keeps no offline copy: it
+  registers no service worker and clears one left by an earlier visit (unless games are downloaded in
+  it), so installing always starts from the latest release. In the installed app it shows the most
+  played game as "Suggested" (plays are counted in `gh:app:plays`), then a tile per game: sharp to
+  play, blurred with a download icon to download, unblurring while it downloads, dimmed while
+  offline; plus "Download all" until everything is downloaded. The pixel logo in the header
+  comes into focus as the app and its games download.
+- Every page sets the status-bar style to `default` and `theme-color` to the header's black, with no
+  strip of its own at the top. iOS reads the style only when the app is added to the Home Screen.
 - `src/shared/storage.js` keeps saves in `localStorage` as `gh:<game>:<key>` → `{ schema, data }`,
   written 250 ms after each move and immediately when the app is hidden. Settings → Export/Import
   moves all saves as one JSON file.

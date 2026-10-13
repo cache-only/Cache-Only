@@ -46,13 +46,18 @@ cache-only/
   src/
     index.html            # launcher
     launcher.js
-    styles.css            # shared tokens and base styles
+    styles.css            # the design system: tokens and the one component set every page uses
     manifest.json         # use .json, not .webmanifest (MIME safety)
     sw.template.js        # service worker source; build injects VERSION and PACKS
     registry.json         # list of games shown in the launcher
     shared/
       storage.js          # namespaced save/load + export/import
       sw-client.js        # registration, update prompt, "ready offline" check, downloads, online check
+      app.js              # app feel on every page (no zoom); the build adds it, never link it by hand
+      ui.js               # sheets, confirm sheet, side menu, progressive-blur layers, board sizing
+      i18n.js             # English and Catalan strings
+      logo.js             # the pixel logo as a grid of spans, and its focus (progress) states
+      game-art.js         # board art for the launcher's tiles and hero (never reads a game's folder)
     icons/
       apple-touch-icon.png  # 180x180, no transparency
       icon-192.png
@@ -65,7 +70,9 @@ cache-only/
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
+    lan.mjs               # build + serve dist/ over HTTPS to phones on the same Wi-Fi (testing)
     guide.mjs             # builds the Tanks field guide (not part of the app)
+    playtest.mjs          # a bot plays Tanks missions: winnable? how hard? (not part of the app)
   guide/
     page.html             # field guide template: layout, styles, page code (draws with the game's art.js)
     enemies.mjs           # field guide text and card scene per enemy kind
@@ -82,7 +89,10 @@ service worker with scope `/` covers everything.
 
 ## Build (`scripts/build.mjs`)
 
-1. Wipe `dist/` and copy `src/` into it, excluding `sw.template.js`.
+1. Wipe `dist/` and copy `src/` into it, excluding `sw.template.js`. Into every `.html` page,
+   right after `<meta charset="utf-8">`, insert the viewport meta and
+   `<script type="module" src="/shared/app.js">` (`APP_HEAD`). A page with its own viewport meta
+   fails the build, so there is one source of truth.
 2. Walk `dist/` and split the files into packs: everything under `/games/<id>/` is game `<id>`'s
    pack (a game folder without a `registry.json` entry fails the build), everything else is
    the app shell (`core`). In each pack, every `.../index.html` also gets its directory URL
@@ -111,6 +121,21 @@ service worker with scope `/` covers everything.
 - Sends `Cache-Control: no-cache` on `sw.js`, `index.html` files and `version.json`.
 - Logs each request so installs can be watched live.
 
+## Testing on a phone without deploying (`scripts/lan.mjs`)
+
+- `npm run lan` builds, then serves `dist/` with the same handler as `serve.mjs` over HTTPS at
+  `https://<mac>.local:8443/` (the Mac's Bonjour name, stable across networks) on every
+  interface. Service workers need HTTPS, and plain `http://<lan-ip>` isn't a secure context.
+- The certificate comes from a local CA made once with the system `openssl` and kept in `.lan/`
+  (gitignored). Its name constraints allow only `.local`, `localhost` and private IPs, so its key
+  can't impersonate a real site. The server certificate is reissued by itself when the Mac's
+  address changes; phones that trust the CA need nothing new.
+- `http://<mac>.local:8081/` is the setup page: it hands out the CA and says how to trust it
+  (iPhone: install the profile, then switch it on under Certificate Trust Settings).
+- That origin is not the real app's: test installs and saves stay separate from
+  `https://cache-only.github.io`. No tunnels or public exposure: it's reachable only on the
+  local network.
+
 ## Service worker (`sw.template.js`)
 
 - **install:** fill the app-shell cache; then, for an update, re-download at the new version
@@ -134,62 +159,107 @@ service worker with scope `/` covers everything.
   `{ version, core, games }`. `REPAIR` refills missing app-shell files. `DOWNLOAD { ids }` fills
   those game packs one after another, replying `progress`, `game` and `done` on the port.
 - **Updates:** while offline, the update check fails quietly and the old worker keeps serving,
-  which is correct. When online and a new worker is waiting, the launcher shows "Update
-  available. Reload to update." A push reaches phones within about 10 minutes (the CDN's cache
+  which is correct. When online and a new worker is waiting, the launcher's settings
+  button grows into an "Update" pill. A push reaches phones within about 10 minutes (the CDN's cache
   time; `sw.js` is registered with `updateViaCache: 'none'`). Never auto-reload mid-game. A game
   downloaded while an update waits is also sent to the waiting worker, so the reload keeps it.
 
 ## Launcher
 
 - **In a browser tab** (not standalone: `navigator.standalone !== true` and not
-  `display-mode: standalone`) the launcher shows only how to install: "Tap Share, then Add to
-  Home Screen, then open the app from the new icon." No game list and nothing to download.
-- **In the installed app**, a list of games from `registry.json` (`id`, `name`, `path`,
-  `description`). A game is on this device (Play, plus a resume hint if it has a saved
-  session), downloadable (Download with its size), downloading (a percentage, or "Queued"), or
-  out of reach.
+  `display-mode: standalone`) the launcher shows only how to install: the big pixel logo, partly
+  out of focus, with the "Cache Only" name under it as one lockup (this page has no header and no
+  rail), "Install the app", and three glass steps (Tap Share, Add to Home Screen, Open it from the
+  new icon; browser-menu steps off iOS). No game list and nothing to download.
+  A tab also keeps no offline copy: `registerSW()` does nothing outside the installed app, and
+  `dropBrowserCopy()` unregisters any worker and deletes every cache left by an earlier visit,
+  then reloads once if that old copy served the page. So the tab always shows the current
+  release, and an app installed from it starts from the host. It leaves storage alone when any
+  `/games/` file is cached, because then the tab shares storage with an installed app (Chrome,
+  Android) whose downloaded games must survive. When Chrome turns the tab into the app window,
+  the `display-mode` change starts the worker.
+- **In the installed app** the launcher is one vertically scrolling page (portrait and landscape
+  alike, never a side-by-side split) under a header that shows the pixel logo, the "Cache Only"
+  wordmark, a mono status line and the settings button. There is no fixed bottom bar.
+  - **Status line:** "Ready offline · 2 of 3 games", "Downloading · 64%", "Offline · 2 of 3
+    games", "Ready offline" once every game is downloaded (or "Checking offline files…" while the shell is checked).
+    The header logo comes into focus with download progress: pixels go from blurred grey to sharp
+    white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only progress
+    indicator anywhere in the app.
+  - **Suggested:** the most played game on this device, as a "Suggested" eyebrow over a glass
+    panel with its title and a primary Resume (saved session) or Play button. Plays are counted in
+    `gh:app:plays` (`{ id: n }`) whenever a game is opened from the launcher; ties and no history
+    fall back to registry order. Hidden while nothing is downloaded. Its board art bleeds in behind
+    the top of the screen, fading out under the top progressive blur.
+  - **All games:** an eyebrow with a small white "Download all" pill on the right, then a grid of
+    square game tiles (2 columns in portrait, 4 in landscape) for every game except the suggested
+    one. A tile shows the game's own board as art (`shared/game-art.js`, from the game's save when
+    there is one, with a generic pixel field for an id it doesn't know) and its title at the
+    bottom left over a progressive blur. No sizes, scores or records are shown (sizes live only in
+    the code; aria-labels say what a tile does). States: on this device = sharp, the whole tile is
+    a link to play; downloadable = art blurred and a plain download icon, the whole tile is the
+    download button; downloading or queued = no icon, the art unblurs as the pack arrives
+    (blur = (1 − p) · 8px); out of reach = icon at 40%, art dimmed.
+  - A muted line under the grid says "Offline. Downloaded games still work." while the host is
+    out of reach and games are left to download, or that a download failed. Nothing once every
+    game is downloaded.
+- **First launch** (the app shell still downloading, or failed): "Preparing the app" with the big
+  pixel logo coming into focus file by file, "x / y files", "Keep the app open and stay online…",
+  and blurred placeholder tiles. A failed install shows "Download failed" and how to recover.
 - **Downloads** are offered only while the host answers. The launcher fetches `/version.json`
   (no-store, cache-busting query, 5 s timeout) on start, every 15 s while visible, on
-  `online`/`offline`, and when the app comes back to the foreground. While it answers,
-  "Download all · size" sits on top of the list. When it doesn't, the download buttons disappear
-  and games that aren't downloaded move to the bottom as "Go online to download".
+  `online`/`offline`, and when the app comes back to the foreground. While it answers, tiles that
+  aren't downloaded are download buttons and "Download all" is live. When it doesn't, those tiles
+  dim their icon and move to the bottom, and "Download all" stays but dims to 40% (it also dims
+  while anything is downloading). Once every game is downloaded, "Download all" disappears.
 - **"Ready offline" check:** after `navigator.serviceWorker.ready`, confirm every app-shell file is
-  in its cache; show "Ready offline" with the version, or "Preparing the app… x/y". A game shows
-  Play only when every file of its pack is cached, and "Every game is downloaded. Safe to switch
-  on airplane mode." appears once nothing is left. These tell a friend it's safe to go
+  in its cache; only then does the status line say "Ready offline" (Settings shows the version).
+  A tile is sharp only when every file of its pack is cached. These tell a friend it's safe to go
   offline, so they must be accurate.
+- **Update available:** no banner. The header's settings button grows to the left into a 44 glass
+  pill holding a white "Update" pill (update icon and label, 36 tall, inset 4); tapping it reloads
+  to the new version (aria-label "Update available. Tap to reload and update."). In the landscape
+  rail it grows downward instead, icon only. The white pill is the screen's one primary, so the
+  suggested game's button turns secondary while it shows.
 - Call `navigator.storage.persist()` once and show the result in a small settings or info view.
-- Settings view: export all saves (JSON via the share sheet or download), import saves,
-  current version, games downloaded, storage persisted yes or no, and "Check for update".
+- Settings is a sheet: Language (English / Català segmented control), Saves (Export / Import),
+  "This phone" facts (Version, Offline, Games downloaded, Storage kept) and "Check for update".
+  In landscape it lays out in two columns.
 
 ## iOS / PWA requirements
 
-- `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`
+- Viewport (added to every page by the build, never written in a page):
+  `width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover`
 - `<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">`
 - `<meta name="apple-mobile-web-app-capable" content="yes">` plus `mobile-web-app-capable`
-- `<meta name="apple-mobile-web-app-status-bar-style" content="black">`. Not `black-translucent`:
-  older iOS lays a progressive blur over whatever sits under a translucent status bar. iOS 26+
-  ignores this tag and `theme-color`, and draws installed apps under the status bar anyway. The
-  header is pure black (`--bar`) so it continues the status bar seamlessly.
-- **iOS 26/27 status-bar blur:** every page's `<body>` starts with
-  `<div class="status-tint" aria-hidden="true"></div>`, a fixed strip in the header's black at
-  the very top (at least 6px tall, at least 80% wide, within 4px of the top; iOS only). iOS then
-  paints the status bar that solid colour instead of blurring what's under it, and keeps it solid
-  while the launcher scrolls. It looks transparent because it matches the header; a truly
-  transparent status bar can't avoid the blur. Source:
-  https://modernwebweekly.substack.com/p/so-whats-up-with-the-ios27-blur
-- The header sits directly under the status bar (`env(safe-area-inset-top)` padding only). The
-  40px black band that used to keep text clear of the blur (`--edge-clear`) was removed once the
-  tint fix made it unnecessary.
+- `<meta name="apple-mobile-web-app-status-bar-style" content="default">` plus
+  `<meta name="theme-color" content="#000000">`, the black the status bar takes; the page itself
+  is `--bg` (#0b0b0b), a step above it. Not `black-translucent`: it lays a
+  progressive blur over whatever sits under the status bar. No page draws a strip of its own at
+  the top (the old fixed `status-tint` strip is gone; `tests/build.test.mjs` keeps it out).
+- The header sits directly under the status bar (`env(safe-area-inset-top)` padding only, which
+  reads 0 wherever iOS puts the status bar above the page). In landscape a phone has no status
+  bar, and `viewport-fit=cover` lets backgrounds run behind the side safe areas; only controls and
+  text stay inside `env(safe-area-inset-*)`.
 - iOS reads the status-bar style only when the app is added to the Home Screen: to test a change
   to it, delete the home-screen app and add it again.
 - `manifest.json`: `display: "standalone"`, `start_url: "/"`, `scope: "/"`, `id: "/"`, plus
   `theme_color`, `background_color` and the icons.
 - Respect safe areas with `env(safe-area-inset-*)` padding on the app shell.
-- Add `touch-action: manipulation` on interactive elements (kills double-tap zoom) and
-  `user-select: none` on game boards. Touch targets are at least 44×44 pt.
+- No zoom, no web-page feel, globally: the viewport has `maximum-scale=1, user-scalable=no`, every element
+  gets `touch-action: pan-x pan-y` (no pinch or double-tap zoom; boards that need raw touches use
+  `none`), and `shared/app.js` cancels iOS `gesture*` events and ctrl+wheel, since iOS ignores
+  `user-scalable=no`. Text selection and long-press callouts are off except in `input`/`textarea`
+  (and anything that opts back in, like Sudoku's share code). Touch targets are at least 44×44 pt.
+  No tap highlight on anything, and no focus ring after a touch or click: `shared/app.js` sets
+  `data-input` on `<html>` (`keyboard` on a key press, `pointer` on any pointerdown), and
+  `styles.css` draws `:focus-visible` outlines only under `data-input="keyboard"`.
 - iOS has no `navigator.vibrate`, so don't rely on haptics.
-- Support both light and dark mode via `prefers-color-scheme`.
+- Rotating while a sheet is scrolled can leave iOS hit-testing at the old scroll offset (every tap
+  lands lower than it looks). `shared/ui.js` scrolls the page and every open sheet back to the top
+  and rebuilds each sheet's scroller after every resize; keep that when touching sheets.
+- Dark only. There is no light mode and no `prefers-color-scheme` theming anywhere (the Tanks
+  colour test checks the arena has one palette).
 
 ## Saves (`shared/storage.js`)
 
@@ -201,14 +271,54 @@ service worker with scope `/` covers everything.
 
 ## Design
 
-- Pick a deliberate, specific visual identity for the launcher and keep both games
-  consistent with it through shared CSS tokens in `styles.css`. Avoid generic template looks
-  such as identical rounded cards with soft grey shadows or gradient washes.
-- Use system font stacks only, or a `.woff2` file committed under `src/fonts/` (it ships with
-  the app shell automatically). Never a remote font.
-- Game boards must stay square and fully visible on an iPhone SE and on a Pro Max in
-  portrait, with no page scrolling during play.
-- Respect `prefers-reduced-motion`.
+The approved design is dark, monochrome and built from the logo's rounded-square pixels. Every
+page (launcher, settings, first launch, install, and all three games) uses only the parts defined
+in `src/styles.css`; a game's own stylesheet draws its board or arena and nothing else. Never
+style a button, header, card, sheet or menu locally.
+
+- **Colour:** dark only, no accent colour. `--bg #0b0b0b`, `--card #151515`, `--raised #1d1d1d`,
+  `--quiet #4a4a4a`, `--muted #a8a8a8`, `--ink #efefef`. Glass is a `rgba(255,255,255,0.07)` fill,
+  a 1px `rgba(255,255,255,0.14)` edge and a 20–24px backdrop blur, used only over art or content.
+  Tanks keeps its kind colours inside the arena (game content); everything around it is grey.
+- **Type:** system stacks only (or a `.woff2` under `src/fonts/`, never a remote font). Display
+  52/800, Title 30/800 (−0.04em), Heading 18/750, Body 15 muted, Eyebrow = mono 12 uppercase
+  0.06em muted for numbers, versions and section labels. Nothing smaller than 13 except eyebrows.
+- **Buttons, one shape:** `.btn` is a 48px pill (radius 24, 650 16px), glass (secondary);
+  `.btn-primary` is solid `--ink` with `--bg` text, at most one per screen. `.icon-btn` is a 44
+  glass circle (home, settings, close, the moves under a board, pressed = solid white).
+  `.btn-small` is a 32 pill with 13px text, only in a section header next to a 12px label, its
+  tap area still 44. Disabled is the same button at 40% opacity, never a new style.
+- **Concentric radii:** an outer radius is the inner radius plus the inset between them. 24 pills,
+  rows, text cards and the segmented control (20 segment + 4 padding); 38 a panel or sheet holding a
+  control at its edge (24 + 14); 48 a card holding a panel (38 + 10); 26 a game board (16 tile + 10);
+  18 a launcher game tile (8 art + 10); switch track 16 with knob 13 inset 3. Check every nested shape.
+- **Progressive blur** (`.pblur` with `.pblur-top/-bottom/-tile/-left`, or `blurLayers()` in
+  `shared/ui.js`): stacked backdrop-filter layers with staggered mask gradients, at the top and
+  bottom edges of scrolling screens, behind the side menu and under each game tile's title.
+  Nothing that wraps the layers may set opacity, filter or mask.
+- **Progress** is the pixel logo coming into focus (`shared/logo.js`), and a downloading tile
+  unblurring. There are no spinners or progress bars.
+- **Header:** portrait, a row under the status bar (icon button, stats right-aligned as a mono
+  label over a 17/750 tabular value). Game pages show no title in the header (the game's name is
+  on its start sheet); only the launcher has one, its wordmark and status line. Landscape: the
+  launcher's header becomes a rail down the right edge (`--rail-w`): settings on top, its title
+  running vertically in the middle. A game page has no rail: its header stays in the page (never
+  `position: fixed`) and shares the shell's grid cell with the play area, so the home button floats
+  in the top-left corner and the stats stack down the top-right, each in a `--side-w` gutter the
+  play area keeps free, with the board centred between them. The side menu's list starts under
+  the home button.
+- **Overlays, two kinds only.** The side menu (`.side-menu`, `setupSideMenu`): a list of choices
+  from the header's home button, down the left edge over a progressive blur; opening it pauses; the
+  home button keeps its home icon (tapping it again closes); every game's menu starts with Resume
+  and ends with "Back to games" set slightly apart. The sheet (`dialog.sheet`, `openSheet`):
+  content such as settings, confirmations and results, glass from the bottom with top corners 38,
+  padding 16 and a 44 close button where one is needed. A sheet that belongs to the game state (a
+  start screen or a result) is docked: opened with `show()`, so the header and menu still work.
+- **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Undo, Redo, Erase,
+  Notes, Hint as labelled icon buttons over a 3×3 number pad; 2048: an Undo pill); anything about
+  the whole session lives in the side menu. Boards must stay square and fully visible on an iPhone
+  SE and a Pro Max in portrait and in landscape, with no page scrolling during play.
+- Respect `prefers-reduced-motion`: state changes are instant, with no blur or scale animations.
 
 ## Game: Sudoku
 
@@ -227,7 +337,11 @@ service worker with scope `/` covers everything.
 - **Feedback:** highlight the selected row, column and box, highlight cells with the same
   digit, and mark conflicts (toggleable). Placing a digit clears that digit from the notes
   of its peers. A number on the pad dims once all nine of it are placed.
-- **Timer** pauses on `visibilitychange` and when the pause overlay is shown.
+- **Timer** pauses on `visibilitychange` (which opens the side menu) and while the side menu or
+  a modal sheet is open.
+- **Menu:** the home button's side menu: Resume, New puzzle, Enter puzzle, Share this puzzle, Show
+  conflicts (switch), Back to games. "New puzzle" is a sheet with a Difficulty segmented control;
+  with no puzzle going it is docked and opens on its own. "Solved" is a docked results sheet.
 - **Completion:** detected when the grid matches the solution. Show time, difficulty and
   hints used, and record best times per difficulty.
 - **Save:** puzzle, solution, current grid, notes, undo stack, elapsed time and difficulty.
@@ -250,13 +364,18 @@ service worker with scope `/` covers everything.
 - **Score and best score,** plus a single-step undo.
 - **Save:** grid, score, best, won flag and undo snapshot, written after every move.
 - Use a tile colour scale of my own design from the shared tokens, not a copy of the
-  original game's palette.
+  original game's palette: grey steps up to white, then ringed and inverted tiles (`--tile-*` and
+  `.t2`…`.tmax` in `styles.css`, shared with the launcher's tile art).
+- **Menu:** Resume, New game, Back to games. The win and game-over prompts are docked sheets.
 
 ## Game: Tanks
 
 - Top-down tank battles in the style of Wii Play's *Tanks!*, with original code, art and sound.
-  The arena is 20 × 15 cells. On a tall screen the renderer turns it 90°, so the player's side
-  (the left of every map) sits at the bottom, next to the thumbs. Up on screen is always up for input.
+  The arena is 20 × 15 cells (4:3). On a tall screen the renderer turns it 90°, so the player's side
+  (the left of every map) sits at the bottom, next to the thumbs. In portrait it fills the width right
+  under the header; spare room stays empty below it. In landscape there is no header band: the home
+  button floats in the top-left corner, mission and lives in the top-right, and the arena fills the
+  height, centred on the screen with equal room on both sides. Up on screen is always up for input.
 - **Rules** (`rules.js`, `engine.js`): one hit destroys a tank. Shells ricochet off walls and crates;
   the player has 5 shells in flight with 1 ricochet each and 2 mines. Shells that meet cancel out
   (missiles too), your own shell can destroy you after a ricochet, and a barrel inside a wall fizzles.
@@ -276,16 +395,34 @@ service worker with scope `/` covers everything.
 - **Art** (`art.js`, drawn by `render.js` and by the field guide): shape tells you what a tank can do
   (barrel: weapon; treads or a concrete pad: moves or not; rear-deck discs: mines left), colour only
   which kind it is. The colour plan sits above the `--tk-*` colours in `tanks/styles.css`, and a test
-  holds new colours to it.
+  holds new colours to it. Walls are flat grey; crates a lighter grey with diagonal stripes. Blocks of
+  a kind that touch draw as one, edged only outside, and the stripes run on across them.
 - **Campaign** (`missions.js`): 20 missions, 3 lives, a bonus tank after missions 5, 10 and 15,
   which also unlock checkpoints (start at 6, 11 or 16). A retry keeps destroyed enemies destroyed.
   Each mission has one idea, a name and a one-line briefing (`tanks.name.<n>`, `tanks.brief.<n>`),
   shown on its banner. Every map must pass `guide/mapcheck.mjs` (the tests run it): every enemy
   reachable, no enemy with a clear shot at your start, no two missions with the same blocks.
-- **Input:** touch has a floating drive stick (left), an aim stick that fires on release (right), a
-  round mine button, and tap-to-fire on the arena. Keyboard and mouse: WASD/arrows, mouse to aim,
-  click to fire, Space or right-click for a mine, P to pause. The on-screen controls only appear on
-  touch devices.
+  Playtest new or changed maps with `npm run playtest` (`scripts/playtest.mjs`): its expert bot
+  should win each mission at least 6 times in 8, and its casual bot shows how hard the mission is
+  next to the others. `--map file` plays a draft copied from the field guide's editor.
+- **Input:** touch works like Brawl Stars. The controls float over the whole play area at 20% opacity.
+  The sticks start only on the bottom half of the screen, in portrait and landscape alike. A thumb
+  anywhere on its left half drives, with the stick centred where it lands. On its right half,
+  drag to aim and let go to fire, drag back to the middle to cancel, or tap to fire straight at the
+  nearest enemy in sight within 6.5 cells (`tapTarget` in `ai.js`: one behind a wall or crate is
+  passed over for the next; no ricochet or lead; invisible tanks are skipped). While there is one,
+  the aim stick shines (its shell turns white and glows, and a ring spreads from it to the rim) and
+  the turret follows that enemy, until a thumb drags the stick. With none, a tap fires where you
+  last aimed. The aim knob is a shell pointing along the aim. The mine button sits on the right edge, halfway down, above the aim stick in landscape, and
+  in portrait in the middle of the bottom row, between the two sticks.
+  Touching the arena doesn't fire. The sticks follow touches by identifier and let go of any finger
+  missing from a touch event's `touches`, so a lost `touchend` can't leave one held. Keyboard and mouse: WASD/arrows, mouse to aim, click to fire, Space or right-click for a mine,
+  P or Escape for the menu. The on-screen controls only appear on touch devices.
+- **Menu:** no back or pause button. The header's home button (which keeps its icon) opens a side
+  menu (Resume, Sound, Quit campaign, Back to games) down the left edge over a progressive blur (`.side-menu` in
+  `styles.css`, `setupSideMenu` in `shared/ui.js`). Opening it pauses the battle; closing it plays on.
+  The home button keeps its home icon while the menu is open (tapping it again closes the menu):
+  Resume is the way back, so there is no close icon.
 - **Simulation:** fixed 120 Hz step, seeded RNG, and the whole world is plain JSON, so it is
   deterministic. Shells move along exact ricochet paths (`advance`/`tracePath`), so the aiming guide
   and the AI's bank shots match what really happens. Keep `engine.js`, `ai.js` and `rules.js` free of
@@ -293,8 +430,8 @@ service worker with scope `/` covers everything.
 - **Save:** the campaign at every mission start and end; the whole world on pause, hide and
   pagehide, so a killed app reopens paused mid-battle. `summary: { mission }` feeds the launcher.
 - **Sound** is synthesised with Web Audio (no audio files). It follows the iOS silent switch
-  (`navigator.audioSession.type = 'ambient'`) and can be muted from the pause screen.
-- Leaving the app or the window pauses the battle. Under reduced motion there is no screen shake,
+  (`navigator.audioSession.type = 'ambient'`) and can be muted from the side menu.
+- Leaving the app or the window pauses the battle (the side menu opens). Under reduced motion there is no screen shake,
   fewer particles, no banner slide, steady lights on mines and missiles, and a static bomb mark.
 - **Planned work** lives in `TANKS.md`, grouped by category with ids (R1, W1, A1…). New Tanks ideas
   go there; when one ships, mark it done with the date.
@@ -334,11 +471,15 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ## Adding a game later
 
 1. Create `src/games/<id>/` with an `index.html` that links the shared `styles.css`, starts its
-   `<body>` with the `status-tint` strip, and uses `shared/storage.js` with namespace `<id>`.
+   uses the same head tags as the other pages (status-bar style `default`), and uses `shared/storage.js` with namespace `<id>`. No
+   viewport meta: the build adds it and the no-zoom script to every page.
    Everything the game needs that isn't shared (scripts, workers, images) lives in its folder.
+   Build its page only from the parts in `styles.css` (header, side menu, sheets, buttons); its own
+   stylesheet draws the board. Optionally give it tile art in `src/shared/game-art.js`; without
+   that its launcher tile shows a generic pixel field.
 2. Add an entry to `src/registry.json`. The build fails if a game folder has no entry.
 3. Run `npm run build`. The game's pack, its size and the version update automatically.
-4. Follow the release steps below. Friends see the new game with a Download button the next
+4. Follow the release steps below. Friends see the new game as a blurred tile to download the next
    time they open the app online; nothing downloads until they ask.
 
 ## Commands
@@ -346,7 +487,9 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ```bash
 npm run build                 # node scripts/build.mjs
 npm run serve                 # node scripts/serve.mjs  (dist/ on :8080, local testing)
+npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi
 npm run guide                 # rebuild the Tanks field guide into guide/out/ (then republish it)
+npm run playtest              # Tanks: a bot plays every mission (--missions 4,12  --map draft.txt)
 npm test                      # every test file, one at a time
 ```
 
@@ -364,10 +507,10 @@ Friends see the update within about 10 minutes, the next time they open the app 
    **Add to Home Screen**.
 2. The friend opens the app **from the home-screen icon** while still online. Home-screen
    apps have their own storage, separate from Safari.
-3. Wait for "Ready offline", then tap **Download all**, or Download on just the games they want.
-   A game is ready when it shows Play.
+3. Wait for "Ready offline" under the logo, then tap **Download all**, or tap the tiles of just
+   the games they want. A game is ready when its tile is sharp.
 4. Turn on airplane mode, force-quit the app, reopen it and play a game. If that works,
-   they're done for good. Games they skipped show "Go online to download" until they're back
+   they're done for good. Games they skipped keep a dimmed download icon until they're back
    online.
 
 ## Testing checklist (run before every release)
@@ -382,7 +525,7 @@ Friends see the update within about 10 minutes, the next time they open the app 
   301 on Pages and a 404 locally; nothing in the app requests it).
 - On a real iPhone: install, Download all, go to airplane mode, force-quit, relaunch, and finish
   a move in each game. Kill the app mid-game and confirm it resumes. In airplane mode, games
-  you didn't download show "Go online to download". The status bar is solid, not blurred.
+  you didn't download keep a dimmed download icon and "Download all" is dimmed. The status bar is solid, not blurred.
 - Update path: change a file, push, wait for the Actions run plus about 10 minutes, open the
   installed app online, and confirm "Update available" appears, then reload and check the new version shows and every downloaded game
   still plays offline.
@@ -400,6 +543,8 @@ Friends see the update within about 10 minutes, the next time they open the app 
   no text or scene, a mission has no name or briefing, a colour is missing, or the page script
   doesn't parse. It also checks that the game code bundled into the page behaves exactly like the
   game.
+- Playtest: `tests/playtest.test.mjs` keeps the bot working against the engine: it wins the first
+  mission and mines its way into Crate gate's vault.
 - Downloads: `tests/sw.test.mjs` runs the built service worker against an in-memory cache and a
   fake host. The shell installs alone, games download on request and resume after a failure,
   every file is fetched as `?v=<hash>` and a stale CDN copy is refused, and updates keep the games a device has (re-fetching only those that changed), including

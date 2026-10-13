@@ -7,8 +7,10 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
+    "lan": "node scripts/lan.mjs",
     "icons": "node scripts/make-icons.mjs",
     "guide": "node scripts/guide.mjs",
+    "playtest": "node scripts/playtest.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "engines": {

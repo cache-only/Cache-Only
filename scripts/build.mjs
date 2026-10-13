@@ -38,6 +38,22 @@ function formatBytes(n) {
 
 const hex12 = (hash) => hash.digest('hex').slice(0, 12);
 
+// Every page gets the same viewport and app script, so no screen can forget them: no zoom,
+// app-like touch behaviour (see src/shared/app.js). Pages must not carry their own viewport.
+const APP_HEAD = [
+  '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
+  '<script type="module" src="/shared/app.js"></script>',
+];
+
+/** Inserts APP_HEAD right after the page's charset meta, at the same indentation. */
+function withAppHead(html, url) {
+  if (/<meta\s+name="viewport"/i.test(html)) throw new Error(`${url}: remove its viewport meta, the build adds it`);
+  const m = /^([ \t]*)<meta charset="utf-8">\r?\n/im.exec(html);
+  if (!m) throw new Error(`${url}: needs <meta charset="utf-8"> on its own line in <head>`);
+  const at = m.index + m[0].length;
+  return html.slice(0, at) + APP_HEAD.map((tag) => m[1] + tag + '\n').join('') + html.slice(at);
+}
+
 /** A file's content hash: the worker downloads it as ?v=<hash> and checks what arrives. */
 const fileHash = (content) => createHash('sha256').update(content).digest('hex').slice(0, 16);
 
@@ -68,12 +84,15 @@ function describe(files) {
 export async function build({ quiet = false } = {}) {
   const log = quiet ? () => {} : console.log;
 
-  // 1. Wipe dist/ and copy src/ into it, excluding the SW template.
+  // 1. Wipe dist/ and copy src/ into it, excluding the SW template. Every page gets APP_HEAD.
   await rm(DIST, { recursive: true, force: true });
   await cp(SRC, DIST, {
     recursive: true,
     filter: (source) => !EXCLUDED.has(path.basename(source)),
   });
+  for (const full of await walk(DIST)) {
+    if (full.endsWith('.html')) await writeFile(full, withAppHead(await readFile(full, 'utf8'), toUrl(full)));
+  }
 
   // 2. Walk dist/ and sort every file into a pack: /games/<id>/ belongs to game <id>,
   //    everything else is the app shell. Every game folder needs a registry entry.

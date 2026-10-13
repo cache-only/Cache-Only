@@ -77,6 +77,11 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     return view.rot ? { x: -dy, y: dx } : { x: dx, y: dy };
   }
 
+  /** A world direction -> the same direction on screen (the inverse of vecToWorld). */
+  function vecToScreen(wx, wy) {
+    return view.rot ? { x: wy, y: -wx } : { x: wx, y: wy };
+  }
+
   /* ---------- Palette ---------- */
 
   function readPalette() {
@@ -233,7 +238,7 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     }
   }
 
-  /** Advances effects, tread marks and rocket smoke by dt seconds of play. */
+  /** Advances effects, tread marks and shot smoke by dt seconds of play. */
   function update(dt, s) {
     clock += dt;
     shake = Math.max(0, shake - dt * 1.4);
@@ -250,15 +255,15 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     fx = fx.filter((p) => p.life > 0);
 
     if (!s) return;
-    // Rockets and missiles leave smoke.
+    // Every shot leaves smoke: rockets and missiles a thick trail, shells a faint one.
     smokeTimer -= dt;
     if (smokeTimer <= 0) {
       smokeTimer = reduceMotion() ? 0.08 : 0.03;
       for (const b of s.bullets) {
-        if (b.weapon !== 'rocket' && b.weapon !== 'missile') continue;
         const sp = Math.hypot(b.vx, b.vy) || 1;
         if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
-        else smoke(b.x - (b.vx / sp) * 0.25, b.y - (b.vy / sp) * 0.25, 1, 0.03, 0.08, 0.8);
+        else if (b.weapon === 'missile') smoke(b.x - (b.vx / sp) * 0.25, b.y - (b.vy / sp) * 0.25, 1, 0.03, 0.08, 0.8);
+        else smoke(b.x - (b.vx / sp) * 0.16, b.y - (b.vy / sp) * 0.16, 1, 0.02, 0.05, 0.3);
       }
     }
     // Tread marks every few centimetres of travel.
@@ -504,6 +509,6 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.restore();
   }
 
-  return { layout, toWorld, vecToWorld, readPalette, palette, events, update, reset, draw };
+  return { layout, toWorld, vecToWorld, vecToScreen, readPalette, palette, events, update, reset, draw };
 }
 
