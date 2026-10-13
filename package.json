@@ -1,8 +1,8 @@
 {
-  "name": "gameplane",
+  "name": "cache-only",
   "version": "1.0.0",
   "private": true,
-  "description": "Gameplane: an offline-first PWA with a small collection of games.",
+  "description": "Cache Only: an offline-first PWA with a small collection of games.",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",

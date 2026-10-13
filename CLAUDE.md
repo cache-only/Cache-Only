@@ -1,4 +1,4 @@
-# Game Host — offline-first PWA
+# Cache Only — offline-first PWA
 
 ## What this is
 
@@ -39,7 +39,7 @@ the network again.
 ## Layout
 
 ```
-game-host/
+cache-only/
   CLAUDE.md
   TANKS.md                # Tanks backlog, by category
   package.json            # "type": "module", scripts only, no dependencies

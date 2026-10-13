@@ -11,7 +11,7 @@ import { build } from '../scripts/build.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
-const ORIGIN = 'https://gameplane.test';
+const ORIGIN = 'https://cache-only.test';
 const LEGACY = 'gamehost-0123456789ab'; // the old one-cache-for-everything layout
 
 let source;
@@ -160,7 +160,7 @@ test('a game downloads on request with progress, then plays with the host gone',
   assert.equal(await caches.count(packs.games.tanks.cache), packs.games.tanks.files.length);
 
   host.online = false;
-  assert.match(await (await sw.fetch('/games/tanks/', 'navigate')).text(), /<title>Tanks · Gameplane<\/title>/);
+  assert.match(await (await sw.fetch('/games/tanks/', 'navigate')).text(), /<title>Tanks · Cache Only<\/title>/);
   assert.equal((await sw.fetch('/games/tanks/engine.js')).status, 200);
   assert.equal((await sw.fetch('/shared/storage.js')).status, 200, 'shared code comes with the shell');
   // A game that isn't on the device: its page falls back to the launcher, its files fail.

@@ -150,7 +150,7 @@ export async function build({ quiet = false } = {}) {
   const swBytes = (await stat(path.join(DIST, 'sw.js'))).size;
   const line = (name, p, note = '') =>
     `  ${name.padEnd(12)} ${String(p.files.length).padStart(3)} entries  ${formatBytes(p.bytes).padStart(9)}${note}`;
-  log(`Built Gameplane ${VERSION}`);
+  log(`Built Cache Only ${VERSION}`);
   log(line('app shell', PACKS.core, '  (cached on install)'));
   for (const game of registry) log(line(game.id, PACKS.games[game.id]));
   log(line('everything', { files: { length: entries }, bytes }, `  (+ sw.js ${formatBytes(swBytes)})`));

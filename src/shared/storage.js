@@ -1,7 +1,7 @@
 // Namespaced saves in localStorage: keys are gh:<gameId>:<key>, values are
 // { schema, data } JSON so each game can migrate its own format later.
 const PREFIX = 'gh:';
-const EXPORT_FORMAT = 'gameplane-saves';
+const EXPORT_FORMAT = 'cache-only-saves';
 
 function safeGet(key) {
   try {
@@ -106,11 +106,14 @@ export function exportAll() {
   return { format: EXPORT_FORMAT, schema: 1, exportedAt: new Date().toISOString(), entries };
 }
 
+/** Whether a parsed JSON file is a save export. */
+export function isSaveFile(blob) {
+  return !!blob && typeof blob === 'object' && blob.format === EXPORT_FORMAT && !!blob.entries && typeof blob.entries === 'object';
+}
+
 /** Validates an export blob and writes its gh:* keys. Returns the number written. */
 export function importAll(blob) {
-  if (!blob || typeof blob !== 'object' || blob.format !== EXPORT_FORMAT || typeof blob.entries !== 'object') {
-    throw new Error('not-a-save-file');
-  }
+  if (!isSaveFile(blob)) throw new Error('not-a-save-file');
   const pairs = Object.entries(blob.entries).filter(([k]) => typeof k === 'string' && k.startsWith(PREFIX));
   let written = 0;
   for (const [key, value] of pairs) {

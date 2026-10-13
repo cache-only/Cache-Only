@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Gameplane",
-  "short_name": "Gameplane",
+  "name": "Cache Only",
+  "short_name": "Cache Only",
   "description": "Games that keep working in airplane mode.",
   "start_url": "/",
   "scope": "/",

@@ -389,8 +389,11 @@ test('a missile turns toward you no faster than its limit, and only while you ar
   const w = inert(createWorld(level(['', '', '', '', '', '', '', '..@', '', '', '', '', '', '', '...................r'])));
   const away = missile(w, 8, 4, -0.3);
   assert.ok(Math.abs(angleDiff(Math.atan2(w.tanks[0].y - away.y, w.tanks[0].x - away.x), -0.3)) > LOCK);
+  // Compare with the heading it started on, not with -0.3: atan2(sin, cos) doesn't round-trip
+  // exactly on every platform (it is off in the last bit on GitHub's Linux runners).
+  const start = Math.atan2(away.vy, away.vx);
   run(w, 0.5);
-  assert.equal(Math.atan2(away.vy, away.vx), -0.3, 'no steering outside the cone');
+  assert.equal(Math.atan2(away.vy, away.vx), start, 'no steering outside the cone');
 });
 
 test('a missile flies straight once its fuel runs out, and dies on the first wall', () => {

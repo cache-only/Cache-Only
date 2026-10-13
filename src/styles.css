@@ -1,4 +1,4 @@
-/* Gameplane shared tokens and base styles.
+/* Cache Only shared tokens and base styles.
    Identity: airport wayfinding. Ink header bars with a signal-yellow stripe,
    heavy rules, mono "flight codes", square-ish signage corners. */
 
@@ -612,6 +612,7 @@ dialog.sheet::backdrop {
   font: 800 21px/1 var(--font-display);
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .lang-switch {

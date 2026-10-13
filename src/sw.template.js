@@ -1,4 +1,4 @@
-// Gameplane service worker. scripts/build.mjs renders this into dist/sw.js with VERSION
+// Cache Only service worker. scripts/build.mjs renders this into dist/sw.js with VERSION
 // and PACKS inlined, so every release changes the bytes of sw.js itself.
 // PACKS.core is the app shell, cached at install so the app always opens offline.
 // PACKS.games has one pack per game, downloaded only when the player asks for it.

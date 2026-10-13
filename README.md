@@ -1,4 +1,4 @@
-# Gameplane
+# Cache Only
 
 Small games in one installable PWA, published at **https://cache-only.github.io/**. Friends
 install it and download the games they want while online. After that, every downloaded game runs

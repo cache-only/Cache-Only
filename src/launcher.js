@@ -1,5 +1,5 @@
 import { formatBytes, formatNumber, formatPercent, formatTime, getLang, localize, pick, setLang, t } from './shared/i18n.js';
-import { createStore, exportAll, importAll } from './shared/storage.js';
+import { createStore, exportAll, importAll, isSaveFile } from './shared/storage.js';
 import {
   applyUpdate,
   checkForUpdate,
@@ -382,13 +382,13 @@ $('exportBtn').addEventListener('click', async () => {
   const n = Object.keys(blob.entries).length;
   if (!n) return savesMessage(t('settings.nothing'));
   const stamp = new Date().toISOString().slice(0, 10);
-  const file = new File([JSON.stringify(blob, null, 2)], `gameplane-saves-${stamp}.json`, {
+  const file = new File([JSON.stringify(blob, null, 2)], `cache-only-saves-${stamp}.json`, {
     type: 'application/json',
   });
   // Share sheet first (iOS: "Save to Files", AirDrop…), download as a fallback.
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: 'Gameplane saves' });
+      await navigator.share({ files: [file], title: 'Cache Only saves' });
       savesMessage(t('settings.exported', { n }));
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -411,7 +411,7 @@ $('importFile').addEventListener('change', async (event) => {
   let blob;
   try {
     blob = JSON.parse(await file.text());
-    if (blob?.format !== 'gameplane-saves' || typeof blob.entries !== 'object') throw new Error();
+    if (!isSaveFile(blob)) throw new Error();
   } catch {
     return savesMessage(t('settings.importError'), true);
   }
