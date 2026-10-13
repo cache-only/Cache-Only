@@ -1,66 +1,24 @@
 // Tanks renderer: draws the world on a canvas and owns the purely visual extras
 // (tread marks, scorch marks, explosions). It reads the world and never changes it.
 // On a tall screen the whole arena is turned 90 degrees, so the player's side (the
-// left of every map) sits at the bottom, next to the thumbs.
+// left of every map) sits at the bottom, next to the thumbs. The art itself (ground,
+// tanks, shots, bombs) is in art.js, which the field guide draws with too.
 import {
-  BLAST_R,
-  COLS,
-  CRATE,
-  HOLE,
-  MINE_FUSE,
-  MUZZLE,
-  ROWS,
-  TYPES,
-  WALL,
-  cellAt,
-  muzzleBlocked,
-  tracePath,
-} from './rules.js';
+  drawBomb,
+  drawGround,
+  drawMine,
+  drawShot,
+  drawTank,
+  drawTankShadow,
+  drawTarget,
+  makePalette,
+} from './art.js';
+import { BLAST_R, COLS, MINE_FUSE, MUZZLE, ROWS, TYPES, cellAt, muzzleBlocked, owned, tracePath } from './rules.js';
 
 const FRAME = 0.3; // border around the arena, in cells
 const MAX_DPR = 2;
 const MARK_LIFE = 9; // seconds a tread mark takes to fade
 const MAX_FX = 700;
-const ART = 1.1; // tanks are drawn a little larger than their hit circle, like toys
-
-const TOKENS = {
-  frame: '--tk-frame',
-  floor: '--tk-floor',
-  joint: '--tk-joint',
-  wall: '--tk-wall',
-  wallLit: '--tk-wall-lit',
-  wallDark: '--tk-wall-dark',
-  shadow: '--tk-shadow',
-  crate: '--tk-crate',
-  stripe: '--tk-stripe',
-  hole: '--tk-hole',
-  holeRim: '--tk-hole-rim',
-  track: '--tk-track',
-  scorch: '--tk-scorch',
-  shell: '--tk-shell',
-  aim: '--tk-aim',
-  ink: '--tk-ink',
-  tread: '--tk-tread',
-  flash: '--tk-flash',
-  fire: '--tk-fire',
-  smoke: '--tk-smoke',
-  signal: '--signal',
-};
-
-function hexToRgb(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return [128, 128, 128];
-  const n = parseInt(m[1], 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/** Mixes a hex colour toward white (amount > 0) or black (amount < 0). */
-function shade(hex, amount) {
-  const target = amount > 0 ? 255 : 0;
-  const k = Math.abs(amount);
-  const [r, g, b] = hexToRgb(hex).map((v) => Math.round(v + (target - v) * k));
-  return `rgb(${r}, ${g}, ${b})`;
-}
 
 export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
   const ctx = canvas.getContext('2d');
@@ -123,22 +81,17 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
 
   function readPalette() {
     const cs = getComputedStyle(canvas);
-    const get = (name) => cs.getPropertyValue(name).trim();
-    pal = {};
-    for (const [key, name] of Object.entries(TOKENS)) pal[key] = get(name);
-    pal.tanks = {};
-    for (const type of Object.keys(TYPES)) {
-      const base = get(`--tk-${type}`) || '#888888';
-      pal.tanks[type] = { base, dark: shade(base, -0.32), light: shade(base, 0.22), deep: shade(base, -0.55) };
-    }
+    pal = makePalette((name) => cs.getPropertyValue(name).trim());
     floorKey = '';
   }
 
-  /* ---------- Static layer: floor, blocks, scorch marks ---------- */
-
-  function rectPath(c, x, y, w, h) {
-    c.rect(x, y, w, h);
+  /** The palette the art is drawn with, for badges outside the arena. */
+  function palette() {
+    if (!pal) readPalette();
+    return pal;
   }
+
+  /* ---------- Static layer: floor, blocks, scorch marks ---------- */
 
   function drawScorch(c, m) {
     c.save();
@@ -162,102 +115,14 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     c.fillStyle = pal.frame;
     c.fillRect(0, 0, floor.width, floor.height);
     worldTransform(c);
-    const px = 1 / (view.unit * view.dpr); // one device pixel in world units
-    c.fillStyle = pal.floor;
-    c.fillRect(0, 0, COLS, ROWS);
-
-    // Slab joints.
-    c.strokeStyle = pal.joint;
-    c.lineWidth = Math.max(px, 0.03);
-    c.beginPath();
-    for (let x = 1; x < COLS; x++) {
-      c.moveTo(x, 0);
-      c.lineTo(x, ROWS);
-    }
-    for (let y = 1; y < ROWS; y++) {
-      c.moveTo(0, y);
-      c.lineTo(COLS, y);
-    }
-    c.stroke();
-
-    const kind = (col, row) => cellAt(s.grid, col, row);
-    const each = (type, fn) => {
-      for (let r = 0; r < ROWS; r++) for (let col = 0; col < COLS; col++) if (s.grid[r * COLS + col] === type) fn(col, r);
-    };
-    // Screen-relative light: up on screen is lit, down on screen is in shade.
-    const up = vecToWorld(0, -1);
-    const down = { x: -up.x, y: -up.y };
-    const sh = vecToWorld(0.1, 0.14);
-    const edge = (col, r, n, t) => {
-      if (n.x === 1) return [col + 1 - t, r, t, 1];
-      if (n.x === -1) return [col, r, t, 1];
-      if (n.y === 1) return [col, r + 1 - t, 1, t];
-      return [col, r, 1, t];
-    };
-
-    // Holes: dark pits with a rim on the edges that face the light.
-    c.fillStyle = pal.hole;
-    c.beginPath();
-    each(HOLE, (col, r) => rectPath(c, col, r, 1, 1));
-    c.fill();
-    c.fillStyle = pal.holeRim;
-    c.beginPath();
-    each(HOLE, (col, r) => {
-      if (kind(col + down.x, r + down.y) !== HOLE) rectPath(c, ...edge(col, r, down, 0.1));
+    drawGround(c, pal, {
+      cols: COLS,
+      rows: ROWS,
+      kindAt: (col, row) => cellAt(s.grid, col, row),
+      // Screen-relative light: up on screen is lit, down on screen is in shade.
+      up: vecToWorld(0, -1),
+      px: 1 / (view.unit * view.dpr),
     });
-    c.fill();
-
-    // Hard shadows for walls and crates.
-    c.save();
-    c.beginPath();
-    c.rect(0, 0, COLS, ROWS);
-    c.clip();
-    c.fillStyle = pal.shadow;
-    c.beginPath();
-    for (const type of [WALL, CRATE]) each(type, (col, r) => rectPath(c, col + sh.x, r + sh.y, 1, 1));
-    c.fill();
-    c.restore();
-
-    // Walls: flat ink blocks with a lit top edge and a shaded bottom edge.
-    c.fillStyle = pal.wall;
-    c.beginPath();
-    each(WALL, (col, r) => rectPath(c, col, r, 1, 1));
-    c.fill();
-    c.fillStyle = pal.wallLit;
-    c.beginPath();
-    each(WALL, (col, r) => {
-      if (kind(col + up.x, r + up.y) !== WALL) rectPath(c, ...edge(col, r, up, 0.09));
-    });
-    c.fill();
-    c.fillStyle = pal.wallDark;
-    c.beginPath();
-    each(WALL, (col, r) => {
-      if (kind(col + down.x, r + down.y) !== WALL) rectPath(c, ...edge(col, r, down, 0.09));
-    });
-    c.fill();
-
-    // Crates: hazard stripes, one bordered block each.
-    each(CRATE, (col, r) => {
-      c.save();
-      c.beginPath();
-      c.rect(col + 0.04, r + 0.04, 0.92, 0.92);
-      c.clip();
-      c.fillStyle = pal.crate;
-      c.fillRect(col, r, 1, 1);
-      c.strokeStyle = pal.stripe;
-      c.lineWidth = 0.13;
-      c.beginPath();
-      for (let k = -1; k <= 2; k += 0.36) {
-        c.moveTo(col + k, r);
-        c.lineTo(col + k - 1, r + 1);
-      }
-      c.stroke();
-      c.restore();
-      c.strokeStyle = pal.stripe;
-      c.lineWidth = 0.08;
-      c.strokeRect(col + 0.08, r + 0.08, 0.84, 0.84);
-    });
-
     for (const m of scorches) drawScorch(c, m);
     floorKey = keyFor(s);
   }
@@ -311,6 +176,11 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
           flash(e.x, e.y, 0.12, 0.3, 0.09, pal.flash);
           smoke(e.x, e.y, calm ? 1 : 2, 0.1, 0.12, 0.5);
           break;
+        case 'lob':
+          // A puff from the mortar tube as the bomb leaves it.
+          ring(e.x, e.y, 0.15, 0.6, 0.3, pal.smoke, 0.07);
+          smoke(e.x, e.y, calm ? 2 : 5, 0.25, 0.2, 0.8);
+          break;
         case 'fizzle':
         case 'pop':
           smoke(e.x, e.y, calm ? 2 : 4, 0.15, 0.13, 0.5);
@@ -325,13 +195,16 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
         case 'mine':
           ring(e.x, e.y, 0.2, 0.55, 0.35, pal.signal, 0.05);
           break;
-        case 'blast':
-          flash(e.x, e.y, 0.4, BLAST_R, 0.32, pal.fire);
-          ring(e.x, e.y, 0.3, BLAST_R * 1.15, 0.45, pal.flash, 0.12);
-          smoke(e.x, e.y, calm ? 6 : 16, BLAST_R, 0.45, 1.4);
-          burst(e.x, e.y, calm ? 6 : 18, { speed: 4, life: 0.55, size: 0.09, color: pal.fire });
-          if (!calm) shake = Math.max(shake, 0.4);
+        case 'blast': {
+          const r = e.r || BLAST_R;
+          const k = r / BLAST_R;
+          flash(e.x, e.y, 0.4 * k, r, 0.32, pal.fire);
+          ring(e.x, e.y, 0.3 * k, r * 1.15, 0.45, pal.flash, 0.12);
+          smoke(e.x, e.y, Math.round((calm ? 6 : 16) * k), r, 0.45, 1.4);
+          burst(e.x, e.y, Math.round((calm ? 6 : 18) * k), { speed: 4 * k, life: 0.55, size: 0.09, color: pal.fire });
+          if (!calm) shake = Math.max(shake, 0.4 * k);
           break;
+        }
         case 'crate':
           burst(e.c + 0.5, e.r + 0.5, calm ? 4 : 10, { speed: 2.6, life: 0.6, size: 0.14, color: pal.crate, kind: 'chip' });
           burst(e.c + 0.5, e.r + 0.5, calm ? 2 : 5, { speed: 2.2, life: 0.6, size: 0.12, color: pal.stripe, kind: 'chip' });
@@ -377,14 +250,15 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     fx = fx.filter((p) => p.life > 0);
 
     if (!s) return;
-    // Rockets leave smoke.
+    // Rockets and missiles leave smoke.
     smokeTimer -= dt;
     if (smokeTimer <= 0) {
       smokeTimer = reduceMotion() ? 0.08 : 0.03;
       for (const b of s.bullets) {
-        if (!b.rocket) continue;
+        if (b.weapon !== 'rocket' && b.weapon !== 'missile') continue;
         const sp = Math.hypot(b.vx, b.vy) || 1;
-        smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
+        if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
+        else smoke(b.x - (b.vx / sp) * 0.25, b.y - (b.vy / sp) * 0.25, 1, 0.03, 0.08, 0.8);
       }
     }
     // Tread marks every few centimetres of travel.
@@ -452,122 +326,14 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.globalAlpha = 1;
   }
 
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawTank(t, alpha) {
-    const tone = pal.tanks[t.type];
-    const o = odometer.get(t.id);
-    ctx.globalAlpha = alpha;
-    ctx.save();
-    ctx.translate(t.x, t.y);
-    ctx.scale(ART, ART);
-    ctx.rotate(t.body);
-    // Treads with moving cleats.
-    ctx.fillStyle = pal.tread;
-    roundRect(-0.43, -0.39, 0.86, 0.21, 0.05);
-    ctx.fill();
-    roundRect(-0.43, 0.18, 0.86, 0.21, 0.05);
-    ctx.fill();
-    ctx.strokeStyle = tone.deep;
-    ctx.lineWidth = 0.035;
-    const phase = o ? o.total % 0.14 : 0;
-    ctx.beginPath();
-    for (let k = -0.42 + phase; k < 0.42; k += 0.14) {
-      ctx.moveTo(k, -0.37);
-      ctx.lineTo(k, -0.2);
-      ctx.moveTo(k, 0.2);
-      ctx.lineTo(k, 0.37);
-    }
-    ctx.stroke();
-    // Hull.
-    ctx.fillStyle = tone.base;
-    roundRect(-0.37, -0.26, 0.74, 0.52, 0.09);
-    ctx.fill();
-    ctx.strokeStyle = pal.ink;
-    ctx.lineWidth = 0.045;
-    ctx.stroke();
-    ctx.fillStyle = tone.dark;
-    ctx.fillRect(-0.3, -0.2, 0.08, 0.4);
-    ctx.fillRect(0.22, -0.2, 0.08, 0.4);
-    ctx.restore();
-
-    // Turret and barrel. The barrel reaches the real muzzle, where shells appear.
-    ctx.save();
-    ctx.translate(t.x, t.y);
-    ctx.rotate(t.turret);
-    ctx.fillStyle = tone.dark;
-    ctx.strokeStyle = pal.ink;
-    ctx.lineWidth = 0.04;
-    ctx.beginPath();
-    ctx.rect(0.08, -0.065, MUZZLE - 0.08, 0.13);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = tone.light;
-    ctx.beginPath();
-    ctx.arc(0, 0, 0.2 * ART, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = tone.dark;
-    ctx.beginPath();
-    ctx.arc(-0.05 * ART, 0, 0.065 * ART, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.globalAlpha = 1;
-  }
-
-  function drawMine(m, s) {
-    const owner = s.tanks.find((t) => t.id === m.owner);
-    const tone = pal.tanks[owner ? owner.type : 'player'];
-    ctx.fillStyle = pal.shadow;
-    const sh = vecToWorld(0.04, 0.06);
-    ctx.beginPath();
-    ctx.arc(m.x + sh.x, m.y + sh.y, 0.24, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = pal.ink;
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, 0.24, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = tone.base;
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, 0.16, 0, Math.PI * 2);
-    ctx.fill();
-    // The light blinks faster as the fuse runs down, and turns red at the end.
+  /** A mine's light: it blinks faster as the fuse runs down and turns red at the end. */
+  function mineLight(m) {
     const urgent = m.fuse < 3;
+    if (reduceMotion()) return urgent ? 'urgent' : 'on';
     const rate = urgent ? 6 : 1.5;
     const age = MINE_FUSE - m.fuse;
-    if (Math.floor(age * rate * 2) % 2 === 0 || m.fuse < 0.15) {
-      ctx.fillStyle = urgent ? '#ff3b30' : pal.signal;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, 0.07, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawShell(b) {
-    const a = Math.atan2(b.vy, b.vx);
-    ctx.save();
-    ctx.translate(b.x, b.y);
-    ctx.rotate(a);
-    if (b.rocket) {
-      ctx.fillStyle = pal.fire;
-      ctx.beginPath();
-      ctx.moveTo(-0.13, -0.05);
-      ctx.lineTo(-0.3 - Math.random() * 0.08, 0);
-      ctx.lineTo(-0.13, 0.05);
-      ctx.fill();
-    }
-    ctx.fillStyle = pal.shell;
-    roundRect(-0.14, -0.065, 0.28, 0.13, 0.065);
-    ctx.fill();
-    ctx.restore();
+    if (Math.floor(age * rate * 2) % 2 === 0 || m.fuse < 0.15) return urgent ? 'urgent' : 'on';
+    return 'off';
   }
 
   function drawAim(s, aim) {
@@ -676,6 +442,7 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(floor, 0, 0);
 
+    const calm = reduceMotion();
     const jitter = shake > 0 ? shake * 0.12 : 0;
     worldTransform(ctx, jitter ? (Math.random() - 0.5) * jitter : 0, jitter ? (Math.random() - 0.5) * jitter : 0);
     ctx.save();
@@ -684,30 +451,34 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.clip();
 
     drawMarks();
-    for (const m of s.mines) drawMine(m, s);
+    // Where bombs will land, on the floor under everything else.
+    for (const b of s.bombs) drawTarget(ctx, pal, b, { calm });
+    const mineShadow = vecToWorld(0.04, 0.06);
+    for (const m of s.mines) {
+      const owner = s.tanks.find((t) => t.id === m.owner);
+      drawMine(ctx, pal, m, owner ? owner.type : 'player', mineLight(m), mineShadow);
+    }
 
     const hidden = (t) => (TYPES[t.type].invisible ? Math.max(0, 1 - s.time / 1.2) : 1);
     // Shadows first, so no tank's shadow falls on another tank.
     const sh = vecToWorld(0.07, 0.1);
-    ctx.fillStyle = pal.shadow;
+    for (const t of s.tanks) {
+      if (!t.alive) continue;
+      const a = hidden(t);
+      if (a > 0) drawTankShadow(ctx, pal, t, sh, a);
+    }
     for (const t of s.tanks) {
       if (!t.alive) continue;
       const a = hidden(t);
       if (a <= 0) continue;
-      ctx.globalAlpha = a;
-      ctx.save();
-      ctx.translate(t.x + sh.x, t.y + sh.y);
-      ctx.scale(ART, ART);
-      ctx.rotate(t.body);
-      roundRect(-0.43, -0.39, 0.86, 0.78, 0.08);
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1;
-    for (const t of s.tanks) {
-      if (!t.alive) continue;
-      const a = hidden(t);
-      if (a > 0) drawTank(t, a);
+      const T = TYPES[t.type];
+      const o = odometer.get(t.id);
+      drawTank(ctx, pal, t, {
+        phase: o ? o.total : 0,
+        mines: T.mines - owned(s.mines, t),
+        lit: T.weapon === 'missile' && owned(s.bullets, t) > 0,
+        alpha: a,
+      });
     }
 
     if (beacon > 0 && s.tanks[0].alive) {
@@ -723,11 +494,16 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     }
 
     drawAim(s, aim);
-    for (const b of s.bullets) drawShell(b);
+    // A missile's light blinks; under reduced motion it stays on.
+    const blink = calm || Math.floor(clock * 8) % 2 === 0;
+    for (const b of s.bullets) drawShot(ctx, pal, b, { flame: calm ? 0.5 : Math.random(), blink });
+    const up = vecToWorld(0, -1);
+    for (const b of s.bombs) drawBomb(ctx, pal, b, up);
     drawFx();
     if (reticle) drawReticle(reticle);
     ctx.restore();
   }
 
-  return { layout, toWorld, vecToWorld, readPalette, events, update, reset, draw };
+  return { layout, toWorld, vecToWorld, readPalette, palette, events, update, reset, draw };
 }
+

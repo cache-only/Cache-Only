@@ -1,6 +1,7 @@
 // Guards the offline contract: the build output, the pack manifest (app shell plus one
 // pack per game) and the server's no-redirect behaviour.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -69,6 +70,17 @@ test('every shipped file belongs to exactly one pack', async () => {
   assert.equal(info.files, owners.size);
 });
 
+test('every pack file carries the content hash the worker checks downloads against', async () => {
+  for (const pack of allPacks()) {
+    assert.deepEqual(Object.keys(pack.hashes), pack.files);
+    for (const url of pack.files) {
+      const file = path.join(DIST, url.endsWith('/') ? `${url}index.html` : url);
+      const want = createHash('sha256').update(await readFile(file)).digest('hex').slice(0, 16);
+      assert.equal(pack.hashes[url], want, url);
+    }
+  }
+});
+
 test('the app shell holds everything the launcher needs to open offline', () => {
   const core = packs.core.files;
   for (const url of ['/', '/index.html', '/launcher.js', '/styles.css', '/manifest.json', '/registry.json', '/icons/apple-touch-icon.png']) {
@@ -93,7 +105,7 @@ test('each game in the registry is one downloadable pack, and nothing else is', 
     assert.deepEqual(info.games[game.id], { version: pack.version, files: pack.files.length, bytes: pack.bytes });
   }
   assert.ok(packs.games.sudoku.files.includes('/games/sudoku/worker.js'), 'the Sudoku worker ships with Sudoku');
-  for (const mod of ['tanks.js', 'engine.js', 'rules.js', 'ai.js', 'missions.js', 'render.js', 'audio.js', 'styles.css']) {
+  for (const mod of ['tanks.js', 'engine.js', 'rules.js', 'ai.js', 'art.js', 'missions.js', 'render.js', 'audio.js', 'styles.css']) {
     assert.ok(packs.games.tanks.files.includes(`/games/tanks/${mod}`), `tanks ${mod} must be in the Tanks pack`);
   }
   assert.equal(info.bytes, allPacks().reduce((n, p) => n + p.bytes, 0));
@@ -144,7 +156,9 @@ test('the server sends the right MIME types and cache headers', async () => {
   for (const p of ['/sw.js', '/', '/games/sudoku/', '/version.json']) {
     assert.equal((await fetch(base + p)).headers.get('cache-control'), 'no-cache', p);
   }
-  // The launcher's "is the host up?" check reads version.json with a cache-busting query.
+  // The launcher's "are we online?" check reads version.json with a cache-busting query,
+  // and the worker downloads every file as ?v=<hash>.
+  assert.equal((await fetch(base + '/games/sudoku/?v=0123456789abcdef')).status, 200);
   const probe = await fetch(base + '/version.json?probe=123');
   assert.equal(probe.status, 200);
   assert.equal((await probe.json()).version, info.version);

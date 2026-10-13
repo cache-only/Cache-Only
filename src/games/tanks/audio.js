@@ -90,6 +90,18 @@ export function createAudio() {
       hiss({ dur: 0.22, vol: 0.24, type: 'highpass', from: 1500, to: 4200, q: 0.7 });
       tone({ type: 'sawtooth', from: 280, to: 880, dur: 0.16, vol: 0.05 });
     },
+    missile() {
+      // Lock-on: two quick high beeps, then the launch.
+      tone({ type: 'square', from: 1320, dur: 0.045, vol: 0.07 });
+      tone({ type: 'square', from: 1760, dur: 0.06, vol: 0.07, at: 0.07 });
+      hiss({ dur: 0.3, vol: 0.16, type: 'highpass', from: 1200, to: 3200, q: 0.7, at: 0.05 });
+    },
+    lob(flight = 1.5) {
+      // A thump from the tube, then a whistle that falls as the bomb does.
+      tone({ type: 'sine', from: 150, to: 48, dur: 0.18, vol: 0.4 });
+      hiss({ dur: 0.12, vol: 0.2, type: 'lowpass', from: 900, to: 200, q: 0.7 });
+      tone({ type: 'sine', from: 1900, to: 620, dur: Math.max(0.3, flight - 0.3), vol: 0.035, at: 0.25 });
+    },
     bounce() {
       tone({ type: 'triangle', from: 1500, to: 950, dur: 0.05, vol: 0.1 });
     },
@@ -110,6 +122,11 @@ export function createAudio() {
     blast() {
       hiss({ dur: 0.9, vol: 0.65, type: 'lowpass', from: 1600, to: 110, q: 0.7 });
       tone({ type: 'sine', from: 90, to: 32, dur: 0.6, vol: 0.55 });
+    },
+    impact() {
+      // A landing bomb: a shorter, tighter blast.
+      hiss({ dur: 0.55, vol: 0.5, type: 'lowpass', from: 2000, to: 140, q: 0.7 });
+      tone({ type: 'sine', from: 120, to: 40, dur: 0.4, vol: 0.45 });
     },
     destroyed() {
       hiss({ dur: 0.6, vol: 0.55, type: 'lowpass', from: 2400, to: 150, q: 0.7 });
@@ -135,14 +152,14 @@ export function createAudio() {
     },
   };
 
-  function play(name) {
+  function play(name, ...args) {
     if (muted || !ctx || ctx.state !== 'running' || !SOUNDS[name]) return;
     // A burst of the same sound in one frame (several ricochets) plays once.
     const now = ctx.currentTime;
     if (now - (last.get(name) || -1) < 0.035) return;
     last.set(name, now);
     try {
-      SOUNDS[name]();
+      SOUNDS[name](...args);
     } catch {
       /* an audio glitch must never break the game */
     }

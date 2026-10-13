@@ -7,7 +7,6 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "host": "node scripts/host.mjs",
     "icons": "node scripts/make-icons.mjs",
     "guide": "node scripts/guide.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"

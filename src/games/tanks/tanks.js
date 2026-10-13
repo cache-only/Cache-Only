@@ -2,6 +2,7 @@ import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
 import { confirmDialog } from '../../shared/ui.js';
+import { drawBadge } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
 import { BONUS_AFTER, CHECKPOINTS, MISSIONS } from './missions.js';
@@ -10,7 +11,9 @@ import { ENEMY_KINDS, STEP, TYPES, owned } from './rules.js';
 
 const SCHEMA = 1;
 const LIVES = 3;
-const BRIEF_S = 2.4; // the mission banner, before the shooting starts
+const BRIEF_S = 2.4; // the mission banner, before the shooting starts...
+const BRIEF_READ = 0.025; // ...plus this long per character of its note, up to BRIEF_MAX
+const BRIEF_MAX = 5;
 const BANNER_AT = 1.1; // after a mission ends: let the explosions play first
 const NEXT_AT = 3.8; // ...then the next mission, a retry or the results
 const MAX_STEPS = 16; // per frame, so a stall never fast-forwards the battle
@@ -41,6 +44,7 @@ let world = null; // the mission being played
 let backdrop = null; // a world drawn, frozen, behind the menu and results
 let phase = 'menu'; // menu | brief | play | paused | ending | over
 let phaseT = 0;
+let briefS = BRIEF_S;
 let ending = null;
 
 const saver = createSaver(store, 'session', SCHEMA, () =>
@@ -403,20 +407,38 @@ function renderPips() {
   [...$('minePips').children].forEach((el, i) => el.classList.toggle('used', i >= TYPES.player.mines - used));
 }
 
-function chip(kind) {
-  const el = document.createElement('i');
-  el.className = 'chip';
-  el.style.setProperty('--c', `var(--tk-${kind})`);
+const BADGE_W = 34;
+const BADGE_H = 26;
+
+/** A tank kind as the game draws it, small: shape shows what it does, colour which kind it is. */
+function badge(kind) {
+  const el = document.createElement('canvas');
+  el.className = 'badge';
+  el.dataset.kind = kind;
   el.title = t(`tanks.type.${kind}`);
+  paintBadge(el);
   return el;
 }
 
-function showBanner({ title, sub = '', kinds = [], note = '' }) {
+function paintBadge(el) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  el.width = Math.round(BADGE_W * dpr);
+  el.height = Math.round(BADGE_H * dpr);
+  const c = el.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawBadge(c, renderer.palette(), el.dataset.kind, BADGE_W, BADGE_H);
+}
+
+// Kinds whose arrival the mission banner warns about.
+const NOTES = { red: 'tanks.note.red', white: 'tanks.note.white', olive: 'tanks.note.olive' };
+
+function showBanner({ title, name = '', sub = '', kinds = [], note = '' }) {
   const banner = $('banner');
   $('bannerTitle').textContent = title;
+  $('bannerName').textContent = name;
   $('bannerSub').textContent = sub;
   $('bannerNote').textContent = note;
-  $('bannerTanks').replaceChildren(...kinds.map(chip));
+  $('bannerTanks').replaceChildren(...kinds.map(badge));
   banner.hidden = false;
   banner.classList.remove('in');
   void banner.offsetWidth; // restart the slide-in
@@ -455,7 +477,7 @@ function renderTally(box, kills) {
     ...ENEMY_KINDS.filter((kind) => kills[kind]).map((kind) => {
       const item = document.createElement('span');
       item.className = 'tally-item';
-      item.append(chip(kind), `× ${formatNumber(kills[kind])}`);
+      item.append(badge(kind), `× ${formatNumber(kills[kind])}`);
       return item;
     }),
   );
@@ -510,7 +532,7 @@ function frame(now) {
     if (steps >= MAX_STEPS) acc = 0;
   }
   renderer.update(dt, world);
-  if (phase === 'brief' && phaseT >= BRIEF_S) startPlay();
+  if (phase === 'brief' && phaseT >= briefS) startPlay();
   else if (phase === 'ending') tickEnding();
   draw();
 }
@@ -532,7 +554,11 @@ function onEvents(events) {
     switch (e.type) {
       case 'shot':
         if (e.player) input.shots = Math.max(0, input.shots - 1);
-        audio.play(e.rocket ? 'rocket' : e.player ? 'shot' : 'enemyShot');
+        if (e.weapon === 'rocket' || e.weapon === 'missile') audio.play(e.weapon);
+        else audio.play(e.player ? 'shot' : 'enemyShot');
+        break;
+      case 'lob':
+        audio.play('lob', e.flight);
         break;
       case 'fizzle':
         if (e.player) input.shots = Math.max(0, input.shots - 1);
@@ -544,7 +570,7 @@ function onEvents(events) {
         renderPips();
         break;
       case 'blast':
-        audio.play('blast');
+        audio.play(e.cause === 'bomb' ? 'impact' : 'blast');
         renderPips();
         break;
       case 'bounce':
@@ -577,12 +603,10 @@ function beginMission() {
   setPhase('brief');
   const kinds = world.tanks.filter((tk) => tk.slot >= 0).map((tk) => tk.type);
   const sub = [n === MISSIONS.length ? t('tanks.final') : '', t('tanks.enemies', { n: kinds.length })].filter(Boolean);
-  showBanner({
-    title: t('tanks.missionN', { n }),
-    sub: sub.join(' · '),
-    kinds,
-    note: kinds.includes('white') ? t('tanks.note.white') : '',
-  });
+  // The mission's one-line briefing, then a warning for each kind that needs one.
+  const note = [t(`tanks.brief.${n}`), ...Object.keys(NOTES).filter((kind) => kinds.includes(kind)).map((kind) => t(NOTES[kind]))].join(' ');
+  briefS = Math.min(BRIEF_MAX, BRIEF_S + note.length * BRIEF_READ);
+  showBanner({ title: t('tanks.missionN', { n }), name: t(`tanks.name.${n}`), sub: sub.join(' · '), kinds, note });
   renderHud();
   saver.flush();
   audio.play('start');
@@ -787,6 +811,7 @@ window.addEventListener('blur', () => {
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
   renderer.readPalette();
+  for (const el of document.querySelectorAll('canvas.badge')) paintBadge(el);
   draw();
 });
 

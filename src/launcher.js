@@ -484,7 +484,7 @@ watchOfflineStatus(reg, (status) => {
 watchForUpdates(reg, () => {
   if (isStandalone()) $('updateBanner').hidden = false;
 });
-// Quiet update check: fails silently when the Mac is offline, which is the normal case.
+// Quiet update check: fails silently while offline, which is a normal state.
 if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
 
 persisted = await ensurePersisted();

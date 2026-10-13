@@ -146,8 +146,9 @@ export function downloadPacks(reg, ids, onEvent = () => {}, stall = 20000) {
 }
 
 /**
- * Whether the host answers right now. The phone being online isn't enough: the Mac is
- * usually off. version.json is never cached by the worker, so this always asks the host.
+ * Whether the host (GitHub Pages) answers right now. navigator.onLine can claim a connection
+ * that doesn't work, so this asks for real. version.json is never cached by the worker, and
+ * the query string gets past the CDN's cache too.
  */
 export async function probeHost(timeout = 5000) {
   if (navigator.onLine === false) return false;
@@ -182,7 +183,8 @@ export function watchForUpdates(reg, onUpdate) {
 }
 
 /**
- * Asks the host for a newer sw.js. Never throws.
+ * Asks the host for a newer sw.js. Never throws. (GitHub's CDN can take up to 10 minutes
+ * to serve a new release.)
  * Returns 'available' | 'current' | 'unreachable' | 'failed'.
  */
 export async function checkForUpdate(reg) {

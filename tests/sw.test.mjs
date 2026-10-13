@@ -1,6 +1,6 @@
 // Runs the built dist/sw.js in a sandbox with an in-memory Cache Storage and a fake host,
-// to check the download model: the app shell installs, games download on request, and
-// updates keep whatever the device already had.
+// to check the download model: the app shell installs, games download on request, stale CDN
+// copies are refused, and updates keep whatever the device already had.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -75,13 +75,17 @@ class FakeCaches {
   }
 }
 
-/** The host: serves dist/ like scripts/serve.mjs, and can go offline or fail one file. */
+/**
+ * The host: serves dist/ like GitHub Pages (query strings ignored), and can go offline, fail
+ * one file, or serve a stale copy of one, as the CDN does right after a release.
+ */
 function makeHost() {
-  const host = { online: true, fail: new Set(), requests: [] };
+  const host = { online: true, fail: new Set(), stale: new Map(), requests: [] };
   host.fetch = async (input) => {
     const url = toUrl(input);
     host.requests.push(url.pathname);
     if (!host.online || host.fail.has(url.pathname)) throw new TypeError('Failed to fetch');
+    if (host.stale.has(url.pathname)) return new Response(host.stale.get(url.pathname), { status: 200 });
     const file = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
     try {
       return new Response(await readFile(path.join(DIST, file)), { status: 200 });
@@ -101,7 +105,7 @@ function loadWorker(caches, host) {
     clients: { matchAll: async () => [{ postMessage: (m) => broadcasts.push(clone(m)) }], claim: async () => {} },
     skipWaiting: () => {},
   };
-  vm.runInContext(source, vm.createContext({ self, caches, fetch: host.fetch, URL, Response }));
+  vm.runInContext(source, vm.createContext({ self, caches, fetch: host.fetch, URL, Response, crypto }));
   const dispatch = (type, fields = {}) => {
     let pending = null;
     handlers[type]({ ...fields, waitUntil: (p) => (pending = p), respondWith: (p) => (pending = p) });
@@ -178,6 +182,27 @@ test('a download that breaks off reports failure, and the retry fetches only wha
   replies = await sw.message({ type: 'DOWNLOAD', ids: ['tanks'] });
   assert.deepEqual(replies.at(-1), { type: 'done', results: { tanks: true } });
   assert.equal(host.requests.length, packs.games.tanks.files.length - have);
+});
+
+test('every file is requested at its release hash, and a stale copy is refused', async () => {
+  const { caches, host, sw } = await installed();
+  const seen = [];
+  const plain = host.fetch;
+  host.fetch = async (input) => (seen.push(toUrl(input)), plain(input));
+  const fresh = loadWorker(caches, host);
+  host.stale.set('/games/tanks/engine.js', 'export const old = true;\n');
+  let replies = await fresh.message({ type: 'DOWNLOAD', ids: ['tanks'] });
+  assert.deepEqual(replies.at(-1), { type: 'done', results: { tanks: false } });
+  for (const url of seen) assert.equal(url.search, `?v=${packs.games.tanks.hashes[url.pathname]}`, url.pathname);
+  await new Promise((resolve) => setTimeout(resolve, 20)); // let in-flight files land
+  const cache = await caches.open(packs.games.tanks.cache);
+  assert.equal(await cache.match('/games/tanks/engine.js'), undefined, 'the stale copy never reaches the cache');
+
+  // Once the CDN catches up, the retry completes the pack.
+  host.stale.clear();
+  replies = await sw.message({ type: 'DOWNLOAD', ids: ['tanks'] });
+  assert.deepEqual(replies.at(-1), { type: 'done', results: { tanks: true } });
+  assert.equal(await caches.count(packs.games.tanks.cache), packs.games.tanks.files.length);
 });
 
 test('downloading several games at once, and without a reply port', async () => {

@@ -45,8 +45,8 @@ const STUCK_T = 0.4; // a tank trying to move that covers less than STUCK_D in t
 const STUCK_D = 0.1; // ...is stuck: it gives up on its cell, backs off and chooses again
 const SHUN_T = 2; // seconds a stuck tank treats the cell it couldn't reach as closed
 const BACK_T = 0.3; // seconds it backs off for
-const YIELD_T = 1.2; // seconds a tank gives way to one with right of way
-const ALIGN = 0.07; // how far off a narrow way's centre line a tank may drive into it
+const YIELD_T = 4; // at most this long a tank gives way to one with right of way
+const ALIGN = [0.03, 0.12]; // off a narrow way's centre line by this much, a tank lines up first
 
 const fields = new WeakMap();
 const faces = new WeakMap();
@@ -76,8 +76,10 @@ export function initBrain(s, t) {
     shun: -1, // a cell it couldn't reach, closed for shunT seconds
     shunT: 0,
     backT: 0,
-    yieldT: 0, // giving way to tank yieldTo for yieldT seconds
+    yieldT: 0, // giving way to tank yieldTo, travelling along (yx, yy), for yieldT seconds
     yieldTo: 0,
+    yx: 0,
+    yy: 0,
   };
 }
 
@@ -396,6 +398,24 @@ function occupied(s, t, n) {
   return false;
 }
 
+/** Whether a mover is outside its preferred distance from you, so it has somewhere to be. */
+function pressing(s, o) {
+  const range = TYPES[o.type].range;
+  if (!range) return false;
+  const d = pathField(s)[cellOf(o.x, o.y)];
+  return d >= 0 && (d < range[0] || d > range[1]);
+}
+
+/**
+ * Right of way between two movers that want the same road: the one with somewhere to be
+ * goes first; between two of a kind, the lower slot.
+ */
+function goesFirst(s, a, b) {
+  const pa = pressing(s, a);
+  const pb = pressing(s, b);
+  return pa !== pb ? pa : a.slot < b.slot;
+}
+
 function chooseCell(s, t, T) {
   const ai = t.ai;
   const f = pathField(s);
@@ -405,8 +425,23 @@ function chooseCell(s, t, T) {
   const d0 = f[here];
   const [lo, hi] = T.range;
   const taken = takenCells(s, t);
-  const away = ai.yieldT > 0 ? s.tanks.find((o) => o.id === ai.yieldTo && o.alive) : null;
+  let away = ai.yieldT > 0 ? s.tanks.find((o) => o.id === ai.yieldTo && o.alive) : null;
   ai.hold = false;
+  if (away) {
+    const rx = t.x - away.x;
+    const ry = t.y - away.y;
+    if (rx * ai.yx + ry * ai.yy < -0.3 || Math.hypot(rx, ry) > 3) {
+      // It has gone by, or gone elsewhere: back to business.
+      ai.yieldT = 0;
+      away = null;
+    } else if (Math.abs(rx * ai.yy - ry * ai.yx) >= 0.8 && !taken.has(here)) {
+      // Off its line already: wait here until it passes.
+      ai.goal = here;
+      ai.hold = true;
+      ai.goalT = 0.25;
+      return;
+    }
+  }
   // Sometimes hold position for a moment, like a tank sizing things up.
   if (!away && !taken.has(here) && d0 >= lo && d0 <= hi && rand(s) < 0.15) {
     ai.goal = here;
@@ -432,8 +467,10 @@ function chooseCell(s, t, T) {
     let score = rand(s);
     const dn = f[n];
     if (away) {
-      // Giving way: get off the road of the tank that has right of way.
-      score += Math.hypot(cx - away.x, cy - away.y) * 1.6;
+      // Giving way: step off the other tank's line of travel, or failing that keep ahead of it.
+      const rx = cx - away.x;
+      const ry = cy - away.y;
+      score += Math.abs(rx * ai.yy - ry * ai.yx) * 2 + (rx * ai.yx + ry * ai.yy) * 0.8;
     } else if (d0 >= 0 && dn >= 0) {
       if (d0 > hi) score += (d0 - dn) * 1.6;
       else if (d0 < lo) score += (dn - d0) * 1.6;
@@ -446,8 +483,10 @@ function chooseCell(s, t, T) {
     }
     if (taken.has(n)) continue;
     const base = score;
+    // Keep a little room from other tanks, but less than a step of progress is worth, so a
+    // tank with somewhere to be still drives past another one.
     for (const o of s.tanks) {
-      if (o !== t && o.alive && (cx - o.x) ** 2 + (cy - o.y) ** 2 < 1.2 * 1.2) score -= 2.5;
+      if (o !== t && o.alive && (cx - o.x) ** 2 + (cy - o.y) ** 2 < 1.2 * 1.2) score -= 1;
     }
     if (score > bestScore) {
       bestScore = score;
@@ -455,21 +494,24 @@ function chooseCell(s, t, T) {
       best = n;
     }
   }
-  // Right of way: the lower slot goes first. If a mover that should give way blocks the
-  // cell this one wants, and the other ways are clearly worse, it is asked to make room.
+  // Right of way: when a mover that should give way blocks the cell this one needs, and
+  // the other ways are clearly worse, it is asked to make room.
   const blocker = taken.get(want);
   if (
     blocker &&
     !away &&
+    d0 >= 0 &&
+    (d0 < lo || d0 > hi) &&
     blocker.ai &&
     TYPES[blocker.type].speed &&
-    blocker.slot > t.slot &&
     !(blocker.ai.yieldT > 0) &&
-    wantScore - bestBase > 1
+    wantScore - bestBase > 1 &&
+    goesFirst(s, t, blocker)
   ) {
-    blocker.ai.yieldT = YIELD_T;
-    blocker.ai.yieldTo = t.id;
-    blocker.ai.goal = -1;
+    const wx = (want % COLS) + 0.5 - t.x;
+    const wy = Math.floor(want / COLS) + 0.5 - t.y;
+    const wl = Math.hypot(wx, wy) || 1;
+    Object.assign(blocker.ai, { yieldT: YIELD_T, yieldTo: t.id, yx: wx / wl, yy: wy / wl, goal: -1 });
   }
   if (best !== here) {
     const dc = (best % COLS) - hc;
@@ -493,6 +535,17 @@ function react(s, t, T) {
   ai.goal = -1;
 }
 
+/**
+ * How far ahead to aim, given the distance ahead to the next cell's centre and how far off
+ * its centre line the tank is: the whole way when nearly lined up, as far ahead as it is
+ * off (a 45 degree approach) once it is off by enough to clip a corner.
+ */
+function lineUp(ahead, off) {
+  const k = Math.min(1, Math.max(0, (off - ALIGN[0]) / (ALIGN[1] - ALIGN[0])));
+  const w = k * k * (3 - 2 * k);
+  return ahead * (1 - w) + Math.min(ahead, off) * w;
+}
+
 /** Drives toward the current goal cell's centre, picking the next cell on arrival. */
 function steer(s, t, T) {
   const ai = t.ai;
@@ -513,15 +566,17 @@ function steer(s, t, T) {
   }
   let tx = gc + 0.5;
   let ty = gr + 0.5;
-  // Line up with a narrow way in before entering it, rather than clipping its corner.
+  // Line up with a narrow way in before entering it, rather than clipping its corner: the
+  // further off its centre line, the steeper it heads for the line first. The blend is
+  // smooth, so the heading never flips back and forth across a threshold.
   const dc = gc - Math.floor(t.x);
   const dr = gr - Math.floor(t.y);
   if (dc && !dr) {
     const off = t.y - ty;
-    if (Math.abs(off) > ALIGN && !open(s.grid, gc, gr + Math.sign(off))) tx = t.x + dc * Math.min(Math.abs(tx - t.x), Math.abs(off));
+    if (off && !open(s.grid, gc, gr + Math.sign(off))) tx = t.x + dc * lineUp(Math.abs(tx - t.x), Math.abs(off));
   } else if (dr && !dc) {
     const off = t.x - tx;
-    if (Math.abs(off) > ALIGN && !open(s.grid, gc + Math.sign(off), gr)) ty = t.y + dr * Math.min(Math.abs(ty - t.y), Math.abs(off));
+    if (off && !open(s.grid, gc + Math.sign(off), gr)) ty = t.y + dr * lineUp(Math.abs(ty - t.y), Math.abs(off));
   }
   const dx = tx - t.x;
   const dy = ty - t.y;

@@ -26,7 +26,7 @@ rockets and yellow lays mines, and every new enemy needs another colour. The fix
 language where **shape tells you abilities and colour only tells you who it is**.
 
 ### R1. Make the weapon an explicit stat
-**Status:** idea · **Size:** S
+**Status:** done 2026-10-13 · **Size:** S
 
 The engine, renderer and field guide decide "rocket" with `T.shot > 6`. Missiles and mortar bombs
 can't be told apart by speed. Add `weapon: 'shell' | 'rocket' | 'missile' | 'bomb'` to each kind
@@ -37,8 +37,13 @@ in `TYPES`, and put `weapon` on each bullet instead of `rocket: true`.
 - Done when: nothing reads `shot > 6` any more and every test passes unchanged.
 - Groundwork for W1 and W2.
 
+**Shipped:** every kind in `TYPES` has a `weapon`; bullets and `shot` events carry it (missiles
+also carry their `fuel`), and nothing reads `shot > 6` any more (a test checks the sources). The
+existing tests passed unchanged before their test data moved from `rocket: true` to
+`weapon: 'rocket'`.
+
 ### R2. A visual language for abilities
-**Status:** idea · **Size:** M
+**Status:** done 2026-10-13 · **Size:** M
 
 One rule per part of the tank, so the patterns are learnable:
 
@@ -57,8 +62,30 @@ One rule per part of the tank, so the patterns are learnable:
 - Done when: someone who hasn't played can say which tanks fire rockets, lay mines or can't move,
   just from a screenshot.
 
+**Shipped:** the parts are drawn by a new `art.js`, which the game and the field guide both use,
+so the guide no longer keeps its own copy of `drawTank`.
+
+- **Barrel:** thin for shells; thick with a fire-orange band for rockets; twin launch pods and a
+  light, lit while a missile flies, for missiles; a wide round tube for mortars.
+- **Treads or a pad:** stationary tanks sit on a bolted concrete pad (`--tk-plate`). A dark plate
+  with bolts read like treads at phone size, worst in dark mode, so the pad is a lighter
+  octagon.
+- **Rear deck:** one disc per mine, an empty socket while that mine is down. Your tank has them
+  too.
+- The mission banner and the results tally now show small tank badges drawn by the game instead
+  of colour chips, so the banner teaches the language as each enemy arrives.
+- **Barrel rings and turret marks: not done.** At iPhone SE scale a whole barrel is about 3 px
+  wide, so rings would be under a pixel. Ricochets and aim skill stay in the guide's cards and
+  table.
+- The mock-up sheet is the guide's "Read a tank at a glance" section: the parts enlarged, and
+  every kind at true SE size. It was checked in headless Chrome at iPhone SE and Pro Max scale
+  (DPR 3, light and dark). **Still to do:** look at it on a real iPhone, and try the
+  "someone who hasn't played" test.
+- From "Every change includes": a mine's light no longer blinks under reduced motion. It stays
+  lit and turns red for its last seconds.
+
 ### R3. A colour plan that won't run out
-**Status:** idea · **Size:** S
+**Status:** done 2026-10-13 · **Size:** S
 
 Once R2 carries the abilities, colour only has to tell kinds apart.
 
@@ -72,12 +99,19 @@ Once R2 carries the abilities, colour only has to tell kinds apart.
 - Every colour needs a light and a dark value in `tanks/styles.css`, and a check that the chip
   text has enough contrast (the guide build already picks dark or light text automatically).
 
+**Shipped:** Red `#b81d33` (dark `#c2213a`) for W1 and Olive `#526228` (dark `#566426`) for W2.
+Brown moved from `#9a6a3c` to `#96673a`, a shift you can't see, so its chip text reaches 4.5:1.
+The plan is written above the colours in `tanks/styles.css`, shown in the guide, and enforced by
+a test in both modes: every kind at least 10 apart (OKLab ×100) from every other kind and from
+the off-limits colours (your blue, fire orange, crate yellow, which Yellow is exempt from), and
+chip text at 4.5:1 or better.
+
 ---
 
 ## W. New enemies and weapons
 
 ### W1. Guided missile tank
-**Status:** idea · **Size:** M · **Needs:** R1 (R2 nice to have)
+**Status:** done 2026-10-13 · **Size:** M · **Needs:** R1 (R2 nice to have)
 
 A tank whose missiles steer toward you, with a limited turn rate, so a late sidestep makes them
 overshoot.
@@ -107,8 +141,16 @@ overshoot.
   fuel work; a missile can be shot down; a mid-flight save resumes exactly.
 - **Field guide:** a card whose scene shows a curved dotted path, and a new aim style ("Guided").
 
+**Shipped:** kind `red`, map letter `r`, Red / Vermell, with the starting numbers above.
+
+- **Decision: line of sight only** (the fairer option). It aims and checks its shot like a
+  Direct tank, and the missile does the chasing. That keeps the mortar as the one enemy that
+  needs no line at all, and homing already punishes stepping out of the line.
+- Lock-on beep, smoke trail and a blinking nose light (steady under reduced motion).
+- Missions: introduced in 12 (Lock-on), then 16, 18 and 20.
+
 ### W2. Mortar tank (indirect fire, a new category)
-**Status:** idea · **Size:** L · **Needs:** R1
+**Status:** done 2026-10-13 · **Size:** L · **Needs:** R1
 
 Lobs bombs over walls. It's the first enemy that doesn't need a line of sight, so it needs a
 clear warning.
@@ -133,12 +175,26 @@ clear warning.
 - **Tests:** a bomb lands exactly where and when planned, the blast radius, minimum range, no
   targeting near allies, and save/resume mid-flight.
 
+**Shipped:** kind `olive`, map letter `d`, Olive / Oliva, stationary, with the starting numbers
+above (1.5 s flight, blast 1.0, range 3–12, lead 0.8, scatter 0.45, reload 3.5 s). Bombs live in
+`s.bombs`; `WORLD_VERSION` is 2.
+
+- **Decision: a landing bomb clears crates,** like a mine: one blast rule with two radii.
+- Its tube turns toward the mark before it fires, as a tell.
+- The target mark has a closing ring (a static mark under reduced motion). The bomb is drawn
+  above its shadow with a pale rim, so it shows over walls. A thump and a falling whistle at
+  launch, a shorter blast at landing.
+- Missions: introduced in 15 (Artillery), then 19 and 20.
+- **To tune:** in bot playtests, mortars almost never land a kill. 1.5 s of warning is enough
+  to drive out of a 1-cell blast, so they work as area denial that pushes you out of cover into
+  other guns. If that feels toothless in real play, shorten `BOMB_FLIGHT` first.
+
 ---
 
 ## A. AI
 
 ### A1. Tanks jam in narrow gaps and shove each other
-**Status:** idea · **Size:** M
+**Status:** done 2026-10-13 · **Size:** M
 
 What happens: a tank grinds against the edge of a one-cell gap, or two tanks meet in a corridor
 and push each other back and forth without either giving way.
@@ -175,8 +231,30 @@ Fixes, roughly in order of value:
   (3 seeds), no enemy that wants to move stays within 0.2 cells of the same spot for more than
   1.5 s.
 
+**Shipped:** fixes 1–5; 6 decided against.
+
+1. Stuck detection: a tank pushing toward the same cell for 0.4 s without covering 0.1 cells
+   avoids that cell for 2 s, backs off for 0.3 s and chooses again.
+2. Right of way: the tank with somewhere to be (outside its preferred distance) goes first;
+   between equals, the lower slot. The other steps out of its line, or backs ahead of it in a
+   one-wide corridor, and waits until it has passed (at most 4 s).
+3. Cell claims: no tank picks a cell another tank stands in or is heading for. The spacing
+   penalty fell from 2.5 to 1, below a step of progress, so tanks can pass side by side.
+4. No heading bonus after a failed move.
+5. Lining up: the further off a narrow way's centre line, the steeper it heads for the line.
+   The blend is smooth: a hard threshold made tanks flip between two headings and stall.
+6. `ART` stays 1.1: the R2 parts need the size to read on a phone, and with the jams fixed in
+   the AI the tight look matters less.
+
+Measured with non-firing enemies on every mission (60 s, 3 seeds): the old AI left tanks pinned
+for up to 28 s (two Blacks in mission 17). Now none stays pinned past 1.5 s, and grinding into
+walls adds up to about 0.2 s in 10,000 s of driving. **Known limit:** two tanks that both need
+to get past each other in a long one-wide corridor, whose only passing bay is behind one of
+them, can still take turns backing up. The maps give roaming tanks two-wide routes where they
+meet (M2).
+
 ### A2. Smarter aim: shoot where you're going
-**Status:** idea · **Size:** M
+**Status:** done 2026-10-13 · **Size:** M
 
 Only the black tank leads its shots today (`lead: 0.6`). It aims at where you'd be after
 `distance ÷ shell speed × 0.6` seconds, using your velocity at that instant. Bank shots already
@@ -195,12 +273,24 @@ use the predicted point, so a tank with both bank and lead would bounce shots at
 - **Tests:** a lead tank hits a target moving in a straight line; a target that turns at the
   right moment makes it miss.
 
+**Shipped:** exact intercept (`intercept` in `ai.js`, counting the muzzle), predictions that stop
+at walls (`predict`), and your velocity smoothed over about a quarter second (`svx`, `svy` on
+your tank, part of the saved world). Lead tiers: Teal 0.5, Violet 0.3, White 0.3, Black 0.6,
+and Olive's bombs 0.8; the early tanks have none. The guide lists each kind's lead. The later
+ideas moved to A3.
+
 ---
+
+### A3. Tactics
+**Status:** idea · **Size:** M
+
+Moved here from A2's later ideas: aim at choke points you have to pass; hide behind cover after
+firing; flank; avoid every tank firing at the same moment. Tune together with Red and Olive.
 
 ## M. Maps and missions
 
 ### M1. A map editor
-**Status:** idea · **Size:** M
+**Status:** done 2026-10-13 · **Size:** M
 
 Maps are typed by hand as 15 strings of 20 characters, which makes them slow to try out and
 easy to keep simple.
@@ -215,8 +305,16 @@ easy to keep simple.
 - **Later:** playtest inside the editor by bundling `engine.js`, `ai.js` and `rules.js` into the
   page (they are DOM-free, so they run anywhere).
 
+**Shipped:** the guide's "Map editor" section: a brush for every map character (typing the
+character picks it), top-bottom mirroring, start from any mission or a blank map, undo,
+"Copy as missions.js entry", and a text box to edit or paste a map. The checks run live (the
+same `guide/mapcheck.mjs` the tests use) and ring the cells they point at, on a preview drawn
+by the game's own art. The draft stays in the browser. The guide build bundles `rules.js`,
+`ai.js`, `engine.js`, `art.js` and `mapcheck.mjs` into the page, and a test checks the bundle
+behaves exactly like the game. Playtesting in the editor is M5.
+
 ### M2. Stronger layouts
-**Status:** idea · **Size:** M (plus time per map)
+**Status:** done 2026-10-13 · **Size:** M (plus time per map)
 
 What makes today's maps feel weak (from `missions.js`):
 
@@ -239,8 +337,21 @@ Guidelines for new and reworked maps:
 - Make room for the new enemies: open ground for mortars (W2), corners and walls for missiles
   (W1) to break on.
 
+**Shipped:** all 20 maps rebuilt, one idea each (see M4 for the list), with Red and Olive
+introduced in missions designed for them (12 and 15). Starts are in 9 different places. Only
+Mirror match (10) is mirrored, on purpose. Crates are gates (Crate gate, Switchbacks, Fortress),
+holes are a lane (Across the pits), turrets sit in pockets (Crossfire, Pillboxes), and the
+mortar missions keep open ground. Every map passes the M3 checks and the AI tests, and was
+playtested with a scripted bot in two modes: an expert that wins every mission at least 6
+times in 8, and a weaker one that showed the difficulty curve (gentle to mission 6, then a
+climb, with easier introductions for Red and Olive).
+
+**Not met:** density. Most maps are 76–89% open, so the 75% nudge fires on 19 of 20. Denser
+drafts gave Pinks and Violets many more walls to bank off, and the middle of the campaign got
+much harder. Worth another pass with the editor.
+
 ### M3. Map quality checks
-**Status:** idea · **Size:** S
+**Status:** done 2026-10-13 · **Size:** S
 
 Extra tests or editor warnings, beyond "is it winnable":
 
@@ -249,19 +360,41 @@ Extra tests or editor warnings, beyond "is it winnable":
 - Warn when more than about 75% of the floor is open, or when the map is mirrored (a nudge, not a
   failure).
 
+**Shipped:** `guide/mapcheck.mjs`. Errors, which the tests reject: the parser's rules, 1–8
+enemies, every enemy reachable, no clear straight shot at your start (mortars excepted, since
+they lob), and no two missions with the same blocks. Nudges, shown in the editor: more than 75%
+open, and mirrored. The tests run it over every mission and check that it catches each problem.
+
 ---
+
+### M4. Mission names and briefings
+**Status:** done 2026-10-13 · **Size:** S
+
+Each mission gets a name and a one-line briefing that states its idea, in English and Catalan
+(`tanks.name.<n>`, `tanks.brief.<n>` in `i18n.js`).
+
+**Shipped:** shown on the mission banner, with any warnings for the kinds present (the banner
+stays up a little longer when there's more to read; a tap still skips it), and in the guide's
+map tiles and viewer. The missions: 1 First contact, 2 Crossfire, 3 Patrol, 4 Crate gate,
+5 Rocket range, 6 Switchbacks, 7 Bank shots, 8 Across the pits, 9 The maze, 10 Mirror match,
+11 Pillboxes, 12 Lock-on, 13 Ghosts, 14 Hunter, 15 Artillery, 16 Crossroads, 17 Fortress,
+18 Night shift, 19 Siege, 20 Last stand.
+
+### M5. Playtest in the editor
+**Status:** idea · **Size:** M
+
+The guide already bundles `engine.js`, `ai.js` and `rules.js`, so a Play button could run the
+map being edited with keyboard controls. A playtest bot like the one used for M2 (expert and
+casual modes) could also report a win rate per map, to compare difficulty while editing.
 
 ## Suggested order
 
-1. **A1** fixes a bug you can see in today's game.
-2. **R1, R2, R3** are the groundwork, so new enemies arrive readable.
-3. **M1** then **M2**: an editor makes it fast to rework the weak maps and design missions for new
-   enemies.
-4. **W1**, then **W2**, each introduced in missions designed for it.
-5. **A2** last. Lead, missiles and mortars all make the game harder, so tune them together.
+Every entry except A3 and M5 shipped on 2026-10-13. Next:
+
+1. **R2 on a real iPhone:** open the guide's "Read a tank" section and play a few missions.
+2. **Tuning:** Red, Olive and the new lead tiers together (W2's flight time first), then **A3**.
+3. **M2 density pass** with the editor, then **M5**.
 
 ## Parking lot
 
-Loose ideas that don't have an entry yet:
-
-- Mission names and a one-line briefing for each mission (EN and CA).
+Loose ideas that don't have an entry yet. Nothing waiting.

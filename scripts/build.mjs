@@ -38,22 +38,31 @@ function formatBytes(n) {
 
 const hex12 = (hash) => hash.digest('hex').slice(0, 12);
 
-/** URL list, download size and content hash for a group of files. */
+/** A file's content hash: the worker downloads it as ?v=<hash> and checks what arrives. */
+const fileHash = (content) => createHash('sha256').update(content).digest('hex').slice(0, 16);
+
+/** URL list, per-URL content hashes, download size and content hash for a group of files. */
 function describe(files) {
   const urls = [];
+  const hashes = {};
   let bytes = 0;
   const hash = createHash('sha256');
   for (const f of files) {
+    const fh = fileHash(f.content);
     // Navigations request the directory form, so index.html is cached under both URLs.
     if (f.url.endsWith('/index.html')) {
-      urls.push(f.url.slice(0, -'index.html'.length));
+      const dir = f.url.slice(0, -'index.html'.length);
+      urls.push(dir);
+      hashes[dir] = fh;
       bytes += f.content.length;
     }
     urls.push(f.url);
+    hashes[f.url] = fh;
     bytes += f.content.length;
     hash.update(f.url).update('\0').update(f.content).update('\0');
   }
-  return { urls: urls.sort(), bytes, version: hex12(hash) };
+  urls.sort();
+  return { urls, hashes: Object.fromEntries(urls.map((u) => [u, hashes[u]])), bytes, version: hex12(hash) };
 }
 
 export async function build({ quiet = false } = {}) {
@@ -82,7 +91,10 @@ export async function build({ quiet = false } = {}) {
   }
 
   const core = describe(groups.get('core'));
-  const PACKS = { core: { cache: `gamehost-core-${core.version}`, files: core.urls, bytes: core.bytes }, games: {} };
+  const PACKS = {
+    core: { cache: `gamehost-core-${core.version}`, files: core.urls, hashes: core.hashes, bytes: core.bytes },
+    games: {},
+  };
   for (const game of registry) {
     if (game.path !== `/games/${game.id}/`) throw new Error(`registry.json: "${game.id}" must have path /games/${game.id}/`);
     const pack = describe(groups.get(game.id));
@@ -91,6 +103,7 @@ export async function build({ quiet = false } = {}) {
       version: pack.version,
       cache: `gamehost-game-${game.id}-${pack.version}`,
       files: pack.urls,
+      hashes: pack.hashes,
       bytes: pack.bytes,
     };
   }
@@ -116,7 +129,7 @@ export async function build({ quiet = false } = {}) {
     .replace(packsToken, JSON.stringify(PACKS, null, 2));
   await writeFile(path.join(DIST, 'sw.js'), sw);
 
-  // 5. Write dist/version.json (never cached: the launcher fetches it to see if the host is up).
+  // 5. Write dist/version.json (never cached: the launcher fetches it to see if it's online).
   const packs = [PACKS.core, ...Object.values(PACKS.games)];
   const entries = packs.reduce((n, p) => n + p.files.length, 0);
   const bytes = packs.reduce((n, p) => n + p.bytes, 0);

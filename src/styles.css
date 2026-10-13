@@ -50,22 +50,7 @@
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
-  /* Extra black above the header row in the installed iOS app (see below). */
-  --edge-clear: 0px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-/* iOS 26 lays a progressive blur over the top ~40pt of an installed web app, even
-   under an opaque status bar, and no meta tag or CSS turns it off. Blurring plain
-   black is invisible, so the header grows a black band and keeps its text below
-   the blur. Installed iOS only (-webkit-touch-callout is iOS-only), and not on
-   landscape phones, where the status bar is hidden. */
-@supports (-webkit-touch-callout: none) {
-  @media (display-mode: standalone) and (min-height: 500px) {
-    :root {
-      --edge-clear: 40px;
-    }
-  }
 }
 
 /* iOS 26+ ignores theme-color and the status-bar-style meta, and an installed web app gets
@@ -265,7 +250,7 @@ button {
   flex: none;
   background: var(--bar);
   color: var(--on-bar);
-  padding: calc(var(--safe-t) + var(--edge-clear)) calc(var(--safe-r) + 4px) 0 calc(var(--safe-l) + 4px);
+  padding: var(--safe-t) calc(var(--safe-r) + 4px) 0 calc(var(--safe-l) + 4px);
   border-bottom: var(--stripe) solid var(--signal);
 }
 
@@ -413,7 +398,7 @@ dialog.sheet {
   width: 100%;
   max-width: 520px;
   max-height: 88vh;
-  max-height: min(88dvh, calc(100dvh - var(--safe-t) - var(--edge-clear) - 24px));
+  max-height: min(88dvh, calc(100dvh - var(--safe-t) - 24px));
   margin: auto auto 0;
   padding: 0;
   border: 0;

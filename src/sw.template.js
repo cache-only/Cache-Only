@@ -19,12 +19,23 @@ async function broadcast(message) {
   for (const client of clients) client.postMessage(message);
 }
 
-async function fetchStrict(url) {
-  const res = await fetch(url, { cache: 'reload', credentials: 'same-origin' });
+const toHex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+
+/**
+ * Downloads one file of this release. GitHub Pages' CDN can hand out a file from the previous
+ * release for up to 10 minutes after a push, and `cache: 'reload'` only skips the browser's
+ * cache, not the CDN's. So each file is requested as ?v=<its hash>, and what arrives must
+ * match that hash; anything else throws, so a stale copy never lands in a cache.
+ */
+async function fetchStrict(url, hash) {
+  const res = await fetch(`${url}?v=${hash}`, { cache: 'reload', credentials: 'same-origin' });
   if (!res.ok || res.redirected) {
     throw new Error(`Download failed for ${url}: ${res.status}${res.redirected ? ' (redirected)' : ''}`);
   }
-  return res;
+  const body = await res.arrayBuffer();
+  const got = toHex(await crypto.subtle.digest('SHA-256', body)).slice(0, hash.length);
+  if (got !== hash) throw new Error(`Download failed for ${url}: got ${got}, expected ${hash} (stale copy)`);
+  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
 async function cachedPaths(cache) {
@@ -46,7 +57,7 @@ async function fillPack(pack, onProgress = () => {}) {
   const run = async () => {
     while (next < missing.length) {
       const url = missing[next++];
-      await cache.put(url, await fetchStrict(url));
+      await cache.put(url, await fetchStrict(url, pack.hashes[url]));
       done++;
       onProgress(done, total);
     }
@@ -103,7 +114,7 @@ async function handleNavigation(request) {
   const hit = await caches.match(path, { cacheName: pack.cache, ignoreSearch: true });
   if (hit) return hit;
   try {
-    // A game that isn't downloaded, while the host is up.
+    // A game that isn't downloaded, while online.
     return await fetch(request);
   } catch (err) {
     const home = await caches.match('/', { cacheName: CORE.cache });

@@ -1,9 +1,11 @@
 <!-- Tanks field guide. Built by scripts/guide.mjs into guide/out/ (npm run guide). Edit this template and
-     guide/enemies.mjs, never the output. The build fills in the double-brace counts and the DATA object. -->
+     guide/enemies.mjs, never the output. The build fills in the double-brace counts, bundles the game's
+     rules.js, ai.js, engine.js and art.js and guide/mapcheck.mjs where MODULES sits, and writes DATA. -->
 <title>Tanks Field Guide</title>
 <style>
-  /* Layout: black wayfinding masthead on a signal stripe, then a 3x3 enemy roster, a wide comparison board,
-     the shared rules, a campaign matrix with 20 map tiles, and a map viewer that pairs each drawing with its source text. */
+  /* Layout: black wayfinding masthead on a signal stripe, then a roster of enemy cards, a sheet on reading
+     a tank at a glance, a wide comparison board, the shared rules, a campaign matrix with a map tile per
+     mission, a map viewer that pairs each drawing with its source, and a map editor. */
   :root {
     --paper: #f1ede3;
     --surface: #faf8f2;
@@ -18,6 +20,8 @@
     --signal: #ffc400;
     --on-signal: #16181d;
     --focus: #2563eb;
+    --bad: #b3261e;
+    --warn: #8a5a00;
     --you: rgba(255, 196, 0, 0.18);
     --ring: rgba(22, 24, 29, 0.22);
     --chip-dark: #16181d;
@@ -34,6 +38,7 @@
     :root:not([data-theme="light"]) {
       --paper: #0f1114; --surface: #181b20; --surface-2: #23272e; --text: #ece9e1; --muted: #9b988f;
       --line: #2d3139; --rule: #ece9e1; --on-bar: #ece9e1; --on-bar-muted: #8a877f; --focus: #7aa5ff;
+      --bad: #ff8a80; --warn: #ffc400;
       --you: rgba(255, 196, 0, 0.12); --ring: rgba(236, 233, 225, 0.24);
       /*TK_DARK*/
       color-scheme: dark;
@@ -42,6 +47,7 @@
   :root[data-theme="dark"] {
     --paper: #0f1114; --surface: #181b20; --surface-2: #23272e; --text: #ece9e1; --muted: #9b988f;
     --line: #2d3139; --rule: #ece9e1; --on-bar: #ece9e1; --on-bar-muted: #8a877f; --focus: #7aa5ff;
+    --bad: #ff8a80; --warn: #ffc400;
     --you: rgba(255, 196, 0, 0.12); --ring: rgba(236, 233, 225, 0.24);
     /*TK_DARK*/
     color-scheme: dark;
@@ -132,7 +138,7 @@
     background: var(--bar); color: var(--signal); padding: 4px 7px; border-radius: 2px; white-space: nowrap;
   }
   .scene { grid-area: scene; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 8 / 5; max-width: 100%; background: var(--tk-floor); align-self: start; }
-  .scene canvas, .map-art canvas, .viewer-map canvas { display: block; width: 100%; height: 100%; }
+  .scene canvas, .map-art canvas, .viewer-map canvas, .ed-map canvas { display: block; width: 100%; height: 100%; }
   .card-body { grid-area: body; display: grid; gap: 12px; align-content: start; min-width: 0; }
   .card-body > p { font-size: 14.5px; }
   .perks { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; margin: 0; padding: 0; }
@@ -141,12 +147,35 @@
     background: var(--surface-2); color: var(--text); white-space: nowrap;
   }
   .spec { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .spec div { padding: 7px 0 6px; display: grid; gap: 1px; }
+  .spec div { padding: 7px 0 6px; display: grid; gap: 1px; min-width: 0; }
   .spec div + div { border-left: 1px solid var(--line); padding-left: 8px; }
   .spec dt { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .spec dd { margin: 0; font-family: var(--font-mono); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spec dd { margin: 0; font-family: var(--font-mono); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .weak { font-size: 13.5px; color: var(--muted); }
   .weak b { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); margin-right: 6px; }
+
+  /* ---------- Reading a tank ---------- */
+  .reading { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .reading { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 40px; } }
+  .parts { display: grid; gap: 18px; }
+  .part-row { display: grid; gap: 8px; }
+  .part-row h3 { font-size: 15px; font-weight: 700; }
+  .part-row p { font-size: 13.5px; color: var(--muted); max-width: 60ch; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tile { display: grid; gap: 4px; justify-items: start; width: min-content; }
+  .tile canvas { display: block; border: 2px solid var(--tk-frame); border-radius: 2px; background: var(--tk-floor); max-width: 100%; }
+  .tile span { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+  .tile span b { color: var(--text); font-weight: 600; }
+  .actual { display: grid; gap: 8px; align-content: start; }
+  .actual .tiles { gap: 6px; }
+  .actual .tile span { font-size: 10.5px; }
+  .swatches { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--line); }
+  .swatch { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .swatch code { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .swatch .off { width: 22px; height: 22px; border-radius: 2px; background: var(--c); box-shadow: inset 0 0 0 1px var(--ring); position: relative; overflow: hidden; }
+  .swatch .off::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 2px; background: var(--paper); transform: rotate(-45deg); }
+  .plan { display: grid; gap: 10px; font-size: 13.5px; color: var(--muted); max-width: 60ch; }
+  .plan b { color: var(--text); }
 
   /* ---------- Tables ---------- */
   .scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); -webkit-overflow-scrolling: touch; }
@@ -176,6 +205,8 @@
   .meter { display: block; height: 3px; background: var(--line); margin-top: 5px; min-width: 38px; border-radius: 1px; overflow: hidden; }
   .meter i { display: block; height: 100%; background: var(--text); }
   .tag { display: inline-block; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 4px; margin-right: 5px; border-radius: 2px; background: var(--tk-fire); color: var(--chip-dark); vertical-align: 1px; }
+  .tag.missile { background: var(--tk-alarm); color: var(--chip-light); }
+  .tag.bomb { background: var(--tk-olive); color: var(--chip-light); }
   tr.you th, tr.you td { background: var(--you); }
   tr.you .stick { background: linear-gradient(var(--you), var(--you)), var(--surface); }
   tbody tr:not(.you):hover td, tbody tr:not(.you):hover th { background: var(--surface-2); }
@@ -193,10 +224,10 @@
   .aims div { padding: 11px 0; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
   .aims div:first-child { border-top: 1px solid var(--line); }
   .aims dt { display: flex; align-items: center; gap: 10px; font-weight: 700; }
-  .aims dt .who { display: inline-flex; gap: 3px; }
+  .aims dt .who { display: inline-flex; gap: 3px; flex-wrap: wrap; }
   .aims dt .who .chip { width: 16px; height: 16px; font-size: 9.5px; }
   .aims dd { margin: 0; font-size: 14px; color: var(--text); }
-  h3.sub { font-size: 15px; font-weight: 700; margin-bottom: 8px; font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+  h3.sub { margin-bottom: 8px; font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; font-weight: 700; color: var(--muted); }
 
   /* ---------- Campaign ---------- */
   .facts { display: flex; flex-wrap: wrap; gap: 8px 26px; font-family: var(--font-mono); font-size: 13px; }
@@ -227,8 +258,10 @@
   .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
   .map:hover .map-art { transform: translateY(-2px); }
   .map[aria-current="true"] .map-art { outline: 3px solid var(--signal); outline-offset: 2px; }
-  .map-cap { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .map-n { font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+  .map-cap { display: grid; gap: 3px; min-width: 0; }
+  .map-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .map-n { font-family: var(--font-mono); font-weight: 700; font-size: 13px; flex: none; }
+  .map-name { font-weight: 700; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .map-chips { display: flex; flex-wrap: wrap; gap: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
   .map-chips span { display: inline-flex; align-items: center; gap: 3px; }
   .map-chips .chip { width: 14px; height: 14px; font-size: 0; }
@@ -239,22 +272,24 @@
   .map-tags:empty { display: none; }
 
   /* ---------- Map anatomy ---------- */
-  .viewer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 14px; min-width: 0; }
-  .viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .viewer, .editor { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 14px; min-width: 0; }
+  .viewer-bar, .ed-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .btn {
     font: inherit; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
     min-height: 36px; padding: 0 12px; border-radius: 2px; border: 1px solid var(--rule); background: var(--surface); color: var(--text); cursor: pointer;
   }
   .btn:hover { background: var(--surface-2); }
   .btn.ink { background: var(--bar); color: var(--signal); border-color: var(--bar); }
-  select.btn { padding-right: 8px; }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  select.btn { padding-right: 8px; max-width: 100%; }
   .viewer-facts { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); flex-basis: 100%; }
   .viewer-facts b { color: var(--text); }
+  .viewer-brief { font-size: 14px; flex-basis: 100%; }
   .viewer-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
   @media (min-width: 900px) { .viewer-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
   figcaption { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-  .viewer-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
+  .viewer-map, .ed-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
   .src-grid {
     display: grid; grid-template-columns: 1.6em repeat(20, minmax(0, 1fr)); gap: 1px;
     font-family: var(--font-mono); font-size: clamp(9px, 1.25vw, 13px); line-height: 1;
@@ -272,7 +307,8 @@
   .src-grid .hot { outline: 2px solid var(--focus); outline-offset: 0; position: relative; z-index: 1; opacity: 1; }
   .readout { font-family: var(--font-mono); font-size: 12.5px; min-height: 1.5em; color: var(--muted); }
   .readout b { color: var(--text); }
-  #ana-copy { width: 100%; min-height: 15em; font-family: var(--font-mono); font-size: 12px; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 8px; }
+  #ana-copy, #ed-text { width: 100%; font-family: var(--font-mono); font-size: 12px; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 8px; }
+  #ana-copy { min-height: 15em; }
 
   .legend { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 700px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; } }
@@ -289,7 +325,40 @@
   .three { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 860px) { .three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; } }
   .three ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; font-size: 14px; }
-  .three code, .intro code, .rules code { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 4px; border-radius: 2px; color: var(--text); }
+  .three code, .intro code, .rules code, .plan code { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 4px; border-radius: 2px; color: var(--text); }
+
+  /* ---------- Map editor ---------- */
+  .brushes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .brush {
+    font: inherit; font-family: var(--font-mono); font-weight: 700; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 9px 0 5px;
+    border: 1px solid var(--line); border-radius: 2px; background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .brush .sym { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); font-size: 12px; }
+  .brush .sym.f { background: var(--tk-floor); color: var(--muted); }
+  .brush .sym.w { background: var(--tk-wall); color: var(--on-bar); }
+  .brush .sym.x { background: var(--tk-crate); color: var(--tk-stripe); }
+  .brush .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
+  .brush .sym.t { background: var(--c); }
+  .brush .sym.t[data-ink="dark"] { color: var(--chip-dark); }
+  .brush .sym.t[data-ink="light"] { color: var(--chip-light); }
+  .brush span:last-child { font-family: var(--font-sans); font-weight: 600; font-size: 12.5px; }
+  .brush[aria-pressed="true"] { border-color: var(--rule); box-shadow: inset 0 0 0 1px var(--rule); background: var(--surface-2); }
+  .switch { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .switch input { width: 18px; height: 18px; accent-color: var(--rule); }
+  .ed-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  @media (min-width: 900px) { .ed-body { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+  .ed-map { touch-action: none; }
+  .ed-side { display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .ed-stats { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+  .ed-stats b { color: var(--text); }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+  .checks li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .checks .kind { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding-top: 2px; }
+  .checks .err .kind { color: var(--bad); }
+  .checks .warn .kind { color: var(--warn); }
+  .checks .ok .kind { color: var(--muted); }
+  #ed-text { min-height: 17em; line-height: 1.35; resize: vertical; }
 
   footer.wrap { padding-block: 22px 40px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 
@@ -303,7 +372,7 @@
   <div class="wrap">
     <p class="eyebrow">Gameplane · Tanks</p>
     <h1>Field guide</h1>
-    <p class="lede">Every enemy tank, all {{MISSIONS}} missions, and how the maps are written. Every number on this page is read from the game's own code. Distances are in grid cells (the arena is {{COLS}} × {{ROWS}} cells) and times are in seconds.</p>
+    <p class="lede">Every enemy tank, how to read one at a glance, all {{MISSIONS}} missions, how a map is written, and an editor to draw your own. Every number on this page is read from the game's own code, and every tank is drawn by it. Distances are in grid cells (the arena is {{COLS}} × {{ROWS}} cells) and times are in seconds.</p>
     <div class="lineup" id="lineup" aria-label="Enemies in order of appearance"></div>
     <div class="yours" id="yours"></div>
   </div>
@@ -311,10 +380,12 @@
 
 <nav class="wrap toc" aria-label="Sections">
   <a href="#enemies">Enemies</a>
+  <a href="#reading">Read a tank</a>
   <a href="#compare">Side by side</a>
   <a href="#shared">Shared rules</a>
   <a href="#missions">Missions</a>
   <a href="#anatomy">How a map is made</a>
+  <a href="#editor">Map editor</a>
 </nav>
 
 <main class="wrap">
@@ -322,6 +393,22 @@
     <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · in order of appearance</span></header>
     <p class="intro">Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up.</p>
     <div class="roster" id="roster"></div>
+  </section>
+
+  <section id="reading">
+    <header class="sec-head"><h2>Read a tank at a glance</h2><span class="label">Shape says what it does · colour says which it is</span></header>
+    <p class="intro">Each part of a tank answers one question, the same way on every kind, so a tank you have never met still tells you what it can do. Its colour only tells kinds apart.</p>
+    <div class="reading">
+      <div class="parts" id="parts"></div>
+      <div class="actual">
+        <h3 class="sub">Actual size on a phone</h3>
+        <p class="plan">An iPhone SE shows a cell about 23 points across. Every kind at that size:</p>
+        <div class="tiles" id="actual"></div>
+        <h3 class="sub" style="margin-top:14px">The colour plan</h3>
+        <div class="swatches" id="swatches"></div>
+        <div class="plan" id="plan"></div>
+      </div>
+    </div>
   </section>
 
   <section id="compare">
@@ -348,7 +435,7 @@
     <header class="sec-head"><h2>The {{MISSIONS}} missions</h2><span class="label">From missions.js</span></header>
     <div class="facts" id="campaign-facts"></div>
     <div class="scroller"><table class="matrix" id="matrix"></table></div>
-    <p class="intro">Every map below is drawn from its source text, at the start of the mission. Your tank is the blue one on the left; enemies start aimed at you. Tap a map to open its source.</p>
+    <p class="intro">Every map below is drawn from its source text, at the start of the mission. Your tank is the blue one; enemies start aimed at you. Tap a map to open its source.</p>
     <div class="maps" id="maps"></div>
   </section>
 
@@ -360,7 +447,9 @@
         <button class="btn" id="ana-prev" type="button" aria-label="Previous mission">‹ Prev</button>
         <select class="btn" id="ana-pick" aria-label="Mission"></select>
         <button class="btn" id="ana-next" type="button" aria-label="Next mission">Next ›</button>
+        <button class="btn" id="ana-edit" type="button">Open in the editor</button>
         <button class="btn ink" id="ana-copy-btn" type="button">Copy map text</button>
+        <p class="viewer-brief" id="ana-brief"></p>
         <p class="viewer-facts" id="ana-facts"></p>
       </div>
       <div class="viewer-body">
@@ -389,12 +478,7 @@
       </div>
       <div>
         <h3 class="sub">The tests check</h3>
-        <ul>
-          <li>There are exactly {{MISSIONS}} missions, with checkpoints at {{CHECKPOINTS}}.</li>
-          <li>Each mission has between 1 and 8 enemies.</li>
-          <li>You can reach every enemy: either drive next to it (crates count as open, since a mine blast clears them) or see it down a clear straight line from somewhere you can drive.</li>
-          <li>The enemy AI plays every mission for 20 seconds with 3 different seeds without a tank ending up inside a block or a shell inside a wall.</li>
-        </ul>
+        <ul id="tests-list"></ul>
       </div>
       <div>
         <h3 class="sub">House style</h3>
@@ -402,30 +486,65 @@
       </div>
     </div>
   </section>
+
+  <section id="editor">
+    <header class="sec-head"><h2>Map editor</h2><span class="label">Draws and checks maps the way the game and its tests do</span></header>
+    <p class="intro">Paint a map, watch the same checks the tests run, then copy it into <code>missions.js</code>. It starts from a mission, and your draft stays in this browser. Drag to paint; on a keyboard, a map character picks its brush.</p>
+    <div class="editor">
+      <div class="ed-bar">
+        <select class="btn" id="ed-load" aria-label="Start from"></select>
+        <label class="switch" for="ed-mirror"><input type="checkbox" id="ed-mirror"> Mirror top to bottom</label>
+        <button class="btn" id="ed-undo" type="button" disabled>Undo</button>
+        <button class="btn" id="ed-clear" type="button">Clear</button>
+        <button class="btn ink" id="ed-copy" type="button">Copy as missions.js entry</button>
+      </div>
+      <div class="brushes" id="ed-brushes" role="group" aria-label="Brush"></div>
+      <div class="ed-body">
+        <figure>
+          <div class="ed-map"><canvas id="ed-canvas" role="img" aria-label="The map being edited, drawn as in the game"></canvas></div>
+          <figcaption id="ed-caption">Drawn as in the game</figcaption>
+        </figure>
+        <div class="ed-side">
+          <p class="ed-stats" id="ed-stats"></p>
+          <ul class="checks" id="ed-checks" aria-live="polite"></ul>
+          <label class="label" for="ed-text">Map text (edit or paste here too)</label>
+          <textarea id="ed-text" spellcheck="false" autocomplete="off"></textarea>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
-<footer class="wrap">Source: src/games/tanks/rules.js, ai.js, engine.js and missions.js in Gameplane. Tank art is redrawn from render.js.</footer>
+<footer class="wrap">Source: src/games/tanks/rules.js, ai.js, engine.js, art.js and missions.js in Gameplane, and guide/mapcheck.mjs for the map checks. The tanks, maps and shots on this page are drawn by the game's own art.js.</footer>
 
 <script>
+/*__MODULES__*/
 const DATA = __DATA__;
+
+const { makePalette, drawGround, drawTank, drawTankShadow, drawShot, drawMine, drawTarget, drawBomb, bombAt, ART } = MOD.art;
+const { FLOOR, WALL, CRATE, HOLE, angleDiff } = MOD.rules;
+const { checkMap, isMirrored, openShare } = MOD.mapcheck;
 
 const PI = Math.PI;
 const KINDS = DATA.kinds;
 const T = DATA.types;
 const COLS = DATA.cols;
 const ROWS = DATA.rows;
-const ART = 1.1;
 const MUZZLE = DATA.muzzle;
 const INK = DATA.ink; // chip text colour per tank, picked by contrast at build time
+const SHADOW = { x: 0.07, y: 0.1 };
+const MINE_SHADOW = { x: 0.04, y: 0.06 };
+const UP = { x: 0, y: -1 };
 const deg = (rad) => (rad * 180) / PI;
 const pad = (n) => String(n).padStart(2, '0');
 const fmt = (n, d = 1) => Number(n).toFixed(d);
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- What each tank does: guide/enemies.mjs, resolved at build time ---------- */
 const INFO = DATA.info;
 
 /* ---------- Missions ---------- */
-const MISSIONS = DATA.missions.map((rows, i) => {
+function survey(rows) {
   const enemies = [];
   const counts = {};
   let player = null;
@@ -441,10 +560,9 @@ const MISSIONS = DATA.missions.map((rows, i) => {
       counts[kind] = (counts[kind] || 0) + 1;
     }
   }));
-  const blocks = rows.map((l) => l.replace(/[^#xo]/g, '.'));
-  const mirrored = blocks.every((l, r) => l === blocks[rows.length - 1 - r]);
-  return { n: i + 1, rows, enemies, counts, player, walls, crates, holes, mirrored };
-});
+  return { enemies, counts, player, walls, crates, holes, mirrored: isMirrored(rows), open: openShare(rows) };
+}
+const MISSIONS = DATA.missions.map((rows, i) => ({ n: i + 1, rows, name: DATA.names[i], brief: DATA.briefs[i], ...survey(rows) }));
 const FIRST = {};
 const TOTAL = {};
 for (const m of MISSIONS) for (const [k, n] of Object.entries(m.counts)) {
@@ -476,35 +594,12 @@ function chip(kind, cls = '') {
   }, kind === 'player' ? '@' : DATA.codes[kind]);
 }
 
-/* ---------- Drawing (mirrors render.js) ---------- */
-function hexToRgb(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return [128, 128, 128];
-  const n = parseInt(m[1], 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-function shade(hex, amount) {
-  const target = amount > 0 ? 255 : 0;
-  const k = Math.abs(amount);
-  const [r, g, b] = hexToRgb(hex).map((v) => Math.round(v + (target - v) * k));
-  return `rgb(${r}, ${g}, ${b})`;
-}
+/* ---------- Drawing, with the game's art.js ---------- */
 function palette() {
   const cs = getComputedStyle(document.documentElement);
-  const g = (n) => cs.getPropertyValue(n).trim();
-  const p = {
-    floor: g('--tk-floor'), joint: g('--tk-joint'), wall: g('--tk-wall'), wallLit: g('--tk-wall-lit'),
-    wallDark: g('--tk-wall-dark'), shadow: g('--tk-shadow'), crate: g('--tk-crate'), stripe: g('--tk-stripe'),
-    hole: g('--tk-hole'), holeRim: g('--tk-hole-rim'), track: g('--tk-track'), shell: g('--tk-shell'),
-    aim: g('--tk-aim'), ink: g('--tk-ink'), tread: g('--tk-tread'), fire: g('--tk-fire'), smoke: g('--tk-smoke'),
-    signal: g('--signal'), focus: g('--focus'), tanks: {},
-  };
-  for (const k of ['player', ...KINDS]) {
-    const base = g(`--tk-${k}`) || '#888888';
-    p.tanks[k] = { base, dark: shade(base, -0.32), light: shade(base, 0.22), deep: shade(base, -0.55) };
-  }
-  return p;
+  return makePalette((name) => cs.getPropertyValue(name).trim());
 }
+/** Sizes a canvas to its box at the device pixel ratio, with worldW cells across. */
 function prep(canvas, worldW) {
   const r = canvas.getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -515,164 +610,19 @@ function prep(canvas, worldW) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   return { ctx, px: 1 / s };
 }
-function roundRect(ctx, x, y, w, hgt, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + hgt, r);
-  ctx.arcTo(x + w, y + hgt, x, y + hgt, r);
-  ctx.arcTo(x, y + hgt, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+/** A canvas of a fixed CSS size, drawn at worldW cells across. */
+function fixed(canvas, cssW, cssH, worldW) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width / worldW;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  return { ctx, px: 1 / s };
 }
-/** Floor, holes, block shadows, walls and crates, the way buildFloor draws them. */
-function drawGround(ctx, P, cols, rows, kindAt, px) {
-  ctx.fillStyle = P.floor;
-  ctx.fillRect(0, 0, cols, rows);
-  ctx.strokeStyle = P.joint;
-  ctx.lineWidth = Math.max(px, 0.03);
-  ctx.beginPath();
-  for (let x = 1; x < cols; x++) { ctx.moveTo(x, 0); ctx.lineTo(x, rows); }
-  for (let y = 1; y < rows; y++) { ctx.moveTo(0, y); ctx.lineTo(cols, y); }
-  ctx.stroke();
-  const each = (type, fn) => { for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (kindAt(c, r) === type) fn(c, r); };
-  ctx.fillStyle = P.hole;
-  ctx.beginPath();
-  each('hole', (c, r) => ctx.rect(c, r, 1, 1));
-  ctx.fill();
-  ctx.fillStyle = P.holeRim;
-  ctx.beginPath();
-  each('hole', (c, r) => { if (kindAt(c, r + 1) !== 'hole') ctx.rect(c, r + 0.9, 1, 0.1); });
-  ctx.fill();
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, cols, rows);
-  ctx.clip();
-  ctx.fillStyle = P.shadow;
-  ctx.beginPath();
-  for (const type of ['wall', 'crate']) each(type, (c, r) => ctx.rect(c + 0.1, r + 0.14, 1, 1));
-  ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = P.wall;
-  ctx.beginPath();
-  each('wall', (c, r) => ctx.rect(c, r, 1, 1));
-  ctx.fill();
-  ctx.fillStyle = P.wallLit;
-  ctx.beginPath();
-  each('wall', (c, r) => { if (kindAt(c, r - 1) !== 'wall') ctx.rect(c, r, 1, 0.09); });
-  ctx.fill();
-  ctx.fillStyle = P.wallDark;
-  ctx.beginPath();
-  each('wall', (c, r) => { if (kindAt(c, r + 1) !== 'wall') ctx.rect(c, r + 0.91, 1, 0.09); });
-  ctx.fill();
-  each('crate', (c, r) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(c + 0.04, r + 0.04, 0.92, 0.92);
-    ctx.clip();
-    ctx.fillStyle = P.crate;
-    ctx.fillRect(c, r, 1, 1);
-    ctx.strokeStyle = P.stripe;
-    ctx.lineWidth = 0.13;
-    ctx.beginPath();
-    for (let k = -1; k <= 2; k += 0.36) { ctx.moveTo(c + k, r); ctx.lineTo(c + k - 1, r + 1); }
-    ctx.stroke();
-    ctx.restore();
-    ctx.strokeStyle = P.stripe;
-    ctx.lineWidth = 0.08;
-    ctx.strokeRect(c + 0.08, r + 0.08, 0.84, 0.84);
-  });
-}
-function drawTankShadow(ctx, P, x, y, body, alpha = 1) {
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = P.shadow;
-  ctx.save();
-  ctx.translate(x + 0.07, y + 0.1);
-  ctx.scale(ART, ART);
-  ctx.rotate(body);
-  roundRect(ctx, -0.43, -0.39, 0.86, 0.78, 0.08);
-  ctx.fill();
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
-function drawTank(ctx, P, kind, x, y, body, turret, alpha = 1) {
-  const tone = P.tanks[kind];
-  ctx.globalAlpha = alpha;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(ART, ART);
-  ctx.rotate(body);
-  ctx.fillStyle = P.tread;
-  roundRect(ctx, -0.43, -0.39, 0.86, 0.21, 0.05);
-  ctx.fill();
-  roundRect(ctx, -0.43, 0.18, 0.86, 0.21, 0.05);
-  ctx.fill();
-  ctx.strokeStyle = tone.deep;
-  ctx.lineWidth = 0.035;
-  ctx.beginPath();
-  for (let k = -0.42; k < 0.42; k += 0.14) {
-    ctx.moveTo(k, -0.37); ctx.lineTo(k, -0.2);
-    ctx.moveTo(k, 0.2); ctx.lineTo(k, 0.37);
-  }
-  ctx.stroke();
-  ctx.fillStyle = tone.base;
-  roundRect(ctx, -0.37, -0.26, 0.74, 0.52, 0.09);
-  ctx.fill();
-  ctx.strokeStyle = P.ink;
-  ctx.lineWidth = 0.045;
-  ctx.stroke();
-  ctx.fillStyle = tone.dark;
-  ctx.fillRect(-0.3, -0.2, 0.08, 0.4);
-  ctx.fillRect(0.22, -0.2, 0.08, 0.4);
-  ctx.restore();
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(turret);
-  ctx.fillStyle = tone.dark;
-  ctx.strokeStyle = P.ink;
-  ctx.lineWidth = 0.04;
-  ctx.beginPath();
-  ctx.rect(0.08, -0.065, MUZZLE - 0.08, 0.13);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = tone.light;
-  ctx.beginPath();
-  ctx.arc(0, 0, 0.2 * ART, 0, PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = tone.dark;
-  ctx.beginPath();
-  ctx.arc(-0.05 * ART, 0, 0.065 * ART, 0, PI * 2);
-  ctx.fill();
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
-function drawMine(ctx, P, kind, x, y) {
-  ctx.fillStyle = P.shadow;
-  ctx.beginPath(); ctx.arc(x + 0.04, y + 0.06, 0.24, 0, PI * 2); ctx.fill();
-  ctx.fillStyle = P.ink;
-  ctx.beginPath(); ctx.arc(x, y, 0.24, 0, PI * 2); ctx.fill();
-  ctx.fillStyle = P.tanks[kind].base;
-  ctx.beginPath(); ctx.arc(x, y, 0.16, 0, PI * 2); ctx.fill();
-  ctx.fillStyle = P.signal;
-  ctx.beginPath(); ctx.arc(x, y, 0.07, 0, PI * 2); ctx.fill();
-}
-function drawShell(ctx, P, x, y, a, rocket) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(a);
-  if (rocket) {
-    ctx.fillStyle = P.fire;
-    ctx.beginPath();
-    ctx.moveTo(-0.13, -0.05);
-    ctx.lineTo(-0.34, 0);
-    ctx.lineTo(-0.13, 0.05);
-    ctx.fill();
-  }
-  ctx.fillStyle = P.shell;
-  roundRect(ctx, -0.14, -0.065, 0.28, 0.13, 0.065);
-  ctx.fill();
-  ctx.restore();
-}
+const CELL = { '#': WALL, x: CRATE, o: HOLE };
 function drawTracks(ctx, P, pts) {
   const segs = [];
   let total = 0;
@@ -707,6 +657,35 @@ function drawTracks(ctx, P, pts) {
   }
   ctx.globalAlpha = 1;
 }
+function dotted(ctx, P, pts, alpha = 0.5) {
+  ctx.strokeStyle = P.aim;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 0.06;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([0.02, 0.22]);
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+}
+/** A shot drawn along `a`, with a rocket's or missile's smoke behind it on `path`. */
+function shotAt(ctx, P, weapon, path, d) {
+  const p = pointAt(path, d);
+  if (weapon === 'rocket' || weapon === 'missile') {
+    for (const k of [0.34, 0.58, 0.86, 1.18]) {
+      if (d - k < 0) continue;
+      const q = pointAt(path, d - k);
+      ctx.globalAlpha = 0.5 * (1 - k / 1.45);
+      ctx.fillStyle = P.smoke;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07, 0, PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  drawShot(ctx, P, { x: p.x, y: p.y, vx: Math.cos(p.a), vy: Math.sin(p.a), weapon }, { flame: 0.5, blink: true });
+}
 
 /* ---------- Card scenes: an 8 x 5 cell patch of arena ---------- */
 const SW = 8, SH = 5;
@@ -729,13 +708,27 @@ function shotPath(sc, x, y, a) {
   }
   return pts;
 }
+/** A missile's path from (x, y) heading `a`, steering at the game's turn rate toward (tx, ty). */
+function seekPath(x, y, a, tx, ty, speed) {
+  const pts = [[x, y]];
+  const dt = 1 / 60;
+  for (let i = 0; i < 600; i++) {
+    const off = angleDiff(Math.atan2(ty - y, tx - x), a);
+    if (Math.abs(off) <= DATA.lock) a += Math.max(-DATA.missileTurn * dt, Math.min(DATA.missileTurn * dt, off));
+    x += Math.cos(a) * speed * dt;
+    y += Math.sin(a) * speed * dt;
+    pts.push([x, y]);
+    if (Math.hypot(tx - x, ty - y) < 0.5 || x > SW + 0.5 || y < -0.5 || y > SH + 0.5) break;
+  }
+  return pts;
+}
 function pointAt(pts, d) {
   for (let i = 1; i < pts.length; i++) {
     const [ax, ay] = pts[i - 1];
     const [bx, by] = pts[i];
     const len = Math.hypot(bx - ax, by - ay);
     if (d <= len || i === pts.length - 1) {
-      const t = Math.min(1, Math.max(0, d / len));
+      const t = Math.min(1, Math.max(0, d / (len || 1)));
       return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, a: Math.atan2(by - ay, bx - ax) };
     }
     d -= len;
@@ -744,12 +737,12 @@ function pointAt(pts, d) {
 }
 function drawScene(canvas, kind) {
   const sc = SCENES[kind];
-  const rocket = T[kind].shot > 6; // the engine's own rule
+  const t = T[kind];
   const { ctx, px } = prep(canvas, SW);
   const P = palette();
   const solid = new Set();
   for (const [x, y, w, hgt] of sc.walls) for (let c = x; c < x + w; c++) for (let r = y; r < y + hgt; r++) solid.add(`${c},${r}`);
-  drawGround(ctx, P, SW, SH, (c, r) => (solid.has(`${c},${r}`) ? 'wall' : 'floor'), px);
+  drawGround(ctx, P, { cols: SW, rows: SH, kindAt: (c, r) => (solid.has(`${c},${r}`) ? WALL : FLOOR), px });
 
   let x, y, body = 0;
   if (sc.tracks) {
@@ -787,62 +780,82 @@ function drawScene(canvas, kind) {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
-  if (T[kind].mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, kind, mx, my);
+  if (t.mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, { x: mx, y: my }, kind, 'on', MINE_SHADOW);
 
-  const path = shotPath(sc, x + Math.cos(sc.turret) * MUZZLE, y + Math.sin(sc.turret) * MUZZLE, sc.turret);
-  if (sc.bank) {
-    ctx.strokeStyle = P.aim;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 0.06;
-    ctx.lineCap = 'round';
-    ctx.setLineDash([0.02, 0.22]);
-    ctx.beginPath();
-    path.forEach(([px2, py2], i) => (i ? ctx.lineTo(px2, py2) : ctx.moveTo(px2, py2)));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
+  const ox = x + Math.cos(sc.turret) * MUZZLE;
+  const oy = y + Math.sin(sc.turret) * MUZZLE;
+  let path = shotPath(sc, ox, oy, sc.turret);
+  let target = null;
+  if (sc.seek) {
+    // The missile steers at the game's turn rate toward where you have sidestepped to.
+    path = seekPath(ox, oy, sc.turret, sc.seek[0], sc.seek[1], t.shot);
+    dotted(ctx, P, path, 0.55);
+    target = { type: 'player', x: sc.seek[0], y: sc.seek[1], body: PI / 2, turret: PI };
+  } else if (sc.bank) {
+    dotted(ctx, P, path);
+  }
+  let bomb = null;
+  if (sc.lob) {
+    bomb = { x0: x, y0: y, tx: sc.lob.to[0], ty: sc.lob.to[1], t: sc.lob.k * DATA.bombFlight, flight: DATA.bombFlight };
+    drawTarget(ctx, P, bomb, { calm: false });
+    // The arc it flies, drawn above the floor the way the bomb is.
+    const arc = [];
+    for (let k = 0; k <= 1.0001; k += 0.04) {
+      const p = bombAt({ ...bomb, t: k * bomb.flight });
+      arc.push([p.x, p.y - p.h]);
+    }
+    dotted(ctx, P, arc, 0.45);
   }
   const alpha = sc.ghost ?? 1;
-  drawTankShadow(ctx, P, x, y, body, alpha);
-  drawTank(ctx, P, kind, x, y, body, sc.turret, alpha);
-  for (const d of sc.shots) {
-    const p = pointAt(path, d);
-    if (rocket) {
-      for (const k of [0.34, 0.58, 0.86, 1.18]) {
-        if (d - k < 0) continue;
-        const q = pointAt(path, d - k);
-        ctx.globalAlpha = 0.5 * (1 - k / 1.45);
-        ctx.fillStyle = P.smoke;
-        ctx.beginPath();
-        ctx.arc(q.x, q.y, 0.05 + k * 0.07, 0, PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-    drawShell(ctx, P, p.x, p.y, p.a, rocket);
+  const tank = { type: kind, x, y, body, turret: sc.turret };
+  if (target) {
+    drawTankShadow(ctx, P, target, SHADOW);
+    drawTank(ctx, P, target, {});
   }
+  drawTankShadow(ctx, P, tank, SHADOW, alpha);
+  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, alpha });
+  for (const d of sc.shots) shotAt(ctx, P, t.weapon, path, d);
+  if (bomb) drawBomb(ctx, P, bomb, UP);
 }
-/** A whole mission at its first frame: enemies face your side with turrets aimed at you. */
-function drawMission(canvas, m, hover) {
+/**
+ * A whole map at its first frame: enemies face your side with turrets aimed at you.
+ * marks: [{ at: [c, r], kind: 'err' | 'warn' }] ring the cells a check points at.
+ */
+function drawMap(canvas, rows, { hover = null, marks = [] } = {}) {
   const { ctx, px } = prep(canvas, COLS);
   const P = palette();
-  const at = (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS ? '#' : m.rows[r][c]);
-  const kindAt = (c, r) => ({ '#': 'wall', x: 'crate', o: 'hole' })[at(c, r)] || 'floor';
-  drawGround(ctx, P, COLS, ROWS, kindAt, px);
-  const p = { x: m.player.c + 0.5, y: m.player.r + 0.5 };
-  const tanks = [{ kind: 'player', x: p.x, y: p.y, body: 0, turret: 0 }];
+  const m = survey(rows);
+  drawGround(ctx, P, { cols: COLS, rows: ROWS, kindAt: (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS ? WALL : CELL[rows[r][c]] ?? FLOOR), px });
+  const p = m.player ? { x: m.player.c + 0.5, y: m.player.r + 0.5 } : null;
+  const tanks = p ? [{ type: 'player', x: p.x, y: p.y, body: 0, turret: 0 }] : [];
   for (const e of m.enemies) {
     const x = e.c + 0.5, y = e.r + 0.5;
-    const toward = Math.atan2(p.y - y, p.x - x);
-    tanks.push({ kind: e.kind, x, y, body: Math.abs(toward) > PI / 2 ? PI : 0, turret: toward });
+    const toward = p ? Math.atan2(p.y - y, p.x - x) : PI;
+    tanks.push({ type: e.kind, x, y, body: Math.abs(toward) > PI / 2 ? PI : 0, turret: toward });
   }
-  for (const t of tanks) drawTankShadow(ctx, P, t.x, t.y, t.body);
-  for (const t of tanks) drawTank(ctx, P, t.kind, t.x, t.y, t.body, t.turret);
+  for (const t of tanks) drawTankShadow(ctx, P, t, SHADOW);
+  for (const t of tanks) drawTank(ctx, P, t, {});
+  for (const mk of marks) {
+    ctx.strokeStyle = mk.kind === 'err' ? P.alarm : P.signal;
+    ctx.lineWidth = Math.max(px * 2.5, 0.1);
+    ctx.beginPath();
+    ctx.arc(mk.at[0] + 0.5, mk.at[1] + 0.5, 0.62, 0, PI * 2);
+    ctx.stroke();
+  }
   if (hover) {
-    ctx.strokeStyle = P.focus;
+    ctx.strokeStyle = P.signal;
     ctx.lineWidth = Math.max(px * 2, 0.1);
     ctx.strokeRect(hover.c + 0.05, hover.r + 0.05, 0.9, 0.9);
   }
+}
+/** One tank on a small patch of floor, cols x rows cells, cell px CSS pixels per cell. */
+function drawTile(canvas, kind, { cols = 2, rows = 1.6, cell = 46, turret = -0.5, body = 0, mines, lit = false } = {}) {
+  const { ctx, px } = fixed(canvas, cols * cell, rows * cell, cols);
+  const P = palette();
+  drawGround(ctx, P, { cols: Math.ceil(cols), rows: Math.ceil(rows), kindAt: () => FLOOR, px });
+  const t = { type: kind, x: cols / 2 - 0.04, y: rows / 2, body, turret };
+  drawTankShadow(ctx, P, t, SHADOW);
+  drawTank(ctx, P, t, { mines: mines ?? T[kind].mines, lit });
 }
 
 /* ---------- Canvas registry: redraw on resize and theme change ---------- */
@@ -885,17 +898,18 @@ document.getElementById('yours').append(
 );
 
 /* ---------- Roster ---------- */
+const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb' };
 const roster = document.getElementById('roster');
 for (const k of KINDS) {
   const t = T[k];
   const info = INFO[k];
   const canvas = h('canvas', { role: 'img', 'aria-label': info.scene });
-  const rocket = t.shot > 6;
+  const shot = t.weapon === 'bomb' ? `${fmt(DATA.bombFlight)} s` : fmt(t.shot);
   roster.append(h('article', { class: 'card', id: `t-${k}` },
     h('header', { class: 'card-head' },
       chip(k, 'lg'),
       h('div', { class: 'card-title' }, h('h3', {}, info.name), h('p', { class: 'role' }, info.role)),
-      h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}` }, `M${pad(FIRST[k])}`),
+      h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}: ${DATA.names[FIRST[k] - 1]}` }, `M${pad(FIRST[k])}`),
     ),
     h('div', { class: 'scene' }, canvas),
     h('div', { class: 'card-body' },
@@ -903,7 +917,7 @@ for (const k of KINDS) {
       h('ul', { class: 'perks' }, info.perks.map((p) => h('li', {}, p))),
       h('dl', { class: 'spec' },
         h('div', {}, h('dt', {}, 'Moves'), h('dd', {}, t.speed ? fmt(t.speed) : 'Fixed')),
-        h('div', {}, h('dt', {}, rocket ? 'Rocket' : 'Shell'), h('dd', {}, fmt(t.shot))),
+        h('div', {}, h('dt', {}, WEAPON[t.weapon]), h('dd', {}, shot)),
         h('div', {}, h('dt', {}, 'Bounces'), h('dd', {}, String(t.bounces))),
         h('div', {}, h('dt', {}, 'At once'), h('dd', {}, String(t.bullets))),
         h('div', {}, h('dt', {}, 'Mines'), h('dd', {}, String(t.mines))),
@@ -914,24 +928,72 @@ for (const k of KINDS) {
   paint(canvas, () => drawScene(canvas, k));
 }
 
+/* ---------- Read a tank ---------- */
+const kindName = (k) => (k === 'player' ? 'You' : INFO[k].name);
+const PARTS = [
+  {
+    title: 'Barrel: what it fires',
+    text: 'A thin barrel fires shells. A thick one with a fire-orange band fires rockets, which are fast and leave smoke. Twin launch pods fire guided missiles, and their light is lit while one is in the air. A wide round tube with no barrel lobs mortar bombs over walls.',
+    tiles: [['ash', 'Shell'], ['marine', 'Rocket'], ['red', 'Missile', { lit: true }], ['olive', 'Mortar']],
+  },
+  {
+    title: 'Treads or a pad: whether it moves',
+    text: 'Treads mean it drives. A tank bolted to a concrete pad never moves, so it can’t dodge, chase you or run from a mine.',
+    tiles: [['yellow', 'Treads: drives'], ['brown', 'Pad: never moves']],
+  },
+  {
+    title: 'Rear deck: mines',
+    text: 'One disc for each mine it can have on the ground. A disc empties while its mine is down, so you can count what it has left.',
+    tiles: [['pink', 'No mines'], ['violet', '2 mines'], ['yellow', '4 mines'], ['yellow', '2 of 4 laid', { mines: 2 }]],
+  },
+];
+document.getElementById('parts').append(...PARTS.map((part) => {
+  const tiles = part.tiles.map(([kind, label, opts = {}]) => {
+    const canvas = h('canvas', { role: 'img', 'aria-label': `${kindName(kind)}: ${label}` });
+    paint(canvas, () => drawTile(canvas, kind, { cell: 46, ...opts }));
+    return h('div', { class: 'tile' }, canvas, h('span', {}, h('b', {}, label), ` · ${kindName(kind)}`));
+  });
+  return h('div', { class: 'part-row' }, h('h3', {}, part.title), h('p', {}, part.text), h('div', { class: 'tiles' }, tiles));
+}));
+document.getElementById('actual').append(...['player', ...KINDS].map((kind) => {
+  const canvas = h('canvas', { role: 'img', 'aria-label': `${kindName(kind)} at phone size` });
+  paint(canvas, () => drawTile(canvas, kind, { cols: 1.5, rows: 1.25, cell: 23, turret: -0.6 }));
+  return h('div', { class: 'tile' }, canvas, h('span', {}, kind === 'player' ? '@' : DATA.codes[kind]));
+}));
+document.getElementById('swatches').append(
+  ...['player', ...KINDS].map((kind) => {
+    const c = DATA.colours[kind];
+    return h('div', { class: 'swatch' }, chip(kind), h('span', {}, kindName(kind)),
+      h('code', {}, c.dark !== c.light ? `${c.light} · dark ${c.dark}` : c.light));
+  }),
+  ...[['player', 'Your blue family'], ['fire', 'Fire orange: explosions and flames'], ['crate', 'Crate yellow: taken by Yellow']].map(([key, label]) =>
+    h('div', { class: 'swatch' }, h('span', { class: 'off', style: `--c: ${DATA.offLimits[key]}`, 'aria-hidden': 'true' }), h('span', {}, `Off limits · ${label}`), h('code', {}, DATA.offLimits[key]))),
+);
+document.getElementById('plan').append(
+  h('p', {}, h('b', {}, 'Still free: '), 'sand, maroon, navy (kept clearly apart from your blue) and lime.'),
+  h('p', {}, h('b', {}, 'Past about 12 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue.'),
+  h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind and from the off-limits colours, and chip text that reads at 4.5:1 or better, in light and dark mode.'),
+);
+
 /* ---------- Comparison board ---------- */
-const AIM_RANK = { sweep: 0, direct: 1, bank: 2 };
+const AIM_RANK = { sweep: 0, direct: 1, lob: 1.2, guided: 1.6, bank: 2 };
+const AIM_NAME = { sweep: 'Sweep', direct: 'Direct', bank: 'Bank', guided: 'Guided', lob: 'Lob' };
 const aimText = (t) => {
   if (!t.aim) return 'You';
-  let s = { sweep: 'Sweep', direct: 'Direct', bank: 'Bank' }[t.aim];
+  let s = AIM_NAME[t.aim];
   if (t.aim === 'bank' && t.bounces > 1) s += ' ×2';
-  if (t.lead) s += ' + lead';
+  if (t.lead && t.aim !== 'lob') s += ` + lead ${Math.round(t.lead * 100)}%`;
   return s;
 };
 const COLUMNS = [
   { key: 'speed', group: 'Movement', label: 'Moves', unit: 'cells/s', val: (t) => t.speed, show: (v) => (v ? fmt(v) : 'Fixed'), bar: 'high' },
   { key: 'turret', group: 'Movement', label: 'Turret', unit: '°/s', val: (t) => (t.turret != null ? deg(t.turret) : null), show: (v) => String(Math.round(v)), bar: 'high' },
-  { key: 'shot', group: 'Gun', label: 'Shell', unit: 'cells/s', val: (t) => t.shot, show: (v) => fmt(v), bar: 'high', tag: (t) => (t.shot > 6 ? 'rocket' : null) },
-  { key: 'bounces', group: 'Gun', label: 'Ricochets', unit: 'per shell', val: (t) => t.bounces, show: String, bar: 'high' },
+  { key: 'shot', group: 'Gun', label: 'Shot', unit: 'cells/s', val: (t) => t.shot ?? null, show: (v) => fmt(v), bar: 'high', tag: (t) => (t.weapon !== 'shell' ? t.weapon : null), none: (t) => (t.weapon === 'bomb' ? `${fmt(DATA.bombFlight)} s lob` : null) },
+  { key: 'bounces', group: 'Gun', label: 'Ricochets', unit: 'per shot', val: (t) => t.bounces, show: String, bar: 'high' },
   { key: 'bullets', group: 'Gun', label: 'At once', unit: 'in flight', val: (t) => t.bullets, show: String, bar: 'high' },
   { key: 'reload', group: 'Gun', label: 'Reload', unit: 's', val: (t) => t.reload, show: (v) => fmt(v, 2), bar: 'low' },
   { key: 'mines', group: 'Mines', label: 'Mines', unit: 'at once', val: (t) => t.mines, show: String, bar: 'high' },
-  { key: 'aim', group: 'Intelligence', label: 'Aim', unit: 'style', val: (t) => (t.aim ? AIM_RANK[t.aim] + (t.bounces > 1 ? 0.3 : 0) + (t.lead ? 0.5 : 0) : null), text: aimText },
+  { key: 'aim', group: 'Intelligence', label: 'Aim', unit: 'style', val: (t) => (t.aim ? AIM_RANK[t.aim] + (t.bounces > 1 ? 0.3 : 0) + (t.lead ? t.lead : 0) : null), text: aimText },
   { key: 'spread', group: 'Intelligence', label: 'Accuracy', unit: '± degrees', val: (t) => (t.spread != null ? deg(t.spread) : null), show: (v) => fmt(v), bar: 'low' },
   { key: 'think', group: 'Intelligence', label: 'Thinks', unit: 'every s', val: (t) => t.think ?? null, show: (v) => fmt(v, 2), bar: 'low' },
   { key: 'react', group: 'Intelligence', label: 'Reacts', unit: 'in s', val: (t) => t.react ?? null, show: (v) => fmt(v, 2), bar: 'low' },
@@ -1001,10 +1063,11 @@ function renderBoard() {
       COLUMNS.map((c) => {
         if (c.text) return h('td', { class: 'txt' }, c.text(t, k));
         const v = c.val(t, k);
-        if (v == null) return h('td', { class: 'num' }, '—');
         const tag = c.tag?.(t);
+        const tagEl = tag ? h('span', { class: `tag ${tag}` }, tag) : null;
+        if (v == null) return h('td', { class: 'num' }, tagEl, c.none?.(t) ?? '—');
         return h('td', { class: 'num' },
-          tag ? h('span', { class: 'tag' }, tag) : null,
+          tagEl,
           c.show(v),
           c.bar ? h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: `width:${Math.round(barFrac(c, v) * 100)}%` })) : null,
         );
@@ -1018,24 +1081,29 @@ renderBoard();
 /* ---------- Shared rules ---------- */
 const RULES = [
   ['Holds fire at the start.', ` No enemy shoots during the first ${DATA.opening} s of a mission, and each adds its own reaction time on top.`],
-  ['Never wastes a shot.', ' It traces the shell’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre.'],
-  ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself.'],
+  ['Never wastes a shot.', ' It traces the shot’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre. For a missile that is the straight line it leaves on.'],
+  ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself, and a mortar never aims at a spot near another enemy. A missile’s curve isn’t predicted, so one can still hit an ally.'],
   ['Pauses on a new angle.', ' When it finds a new line of fire it waits its reaction time before shooting.'],
   ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one.`],
-  ['Keeps its distance.', ' Each mover has a preferred distance from you along the route. It closes in or backs off to stay there, keeps a cell apart from other enemies, and sometimes stops for a moment to size things up.'],
+  ['Keeps its distance.', ' Each mover has a preferred distance from you along the route. It closes in or backs off to stay there, and sometimes stops for a moment to size things up.'],
+  ['Takes turns on the road.', ' Each mover claims the cell it is driving to, and no tank picks a cell another one stands in or has claimed. When two need the same way, the one with somewhere to be goes first (between equals, the one listed first in the map); the other steps out of its line, or backs ahead of it, and waits until it has passed.'],
+  ['Never stays stuck.', ' A tank that keeps pushing for 0.4 s without covering 0.1 cells gives up on that cell for 2 s, backs off and chooses again. Before driving into a one-wide gap it lines up with the gap’s centre instead of clipping the corner.'],
   ['Lays mines carefully.', ` Minelayers drop a mine only when 2 to 9 cells from you, never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine.`],
-  ['Dies to one hit,', ` like you. Shells that meet cancel out, and a mine blast (${fmt(DATA.blastR)} cells) destroys every tank in reach, enemies included.`],
+  ['Dies to one hit,', ` like you. Shells that meet cancel out, missiles included. A mine blast (${fmt(DATA.blastR)} cells) or a landing bomb (${fmt(DATA.bombR)} cell) destroys every tank in reach, enemies included, and clears striped crates.`],
   ['Dodging is per shell.', ' The dodge figure is the share of shells a tank notices. The choice is fixed for each shell, so a shell it missed stays missed. Stationary tanks never dodge or flee.'],
+  ['Reads your speed, not your stick.', ` Tanks that lead take your velocity averaged over the last moment (it settles in about ${fmt(DATA.velSmooth * 2, 2)} s), so twitching the stick doesn’t fool them but changing direction does. They know you can’t drive through walls.`],
 ];
 document.getElementById('rules').append(...RULES.map(([b, rest]) => h('li', {}, h('b', {}, b), rest)));
-const who = (aim, extra = (t) => true) => KINDS.filter((k) => T[k].aim === aim && extra(T[k]));
+const who = (aim, extra = () => true) => KINDS.filter((k) => T[k].aim === aim && extra(T[k]));
 const doubleBank = KINDS.filter((k) => T[k].aim === 'bank' && T[k].bounces > 1).map((k) => INFO[k].name);
-const leaders = KINDS.filter((k) => T[k].lead);
+const leaders = KINDS.filter((k) => T[k].lead && T[k].aim !== 'lob');
 const AIMS = [
   ['Sweep', who('sweep'), 'The turret wanders to a new heading every 1.4 to 3.4 s, toward you 60% of the time and anywhere otherwise. It fires when that line happens to cross you.'],
   ['Direct', who('direct'), 'The turret turns straight at you. It only considers the straight line, though a shell can still hit you off its natural ricochet.'],
   ['Bank', who('bank'), `Also looks for one-bounce shots by mirroring your position in every wall face, and picks the shot that needs the least turret turning.${doubleBank.length ? ` ${doubleBank.join(' and ')}, with more than one ricochet, also ${doubleBank.length > 1 ? 'try' : 'tries'} 160 directions for a two-bounce shot when nothing simpler works.` : ''}`],
-  ['Lead', leaders, leaders.length ? `Aims ${Math.round(T[leaders[0]].lead * 100)}% of the way toward where you will be when the shot arrives, so driving in a straight line is dangerous.` : ''],
+  ['Guided', who('guided'), `Fires down a clear straight line, like Direct. The missile then steers itself: up to ${Math.round(deg(DATA.missileTurn))}° a second toward you for ${fmt(DATA.missileFuel, 0)} s, and only while you are within ${Math.round(deg(DATA.lock))}° of its nose.`],
+  ['Lob', who('lob'), `Needs no line at all. It picks where you will be when the bomb lands ${fmt(DATA.bombFlight)} s later, adds a little scatter, and skips any spot closer than ${DATA.bombMin} cells, beyond ${DATA.bombMax}, or near another enemy.`],
+  ['Lead', leaders, leaders.length ? `Aims part of the way to where you will be when the shot arrives (${leaders.map((k) => `${INFO[k].name} ${Math.round(T[k].lead * 100)}%`).join(', ')}). It solves exactly when a shot would meet a target moving like you, and stops the forecast where you would hit a wall. Driving in a straight line is dangerous; turning late makes it miss.` : ''],
 ].filter(([, kinds]) => kinds.length);
 document.getElementById('aims').append(...AIMS.map(([name, kinds, text]) => h('div', {},
   h('dt', {}, name, h('span', { class: 'who' }, kinds.map((k) => chip(k)))),
@@ -1058,7 +1126,7 @@ matrix.append(
   h('thead', {},
     h('tr', {},
       h('th', { class: 'stick', scope: 'col' }, 'Mission'),
-      MISSIONS.map((m) => h('th', { scope: 'col', class: cpClass(m.n) }, h('a', { href: `#m-${pad(m.n)}`, 'aria-label': `Mission ${m.n}` }, pad(m.n)))),
+      MISSIONS.map((m) => h('th', { scope: 'col', class: cpClass(m.n) }, h('a', { href: `#m-${pad(m.n)}`, 'aria-label': `Mission ${m.n}: ${m.name}`, title: m.name }, pad(m.n)))),
       h('th', { scope: 'col' }, 'Total'),
     ),
     h('tr', { class: 'marks' },
@@ -1071,7 +1139,7 @@ matrix.append(
   h('tbody', {}, KINDS.map((k) => h('tr', {},
     h('th', { class: 'stick', scope: 'row' }, h('span', { class: 'tankcell' }, chip(k), INFO[k].name)),
     MISSIONS.map((m) => h('td', { class: cpClass(m.n) }, m.counts[k]
-      ? h('span', { class: 'mx', 'data-ink': INK[k], style: `--c: var(--tk-${k})`, title: `${m.counts[k]} ${INFO[k].name} in mission ${m.n}` }, String(m.counts[k]))
+      ? h('span', { class: 'mx', 'data-ink': INK[k], style: `--c: var(--tk-${k})`, title: `${m.counts[k]} ${INFO[k].name} in mission ${m.n}, ${m.name}` }, String(m.counts[k]))
       : h('span', { class: 'dot', 'aria-hidden': 'true' }))),
     h('td', { class: 'total' }, String(TOTAL[k])),
   ))),
@@ -1086,33 +1154,34 @@ const mapsEl = document.getElementById('maps');
 const mapButtons = [];
 const summary = (m) => KINDS.filter((k) => m.counts[k]).map((k) => `${m.counts[k]} ${INFO[k].name}`).join(', ');
 for (const [i, m] of MISSIONS.entries()) {
-  const canvas = h('canvas', { role: 'img', 'aria-label': `Mission ${m.n} map: ${summary(m)}` });
+  const canvas = h('canvas', { role: 'img', 'aria-label': `Mission ${m.n}, ${m.name}: ${summary(m)}` });
   const tags = [];
   if (isCheckpoint(m.n)) tags.push(h('span', {}, 'Checkpoint'));
   if (isBonus(m.n)) tags.push(h('span', { class: 't-bonus' }, '+1 tank after'));
   if (m.n === MISSIONS.length) tags.push(h('span', { class: 't-final' }, 'Final'));
+  for (const k of KINDS) if (FIRST[k] === m.n) tags.push(h('span', {}, `New: ${INFO[k].name}`));
   const btn = h('button', {
-    class: 'map', id: `m-${pad(m.n)}`, type: 'button', 'aria-label': `Mission ${m.n}: ${summary(m)}. Open its source.`,
-    onclick: () => { select(i); document.getElementById('anatomy').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
+    class: 'map', id: `m-${pad(m.n)}`, type: 'button', 'aria-label': `Mission ${m.n}, ${m.name}: ${summary(m)}. Open its source.`,
+    onclick: () => { select(i); document.getElementById('anatomy').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth' }); },
   },
     h('span', { class: 'map-art' }, canvas),
     h('span', { class: 'map-cap' },
-      h('span', { class: 'map-n' }, `M${pad(m.n)}`),
+      h('span', { class: 'map-title' }, h('span', { class: 'map-n' }, `M${pad(m.n)}`), h('span', { class: 'map-name' }, m.name)),
       h('span', { class: 'map-chips' }, KINDS.filter((k) => m.counts[k]).map((k) => h('span', {}, chip(k), `×${m.counts[k]}`))),
     ),
     h('span', { class: 'map-tags' }, tags),
   );
   mapButtons.push(btn);
   mapsEl.append(btn);
-  paint(canvas, () => drawMission(canvas, m));
+  paint(canvas, () => drawMap(canvas, m.rows));
 }
 
 /* ---------- Map anatomy ---------- */
 const MEANING = { '.': 'Floor', '#': 'Wall', x: 'Crate', o: 'Hole', '@': 'Your tank' };
 const LEGEND = [
   ['f', '.', 'Floor', 'Open ground. Tanks drive, shells fly.'],
-  ['w', '#', 'Wall', 'Stops tanks and shells. Shells ricochet off it and mine blasts never touch it. The arena edge counts as wall.'],
-  ['x', 'x', 'Crate', 'Hazard-striped. Works like a wall until a mine blast clears it, which opens a new route mid-mission.'],
+  ['w', '#', 'Wall', 'Stops tanks and shells. Shells ricochet off it, bombs fly over it, and blasts never touch it. The arena edge counts as wall.'],
+  ['x', 'x', 'Crate', 'Hazard-striped. Works like a wall until a blast clears it (a mine, or a landing bomb), which opens a new route mid-mission.'],
   ['o', 'o', 'Hole', 'Stops tanks, but shells fly straight over it. A firing lane you can’t drive through.'],
   ['t', '@', 'You', 'Exactly one per map. You start facing right.'],
   ['e', DATA.codes[KINDS[0]], 'Enemies', `One letter per tank: ${KINDS.map((k) => `${DATA.codes[k]} ${INFO[k].name.toLowerCase()}`).join(', ')}. Each starts at the centre of its cell, facing your side with its turret aimed at you.`],
@@ -1123,30 +1192,40 @@ document.getElementById('legend').append(...LEGEND.map(([cls, sym, name, text]) 
     : h('span', { class: `sym ${cls}` }, sym),
   h('div', {}, h('b', {}, name), h('p', {}, text)),
 )));
+document.getElementById('tests-list').append(
+  h('li', {}, `There are exactly ${MISSIONS.length} missions, with checkpoints at ${DATA.checkpoints.join(', ')}.`),
+  h('li', {}, 'Each mission has between 1 and 8 enemies.'),
+  h('li', {}, 'You can reach every enemy: drive next to it (crates count as open, since a blast clears them) or see it down a clear straight line from somewhere you can drive.'),
+  h('li', {}, 'No enemy has a clear straight shot at your start. Mortars are left out: they lob over everything.'),
+  h('li', {}, 'No two missions share the same blocks.'),
+  h('li', {}, 'The enemy AI plays every mission with 3 seeds without a tank ending up inside a block or a shell inside a wall, and no tank that wants to move stays pinned in one spot for more than 1.5 s.'),
+);
 
-const mirroredCount = MISSIONS.filter((m) => m.mirrored).length;
-const notMirrored = MISSIONS.filter((m) => !m.mirrored).map((m) => m.n);
-const starts = {};
-for (const m of MISSIONS) { const key = `${m.player.r},${m.player.c}`; (starts[key] ||= []).push(m.n); }
-const [mainStart] = Object.entries(starts).sort((a, b) => b[1].length - a[1].length);
-const [sr, scol] = mainStart[0].split(',').map(Number);
-const odd = MISSIONS.filter((m) => `${m.player.r},${m.player.c}` !== mainStart[0]);
-const firstWith = (key) => MISSIONS.find((m) => m[key] > 0)?.n;
-const rightSide = MISSIONS.every((m) => m.enemies.every((e) => e.c >= COLS / 2 - 1));
+const mirrored = MISSIONS.filter((m) => m.mirrored);
+const starts = new Set(MISSIONS.map((m) => `${m.player.c},${m.player.r}`));
+const firstWith = (key) => MISSIONS.find((m) => m[key] > 0);
+const opens = MISSIONS.map((m) => m.open).sort((a, b) => a - b);
+const median = opens[Math.floor(opens.length / 2)];
+const crates = firstWith('crates');
+const holes = firstWith('holes');
 document.getElementById('house').append(
-  h('li', {}, `You start on the left in the middle row: row ${sr}, column ${scol} in ${mainStart[1].length} of ${MISSIONS.length} missions${odd.length ? ` (mission ${odd.map((m) => `${m.n} uses column ${m.player.c}`).join(', ')})` : ''}.`),
-  h('li', {}, rightSide ? 'Enemies always start on the right half of the arena.' : 'Enemies mostly start on the right half of the arena.'),
-  h('li', {}, `Blocks are mirrored top to bottom in ${mirroredCount} of ${MISSIONS.length} maps${notMirrored.length ? ` (all but mission ${notMirrored.join(', ')})` : ''}, so neither flank is the safe one.`),
-  h('li', {}, `New ideas arrive one at a time: crates first appear in mission ${firstWith('crates')}, holes in mission ${firstWith('holes')}.`),
-  h('li', {}, 'On a tall phone screen the game turns the arena 90°, so the left edge of every map, your side, sits at the bottom next to your thumbs.'),
+  h('li', {}, 'Each mission has one idea, named on its banner with a one-line briefing: a crate gate, a hole lane, a maze, a fortress.'),
+  h('li', {}, `You start in ${starts.size} different places across the ${MISSIONS.length} missions, always on the left, which is the bottom of a phone screen.`),
+  h('li', {}, mirrored.length
+    ? `${mirrored.length === 1 ? 'One map is' : `${mirrored.length} maps are`} mirrored top to bottom (${mirrored.map((m) => `mission ${m.n}, ${m.name}`).join('; ')}), on purpose; the rest give each flank its own shape.`
+    : 'No map is mirrored top to bottom, so each flank plays differently.'),
+  h('li', {}, `About ${Math.round((1 - median) * 100)}% of a typical map is blocks, so there are corridors, pockets and flanking routes to use. Mortar missions keep open ground to dodge in.`),
+  h('li', {}, `New ideas arrive one at a time: crates first appear in mission ${crates.n} (${crates.name}), holes in mission ${holes.n} (${holes.name}).`),
+  h('li', {}, 'Roaming tanks get two-wide routes where they will meet: two tanks can always pass there, while a one-wide corridor can leave them waiting on each other.'),
 );
 
 const pick = document.getElementById('ana-pick');
-pick.append(...MISSIONS.map((m, i) => h('option', { value: String(i) }, `Mission ${pad(m.n)}`)));
+pick.append(...MISSIONS.map((m, i) => h('option', { value: String(i) }, `Mission ${pad(m.n)}: ${m.name}`)));
 const grid = document.getElementById('ana-grid');
 const read = document.getElementById('ana-read');
 const anaCanvas = document.getElementById('ana-canvas');
 const facts = document.getElementById('ana-facts');
+const brief = document.getElementById('ana-brief');
 const copyBox = document.getElementById('ana-copy');
 const copyBtn = document.getElementById('ana-copy-btn');
 let current = MISSIONS.length - 1;
@@ -1176,9 +1255,10 @@ function select(i) {
   pick.value = String(current);
   mapButtons.forEach((b, j) => b.setAttribute('aria-current', j === current ? 'true' : 'false'));
   const tags = [isCheckpoint(m.n) ? 'checkpoint' : '', isBonus(m.n) ? 'bonus tank after' : '', m.n === MISSIONS.length ? 'final mission' : ''].filter(Boolean);
+  brief.replaceChildren(h('b', {}, `${m.name}. `), m.brief);
   facts.replaceChildren(
-    h('b', {}, `Mission ${m.n}`), ` · ${m.enemies.length} ${m.enemies.length === 1 ? 'enemy' : 'enemies'}: ${summary(m)} · ${m.walls} walls, ${m.crates} crates, ${m.holes} holes`,
-    m.mirrored ? ' · mirrored top to bottom' : ' · not mirrored',
+    h('b', {}, `Mission ${m.n}`), ` · ${m.enemies.length} ${m.enemies.length === 1 ? 'enemy' : 'enemies'}: ${summary(m)} · ${m.walls} walls, ${m.crates} crates, ${m.holes} holes · ${Math.round(m.open * 100)}% open`,
+    m.mirrored ? ' · mirrored top to bottom' : '',
     tags.length ? ` · ${tags.join(', ')}` : '',
   );
   const out = [h('span', { class: 'ruler' }, '')];
@@ -1202,7 +1282,7 @@ function select(i) {
   copyBox.hidden = true;
   schedule(anaCanvas);
 }
-paint(anaCanvas, () => drawMission(anaCanvas, MISSIONS[current], hover));
+paint(anaCanvas, () => drawMap(anaCanvas, MISSIONS[current].rows, { hover }));
 grid.addEventListener('pointerleave', () => setHover(null));
 anaCanvas.addEventListener('pointermove', (e) => {
   const r = anaCanvas.getBoundingClientRect();
@@ -1215,22 +1295,190 @@ anaCanvas.addEventListener('pointerleave', () => setHover(null));
 pick.addEventListener('change', () => select(Number(pick.value)));
 document.getElementById('ana-prev').addEventListener('click', () => select(current - 1));
 document.getElementById('ana-next').addEventListener('click', () => select(current + 1));
-copyBtn.addEventListener('click', () => {
-  const m = MISSIONS[current];
-  const text = `  [\n${m.rows.map((l) => `    '${l}',`).join('\n')}\n  ],`;
+document.getElementById('ana-edit').addEventListener('click', () => {
+  editor.load(current);
+  document.getElementById('editor').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth' });
+});
+
+/** Copies text, or selects it in `box` for a manual copy when the clipboard is refused. */
+function copyText(text, btn, box, label) {
   const fallback = () => {
-    copyBox.value = text;
-    copyBox.hidden = false;
-    copyBox.focus();
-    copyBox.select();
-    copyBtn.textContent = 'Selected, press copy';
+    box.value = text;
+    box.hidden = false;
+    box.focus();
+    box.select();
+    btn.textContent = 'Selected: press copy';
   };
   try {
     navigator.clipboard.writeText(text).then(() => {
-      copyBtn.textContent = 'Copied';
-      setTimeout(() => { copyBtn.textContent = 'Copy map text'; }, 1600);
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = label; }, 1600);
     }, fallback);
   } catch { fallback(); }
-});
+}
+const entry = (rows, name) => `  ${name ? `// ${name}\n  ` : ''}[\n${rows.map((l) => `    '${l}',`).join('\n')}\n  ],`;
+copyBtn.addEventListener('click', () => copyText(entry(MISSIONS[current].rows), copyBtn, copyBox, 'Copy map text'));
 select(current);
+
+/* ---------- Map editor ---------- */
+const editor = (() => {
+  const STORE = 'tanks-guide-editor';
+  const BRUSHES = [
+    ['.', 'Floor', 'f'], ['#', 'Wall', 'w'], ['x', 'Crate', 'x'], ['o', 'Hole', 'o'], ['@', 'You', 't', 'player'],
+    ...KINDS.map((k) => [DATA.codes[k], INFO[k].name, 't', k]),
+  ];
+  const canvas = document.getElementById('ed-canvas');
+  const loadSel = document.getElementById('ed-load');
+  const mirror = document.getElementById('ed-mirror');
+  const undoBtn = document.getElementById('ed-undo');
+  const text = document.getElementById('ed-text');
+  const stats = document.getElementById('ed-stats');
+  const list = document.getElementById('ed-checks');
+  const copy = document.getElementById('ed-copy');
+  const blank = () => Array.from({ length: ROWS }, (_, r) => (r === 7 ? '..@'.padEnd(COLS, '.') : '.'.repeat(COLS)));
+  let rows = blank();
+  let from = -1; // the mission it started from, or -1
+  let brush = '#';
+  let history = [];
+  let marks = [];
+  let painting = null;
+
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ rows, from, mirror: mirror.checked })); } catch { /* storage unavailable */ }
+  }
+  function restore() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (d && Array.isArray(d.rows) && d.rows.length === ROWS && d.rows.every((l) => typeof l === 'string' && l.length === COLS)) {
+        rows = d.rows;
+        from = Number.isInteger(d.from) ? d.from : -1;
+        mirror.checked = !!d.mirror;
+        return true;
+      }
+    } catch { /* nothing saved */ }
+    return false;
+  }
+
+  const brushEls = BRUSHES.map(([ch, name, cls, kind]) => h('button', {
+    class: 'brush', type: 'button', 'aria-pressed': String(ch === brush), title: `${name} (key ${ch})`,
+    onclick: () => setBrush(ch),
+  },
+    h('span', { class: `sym ${cls}`, 'data-ink': kind ? INK[kind] : null, style: kind ? `--c: var(--tk-${kind})` : null }, ch),
+    h('span', {}, name),
+  ));
+  document.getElementById('ed-brushes').append(...brushEls);
+  function setBrush(ch) {
+    brush = ch;
+    BRUSHES.forEach(([c], i) => brushEls[i].setAttribute('aria-pressed', String(c === ch)));
+  }
+
+  loadSel.append(h('option', { value: '-1' }, 'Start from: a blank map'), ...MISSIONS.map((m, i) => h('option', { value: String(i) }, `Start from: mission ${pad(m.n)}, ${m.name}`)));
+
+  function setCell(next, c, r, ch) {
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return;
+    if (ch === '@') next.forEach((line, y) => { if (line.includes('@')) next[y] = line.replace('@', '.'); });
+    next[r] = next[r].slice(0, c) + ch + next[r].slice(c + 1);
+  }
+  function paintAt(c, r) {
+    const next = rows.slice();
+    setCell(next, c, r, brush);
+    // Mirroring paints the twin cell too; there is only ever one of you.
+    if (mirror.checked && brush !== '@' && r !== ROWS - 1 - r) setCell(next, c, ROWS - 1 - r, brush);
+    if (next.join('\n') === rows.join('\n')) return;
+    rows = next;
+    refresh();
+  }
+  function snapshot() {
+    history.push(rows.slice());
+    if (history.length > 200) history.shift();
+    undoBtn.disabled = false;
+  }
+  function refresh({ keepText = false } = {}) {
+    const others = MISSIONS.filter((_, i) => i !== from).map((m) => ({ name: `mission ${m.n} (${m.name})`, rows: m.rows }));
+    const res = checkMap(rows, { others });
+    marks = [...res.errors, ...res.warnings].filter((p) => p.at).map((p) => ({ at: p.at, kind: res.errors.includes(p) ? 'err' : 'warn' }));
+    const items = [
+      ...res.errors.map((p) => h('li', { class: 'err' }, h('span', { class: 'kind' }, 'Error'), h('span', {}, p.text))),
+      ...res.warnings.map((p) => h('li', { class: 'warn' }, h('span', { class: 'kind' }, 'Nudge'), h('span', {}, p.text))),
+    ];
+    if (!res.errors.length) items.unshift(h('li', { class: 'ok' }, h('span', { class: 'kind' }, 'Passes'), h('span', {}, 'Every check the tests run on a mission.')));
+    list.replaceChildren(...items);
+    stats.replaceChildren(...(res.stats
+      ? [h('span', {}, h('b', {}, String(res.stats.enemies)), res.stats.enemies === 1 ? ' enemy' : ' enemies'), h('span', {}, h('b', {}, `${Math.round(res.stats.open * 100)}%`), ' open'), h('span', {}, res.stats.mirrored ? 'mirrored' : 'not mirrored')]
+      : [h('span', {}, 'Fix the error below to see the rest.')]));
+    if (!keepText) text.value = rows.join('\n');
+    schedule(canvas);
+    save();
+  }
+  function load(i) {
+    snapshot();
+    from = i;
+    rows = i >= 0 ? MISSIONS[i].rows.slice() : blank();
+    loadSel.value = String(i);
+    refresh();
+  }
+
+  function cellAtEvent(e) {
+    const r = canvas.getBoundingClientRect();
+    return { c: Math.floor(((e.clientX - r.left) / r.width) * COLS), r: Math.floor(((e.clientY - r.top) / r.height) * ROWS) };
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    canvas.setPointerCapture?.(e.pointerId);
+    snapshot();
+    painting = e.pointerId;
+    const p = cellAtEvent(e);
+    paintAt(p.c, p.r);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (painting !== e.pointerId) return;
+    const p = cellAtEvent(e);
+    paintAt(p.c, p.r);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => { painting = null; });
+
+  undoBtn.addEventListener('click', () => {
+    if (!history.length) return;
+    rows = history.pop();
+    undoBtn.disabled = !history.length;
+    refresh();
+  });
+  document.getElementById('ed-clear').addEventListener('click', () => {
+    snapshot();
+    rows = blank();
+    from = -1;
+    loadSel.value = '-1';
+    refresh();
+  });
+  loadSel.addEventListener('change', () => load(Number(loadSel.value)));
+  mirror.addEventListener('change', save);
+  copy.addEventListener('click', () => copyText(entry(rows), copy, text, 'Copy as missions.js entry'));
+  text.addEventListener('input', () => {
+    // Paste or type a map: take it as soon as it has the right shape.
+    const lines = text.value.split('\n').map((l) => l.trim().replace(/^['"`]|['"`],?$/g, '')).filter((l) => l && !l.startsWith('//') && l !== '[' && l !== '],' && l !== ']');
+    if (lines.length === ROWS && lines.every((l) => l.length === COLS)) {
+      snapshot();
+      rows = lines;
+      refresh({ keepText: true });
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('textarea, input, select')) return;
+    const box = document.getElementById('editor').getBoundingClientRect();
+    if (box.bottom < 0 || box.top > innerHeight) return; // only while the editor is on screen
+    const hit = BRUSHES.find(([ch]) => ch === e.key);
+    if (hit) setBrush(hit[0]);
+  });
+
+  paint(canvas, () => drawMap(canvas, rows, { marks }));
+  if (restore()) {
+    loadSel.value = String(from);
+    refresh();
+  } else {
+    load(0);
+    history = [];
+    undoBtn.disabled = true;
+  }
+  return { load };
+})();
 </script>

@@ -20,20 +20,31 @@
   --tk-aim: #16181d;
   --tk-ink: #16181d;
   --tk-tread: #2b2e34;
+  --tk-plate: #aaa497;
   --tk-flash: #fff3c4;
   --tk-fire: #ff8a1e;
   --tk-smoke: #8a877f;
+  --tk-alarm: #ff3b30;
 
+  /* Tank colours only say which kind a tank is; its shape says what it can do (art.js).
+     Off limits for a new kind: the player's blue family, fire orange (explosions, rocket
+     flames) and crate yellow (the yellow tank already sits next to it). Still free: sand,
+     maroon, navy (kept clearly apart from the player) and lime. Past about 12 kinds, reuse
+     a colour with a pattern for a variant instead of finding another hue. Every kind needs
+     a colour here (and below, if dark mode needs it lifted) whose chip text reaches 4.5:1;
+     tests/tanks.test.mjs checks the plan. */
   --tk-player: #2e8ccc;
-  --tk-brown: #9a6a3c;
+  --tk-brown: #96673a;
   --tk-ash: #949aa3;
   --tk-marine: #149a90;
   --tk-yellow: #f2b705;
   --tk-pink: #ec5f9a;
   --tk-green: #3c9a3c;
   --tk-violet: #7d52d8;
+  --tk-red: #b81d33;
   --tk-white: #f7f5ef;
   --tk-black: #2a2d33;
+  --tk-olive: #526228;
 
   --stick: 96px;
   --controls-h: clamp(112px, 18dvh, 164px);
@@ -56,8 +67,11 @@
     --tk-aim: #f1ede3;
     --tk-ink: #0b0c0e;
     --tk-tread: #0e0f12;
+    --tk-plate: #444952;
     --tk-smoke: #6b6962;
+    --tk-red: #c2213a;
     --tk-black: #3a3e46;
+    --tk-olive: #566426;
   }
 }
 
@@ -284,6 +298,12 @@
   text-transform: uppercase;
 }
 
+.banner-name {
+  margin-top: -2px;
+  font: 700 17px/1.2 var(--font-display);
+  letter-spacing: 0.02em;
+}
+
 .banner-sub {
   font: 700 13px/1.25 var(--font-mono);
   letter-spacing: 0.12em;
@@ -291,6 +311,7 @@
   color: var(--signal);
 }
 
+.banner-name:empty,
 .banner-sub:empty,
 .banner-note:empty,
 .banner-tanks:empty {
@@ -298,8 +319,10 @@
 }
 
 .banner-note {
+  max-width: 40ch;
   font-size: 14px;
   color: var(--on-bar-muted);
+  text-wrap: balance;
 }
 
 .banner-tanks,
@@ -310,19 +333,18 @@
   gap: 5px 10px;
 }
 
-.chip {
+/* A tank kind drawn small by the game's own art, on a patch of floor. */
+.badge {
   display: inline-block;
-  width: 18px;
-  height: 13px;
-  border-radius: 2px;
-  background: var(--c);
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45);
-  vertical-align: -1px;
+  width: 34px;
+  height: 26px;
+  border-radius: 3px;
+  vertical-align: middle;
 }
 
-/* On the black banner a black tank's chip needs a light edge to be seen. */
-.banner .chip {
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(241, 237, 227, 0.45);
+/* On the black banner the floor patch needs an edge to sit on. */
+.banner .badge {
+  box-shadow: 0 0 0 1px rgba(241, 237, 227, 0.35);
 }
 
 .tally-item {
