@@ -46,9 +46,9 @@
   --tk-black: #2a2d33;
   --tk-olive: #526228;
 
-  --stick: 96px;
-  --controls-h: clamp(112px, 18dvh, 164px);
-  --controls-w: clamp(128px, 22vw, 196px);
+  --stick: 112px;
+  --pad-edge: 22px; /* where the sticks rest, from the bottom corners */
+  --pad-alpha: 0.2;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -75,21 +75,20 @@
   }
 }
 
-/* ---------- Layout: arena above the thumbs (portrait), between them (landscape) ---------- */
+/* ---------- Layout: a 4:3 arena right under the header, controls floating over it ---------- */
 
+/* The arena takes the full width (upright on a phone, straight under the header) or the full
+   height (landscape, centred between the floating home button and stats); whatever room is
+   left stays empty. The touch controls float over the whole play area, arena included. */
 .page-tanks .play-tanks {
-  max-width: 1200px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) var(--controls-h);
-  grid-template-areas:
-    "board board board"
-    "move mine aim";
-  gap: 8px 10px;
+  position: relative;
+  max-width: none;
+  gap: 0;
+  padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
 .tanks-wrap {
-  grid-area: board;
+  place-items: start center;
 }
 
 .arena {
@@ -102,119 +101,152 @@
   outline-offset: 4px;
 }
 
-.controls {
+/* Mission and lives sit in the header row in portrait; in landscape they share a plate. */
+.tanks-stats {
   display: contents;
 }
 
-.zone-move {
-  grid-area: move;
-}
-
-.zone-aim {
-  grid-area: aim;
-}
-
-.mine-btn {
-  grid-area: mine;
-}
-
-/* Mouse and keyboard: no on-screen controls, the arena gets the room. */
-.page-tanks:not(.touch-ui) .play-tanks {
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-areas: "board board board";
-}
-
-.page-tanks:not(.touch-ui) .controls > * {
-  display: none;
-}
-
-/* Phones on their side: drive on the left, aim and mines on the right. */
-@media (orientation: landscape) and (max-height: 600px) {
-  .page-tanks.touch-ui .play-tanks {
-    max-width: none;
-    grid-template-columns: var(--controls-w) minmax(0, 1fr) var(--controls-w);
-    grid-template-rows: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "move board aim"
-      "move board mine";
-    padding-top: 8px;
+/* Landscape: no header band, so the arena gets the full height, centred on the screen. The
+   home button floats in the top-left corner and mission and lives in the top-right, each on a
+   plate of the header's black. --chrome-w keeps that room free on both sides, so the plates
+   never cover the arena and the play area (with the two halves of the touch controls) spans
+   the whole screen. The side menu's list still starts below the home button. */
+@media (orientation: landscape) {
+  .page-tanks {
+    --chrome-w: 84px;
   }
-  .page-tanks .bar-title .flight-tag {
+  .page-tanks .bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: calc(max(6px, var(--safe-t)) + 4px) calc(var(--safe-r) + 4px) 0 calc(var(--safe-l) + 4px);
+    background: none;
+    border: 0;
+    pointer-events: none;
+  }
+  .page-tanks .bar-row {
+    align-items: flex-start;
+    justify-content: space-between;
+    min-height: 0;
+  }
+  .page-tanks .bar-title {
     display: none;
   }
+  .page-tanks .menu-toggle,
+  .page-tanks .tanks-stats {
+    background: var(--bar);
+    border-radius: var(--radius);
+  }
+  .page-tanks .menu-toggle {
+    pointer-events: auto;
+  }
+  .page-tanks .menu-toggle:active {
+    background: color-mix(in srgb, var(--on-bar) 18%, var(--bar));
+  }
+  .page-tanks .tanks-stats {
+    display: grid;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .page-tanks .bar-stat {
+    min-width: 0;
+    padding: 0;
+  }
+  /* Clear of the iOS status tint, which still spans the top of the screen. */
+  .page-tanks .play-tanks {
+    padding: max(6px, var(--safe-t)) calc(max(var(--safe-l), var(--safe-r)) + var(--chrome-w)) var(--safe-b);
+  }
+  .page-tanks .tanks-wrap {
+    place-items: center;
+  }
 }
 
-/* ---------- Thumb sticks ---------- */
+/* ---------- Touch controls (Brawl Stars style) ---------- */
 
-.zone {
-  position: relative;
-  container-type: size;
-  min-width: 0;
-  min-height: 0;
-  border: 2px dashed var(--line);
-  border-radius: var(--radius);
+/* Shown from the mission banner to the end of the mission, and only on touch screens; they
+   take touches only while a mission is starting or being played (tanks.js sets .shown and
+   .live). Everything sits at --pad-alpha so the arena stays readable underneath. */
+.pads {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: none;
+  pointer-events: none;
+  cursor: crosshair;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
 
-.zone-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 6px;
-  text-align: center;
-  font: 700 10px/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-  pointer-events: none;
+.page-tanks.touch-ui .pads.shown {
+  display: block;
 }
 
-/* Short pads (small phones): the stick needs the room more than the label. */
-@container (max-height: 130px) {
-  .zone-label {
-    display: none;
-  }
+.pads.live {
+  pointer-events: auto;
 }
 
+/* A stick rests in its bottom corner and jumps to wherever a thumb lands on its half. */
 .stick {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  top: calc(100% - var(--safe-b) - var(--pad-edge) - var(--stick) / 2);
   width: var(--stick);
   height: var(--stick);
-  border: 2px solid var(--rule);
+  border: 3px solid var(--rule);
   border-radius: 50%;
+  background: color-mix(in srgb, var(--rule) 30%, transparent);
   transform: translate(-50%, -50%);
-  opacity: 0.5;
+  opacity: var(--pad-alpha);
   pointer-events: none;
 }
 
-.stick.active {
-  opacity: 1;
+.stick-move {
+  left: calc(var(--safe-l) + var(--pad-edge) + var(--stick) / 2);
+}
+
+.stick-aim {
+  left: calc(100% - var(--safe-r) - var(--pad-edge) - var(--stick) / 2);
 }
 
 .knob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 44px;
-  height: 44px;
+  width: 46%;
+  height: 46%;
   border-radius: 50%;
   background: var(--rule);
   transform: translate(calc(-50% + var(--kx, 0px)), calc(-50% + var(--ky, 0px)));
 }
 
-.zone-aim .knob {
-  background: var(--signal);
-  box-shadow: inset 0 0 0 2px var(--rule);
+/* The aim stick's knob is a shell that points where it aims (tanks.js sets --ka). */
+.stick-aim .knob {
+  background: none;
+  color: var(--rule);
 }
 
+.stick-aim .knob .icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  stroke: none;
+  transform: rotate(var(--ka, 0rad));
+}
+
+/* Dragged back to the middle after aiming: letting go now fires nothing. */
+.stick-aim.cancel .knob .icon {
+  fill: none;
+  stroke: currentColor;
+}
+
+/* On the right edge, halfway down, in line with the aim stick's resting place. */
 .mine-btn {
-  align-self: center;
-  justify-self: center;
+  position: absolute;
+  left: calc(100% - var(--safe-r) - var(--pad-edge) - var(--stick) / 2);
+  top: calc(50% - var(--safe-b) / 2);
   display: grid;
   place-items: center;
   align-content: center;
@@ -226,6 +258,8 @@
   border-radius: 50%;
   background: var(--surface);
   color: var(--text);
+  transform: translate(-50%, -50%);
+  opacity: var(--pad-alpha);
   cursor: pointer;
   touch-action: none;
   user-select: none;
@@ -237,8 +271,7 @@
   height: 26px;
 }
 
-.mine-btn.pressed,
-.mine-btn:active {
+.mine-btn.pressed {
   background: var(--signal);
   border-color: var(--signal);
   color: var(--on-signal);
@@ -418,15 +451,6 @@
   padding: 6px 8px;
 }
 
-.sound-row {
-  width: 100%;
-  max-width: 220px;
-}
-
-#ovPause .overlay-card {
-  gap: 16px;
-}
-
 /* Tight overlays on short screens (SE, landscape). */
 @media (max-height: 700px) {
   .tanks-wrap .overlay {
@@ -454,7 +478,7 @@
     min-width: 48px;
   }
   .page-tanks {
-    --stick: 84px;
+    --stick: 100px;
   }
   .banner-title {
     font-size: 25px;

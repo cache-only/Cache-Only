@@ -287,8 +287,11 @@ service worker with scope `/` covers everything.
 ## Game: Tanks
 
 - Top-down tank battles in the style of Wii Play's *Tanks!*, with original code, art and sound.
-  The arena is 20 × 15 cells. On a tall screen the renderer turns it 90°, so the player's side
-  (the left of every map) sits at the bottom, next to the thumbs. Up on screen is always up for input.
+  The arena is 20 × 15 cells (4:3). On a tall screen the renderer turns it 90°, so the player's side
+  (the left of every map) sits at the bottom, next to the thumbs. In portrait it fills the width right
+  under the header; spare room stays empty below it. In landscape there is no header band: the home
+  button floats in the top-left corner, mission and lives in the top-right, and the arena fills the
+  height, centred on the screen with equal room on both sides. Up on screen is always up for input.
 - **Rules** (`rules.js`, `engine.js`): one hit destroys a tank. Shells ricochet off walls and crates;
   the player has 5 shells in flight with 1 ricochet each and 2 mines. Shells that meet cancel out
   (missiles too), your own shell can destroy you after a ricochet, and a barrel inside a wall fizzles.
@@ -317,10 +320,19 @@ service worker with scope `/` covers everything.
   Playtest new or changed maps with `npm run playtest` (`scripts/playtest.mjs`): its expert bot
   should win each mission at least 6 times in 8, and its casual bot shows how hard the mission is
   next to the others. `--map file` plays a draft copied from the field guide's editor.
-- **Input:** touch has a floating drive stick (left), an aim stick that fires on release (right), a
-  round mine button, and tap-to-fire on the arena. Keyboard and mouse: WASD/arrows, mouse to aim,
-  click to fire, Space or right-click for a mine, P to pause. The on-screen controls only appear on
-  touch devices.
+- **Input:** touch works like Brawl Stars. The controls float over the whole play area at 20% opacity.
+  A thumb anywhere on the left half drives, with the stick centred where it lands. On the right half,
+  drag to aim and let go to fire, drag back to the middle to cancel, or tap to fire straight at the
+  nearest visible enemy (no ricochet or lead; invisible tanks are skipped). The aim knob is a shell
+  pointing along the aim. The mine button sits on the right edge, halfway down, above the aim stick.
+  Touching the arena doesn't fire. The sticks follow touches by identifier and let go of any finger
+  missing from a touch event's `touches`, so a lost `touchend` can't leave one held. Keyboard and mouse: WASD/arrows, mouse to aim, click to fire, Space or right-click for a mine,
+  P or Escape for the menu. The on-screen controls only appear on touch devices.
+- **Menu:** no back or pause button. The header's home button opens a side menu (Resume, Sound,
+  Quit campaign, Back to games) down the left edge over a progressive blur (`.side-menu` in
+  `styles.css`, `setupSideMenu` in `shared/ui.js`). Opening it pauses the battle; closing it plays on.
+  The home button keeps its home icon while the menu is open (tapping it again closes the menu):
+  Resume is the way back, so there is no close icon.
 - **Simulation:** fixed 120 Hz step, seeded RNG, and the whole world is plain JSON, so it is
   deterministic. Shells move along exact ricochet paths (`advance`/`tracePath`), so the aiming guide
   and the AI's bank shots match what really happens. Keep `engine.js`, `ai.js` and `rules.js` free of
@@ -328,8 +340,8 @@ service worker with scope `/` covers everything.
 - **Save:** the campaign at every mission start and end; the whole world on pause, hide and
   pagehide, so a killed app reopens paused mid-battle. `summary: { mission }` feeds the launcher.
 - **Sound** is synthesised with Web Audio (no audio files). It follows the iOS silent switch
-  (`navigator.audioSession.type = 'ambient'`) and can be muted from the pause screen.
-- Leaving the app or the window pauses the battle. Under reduced motion there is no screen shake,
+  (`navigator.audioSession.type = 'ambient'`) and can be muted from the side menu.
+- Leaving the app or the window pauses the battle (the side menu opens). Under reduced motion there is no screen shake,
   fewer particles, no banner slide, steady lights on mines and missiles, and a static bomb mark.
 - **Planned work** lives in `TANKS.md`, grouped by category with ids (R1, W1, A1…). New Tanks ideas
   go there; when one ships, mark it done with the date.

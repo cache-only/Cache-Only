@@ -439,7 +439,18 @@ export function drawShot(c, pal, b, { flame = 0.5, blink = true } = {}) {
       c.fill();
     }
   } else {
-    roundRect(c, -0.14, -0.065, 0.28, 0.13, 0.065);
+    // A bullet: square-ish back with rounded corners, tapering to a point in front.
+    const h = 0.065, r = 0.035;
+    c.beginPath();
+    c.moveTo(-0.14 + r, -h);
+    c.lineTo(-0.01, -h);
+    c.quadraticCurveTo(0.08, -h, 0.16, 0);
+    c.quadraticCurveTo(0.08, h, -0.01, h);
+    c.lineTo(-0.14 + r, h);
+    c.arcTo(-0.14, h, -0.14, h - r, r);
+    c.lineTo(-0.14, -h + r);
+    c.arcTo(-0.14, -h, -0.14 + r, -h, r);
+    c.closePath();
     c.fill();
   }
   c.restore();

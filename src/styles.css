@@ -406,6 +406,135 @@ button {
   gap: 10px;
 }
 
+/* ---------- Side menu (a game's home button) ---------- */
+
+/* A list of options down the left edge, over the page blurred hardest at that edge and sharp
+   again toward the right: stacked backdrop-filter layers, each masked to reach less far the
+   harder it blurs. It takes the header's colours, so it reads the same in light and dark mode.
+   The header stays on top, so the button that opened it closes it. shared/ui.js runs it.
+   Nothing that wraps the layers may set opacity, filter or mask: that would cut the blur off
+   from the page behind it, so each layer fades itself. */
+.game-page .bar {
+  z-index: 10;
+}
+
+.side-menu {
+  --text: var(--on-bar);
+  --muted: var(--on-bar-muted);
+  --rule: var(--on-bar);
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  color: var(--text);
+}
+
+.side-menu-blur {
+  position: absolute;
+  inset: 0;
+  right: auto;
+  width: min(100%, 560px);
+  cursor: pointer;
+}
+
+.side-menu-blur i,
+.side-menu-blur::after {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.22s var(--ease);
+}
+
+.side-menu-blur i {
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  -webkit-mask-image: linear-gradient(to right, #000 var(--from), transparent var(--to));
+  mask-image: linear-gradient(to right, #000 var(--from), transparent var(--to));
+}
+
+.side-menu-blur i:nth-child(1) { --b: 1px; --from: 55%; --to: 100%; }
+.side-menu-blur i:nth-child(2) { --b: 2px; --from: 45%; --to: 88%; }
+.side-menu-blur i:nth-child(3) { --b: 4px; --from: 35%; --to: 76%; }
+.side-menu-blur i:nth-child(4) { --b: 8px; --from: 25%; --to: 64%; }
+.side-menu-blur i:nth-child(5) { --b: 16px; --from: 15%; --to: 52%; }
+.side-menu-blur i:nth-child(6) { --b: 32px; --from: 5%; --to: 40%; }
+
+/* A shade under the list keeps its text readable on a light page. */
+.side-menu-blur::after {
+  content: "";
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5) 45%, transparent);
+}
+
+.side-menu-list {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(80%, 320px);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: calc(var(--safe-t) + var(--bar-h) + var(--stripe) + 14px) 0 calc(var(--safe-b) + 16px) calc(var(--safe-l) + 6px);
+  opacity: 0;
+  transform: translateX(-18px);
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
+}
+
+.side-menu.open .side-menu-blur i,
+.side-menu.open .side-menu-blur::after,
+.side-menu.open .side-menu-list {
+  opacity: 1;
+  transform: none;
+}
+
+.side-menu-title {
+  padding: 0 12px 8px;
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: 700 19px/1.15 var(--font-display);
+  letter-spacing: 0.01em;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.side-item:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.side-item .icon {
+  color: var(--muted);
+}
+
+.side-item.switch-row {
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 52px;
+}
+
+.side-item.switch-row input {
+  margin-left: auto;
+}
+
+/* Leaving the game sits apart from what happens in it. */
+.side-item.is-exit {
+  margin-top: 10px;
+}
+
 /* ---------- Sheets (dialog) ---------- */
 
 dialog.sheet {

@@ -1,7 +1,7 @@
 import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
-import { confirmDialog } from '../../shared/ui.js';
+import { confirmDialog, setupSideMenu } from '../../shared/ui.js';
 import { drawBadge } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
@@ -83,8 +83,8 @@ function addKills(into, from) {
 const input = {
   keys: new Set(),
   stick: { x: 0, y: 0 }, // drive stick, screen space, length up to 1
-  aimDir: null, // world angle from the aim stick
-  aimPoint: null, // world point from the mouse or a finger on the arena
+  aimDir: null, // world angle from the aim stick or a tap
+  aimPoint: null, // world point from the mouse
   guide: false, // show the aiming guide
   reticle: false, // mark aimPoint
   shots: 0, // shots waiting for the barrel to reload
@@ -105,8 +105,7 @@ const KEY_DIRS = {
 };
 
 let touchUI = matchMedia('(any-pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-let arenaPointer = null; // a finger aiming on the arena
-let skipPointer = null; // the touch that dismissed the mission banner; it doesn't also fire
+let skipPointer = null; // the click that dismissed the mission banner; it doesn't also fire
 
 function currentAim() {
   if (!world) return null;
@@ -151,91 +150,84 @@ function queueMine() {
   input.mineUntil = world.time + 0.3;
 }
 
-const sticks = [];
-
-function releaseInput() {
-  for (const s of sticks) s.release();
-  input.keys.clear();
-  input.stick = { x: 0, y: 0 };
-  input.guide = false;
-  input.reticle = false;
-  input.shots = 0;
-  input.mine = false;
-  arenaPointer = null;
-}
-
-function resetAim() {
-  input.aimDir = null;
+/** Turns the turret straight at the nearest enemy you can see: no ricochets, no lead. */
+function aimAtNearest() {
+  const p = world.tanks[0];
+  let best = null;
+  let bestD = Infinity;
+  for (const t of world.tanks) {
+    // An invisible tank stays hidden: the auto-aim doesn't give it away.
+    if (t.slot < 0 || !t.alive || TYPES[t.type].invisible) continue;
+    const d = Math.hypot(t.x - p.x, t.y - p.y);
+    if (d < bestD) {
+      bestD = d;
+      best = t;
+    }
+  }
+  if (!best) return;
+  input.aimDir = Math.atan2(best.y - p.y, best.x - p.x);
   input.aimPoint = null;
 }
 
-/** A floating thumb stick: it centres wherever the thumb lands inside its zone. */
-function bindStick(zone, stick, { move, start = () => {}, end }) {
-  const knob = stick.querySelector('.knob');
-  let id = null;
+// Touch: Brawl Stars-style floating sticks over the whole play area. A thumb anywhere on the
+// left half drives, with the stick centred where it lands. On the right half, drag to aim and
+// let go to fire, drag back to the middle to cancel, or just tap to fire at the nearest tank.
+// The round button on the right edge, above the aim stick, lays a mine.
+//
+// The sticks follow touches by identifier, and every touch event carries the full list of
+// fingers still on the screen. A stick whose finger isn't on that list is let go, so a lost
+// touchend (iOS drops them with several fingers down or a system gesture) can't leave the
+// tank driving on its own: the next touch anywhere frees it, and a new thumb on that half
+// takes the stick over.
+const pads = $('pads');
+const mineBtn = $('mineBtn');
+const AIM_DEAD = 0.25; // share of the stick's reach: inside it, the aim stick hasn't aimed
+
+function makeStick(el, { start = () => {}, move, end }) {
+  const knob = el.querySelector('.knob');
+  const stick = { id: null, mag: 0 };
   let ox = 0;
   let oy = 0;
-  const radius = () => stick.offsetWidth / 2 || 48;
+  const reach = () => el.offsetWidth / 2 || 56;
   const setKnob = (dx, dy) => {
     knob.style.setProperty('--kx', `${dx}px`);
     knob.style.setProperty('--ky', `${dy}px`);
   };
-  const reset = () => {
-    id = null;
-    stick.classList.remove('active');
-    stick.style.left = '';
-    stick.style.top = '';
-    setKnob(0, 0);
-  };
-  const track = (event) => {
-    const rad = radius();
-    const dx = event.clientX - ox;
-    const dy = event.clientY - oy;
+  stick.track = (touch) => {
+    const r = reach();
+    const dx = touch.clientX - ox;
+    const dy = touch.clientY - oy;
     const len = Math.hypot(dx, dy);
-    const k = len > rad ? rad / len : 1;
+    const k = len > r ? r / len : 1;
     setKnob(dx * k, dy * k);
-    move((dx * k) / rad, (dy * k) / rad, Math.min(1, len / rad));
+    stick.mag = Math.min(1, len / r);
+    move((dx * k) / r, (dy * k) / r, stick.mag);
   };
-  zone.addEventListener('pointerdown', (event) => {
-    if (id !== null || phase !== 'play') return;
-    event.preventDefault();
-    id = event.pointerId;
-    zone.setPointerCapture?.(id);
-    const r = zone.getBoundingClientRect();
-    const margin = Math.min(radius(), r.width / 2, r.height / 2);
-    ox = Math.max(r.left + margin, Math.min(r.right - margin, event.clientX));
-    oy = Math.max(r.top + margin, Math.min(r.bottom - margin, event.clientY));
-    stick.style.left = `${ox - r.left}px`;
-    stick.style.top = `${oy - r.top}px`;
-    stick.classList.add('active');
-    start();
-    track(event);
-  });
-  zone.addEventListener('pointermove', (event) => {
-    if (event.pointerId !== id) return;
-    event.preventDefault();
-    track(event);
-  });
-  const finish = (event) => {
-    if (event.pointerId !== id) return;
-    reset();
-    end(event.type !== 'pointerup');
+  stick.begin = (touch, quiet) => {
+    const box = pads.getBoundingClientRect();
+    stick.id = touch.identifier;
+    ox = touch.clientX;
+    oy = touch.clientY;
+    el.style.left = `${ox - box.left}px`;
+    el.style.top = `${oy - box.top}px`;
+    el.classList.add('active');
+    start(quiet);
+    stick.track(touch);
   };
-  zone.addEventListener('pointerup', finish);
-  zone.addEventListener('pointercancel', finish);
-  zone.addEventListener('lostpointercapture', finish);
-  const api = {
-    release() {
-      if (id === null) return;
-      reset();
-      end(true);
-    },
+  /** Lets go. cancelled: the touch was taken away rather than lifted, so nothing fires. */
+  stick.finish = (cancelled) => {
+    if (stick.id === null) return;
+    stick.id = null;
+    el.classList.remove('active', 'cancel');
+    el.style.left = '';
+    el.style.top = '';
+    setKnob(0, 0);
+    end(cancelled);
   };
-  sticks.push(api);
-  return api;
+  return stick;
 }
 
-bindStick($('moveZone'), $('moveStick'), {
+const moveStick = makeStick($('moveStick'), {
   move(x, y) {
     input.stick = { x, y };
   },
@@ -244,94 +236,168 @@ bindStick($('moveZone'), $('moveStick'), {
   },
 });
 
-bindStick($('aimZone'), $('aimStick'), {
-  start() {
-    input.guide = true;
-    input.reticle = false;
+const aimEl = $('aimStick');
+let aimed = false; // the aim stick has left its middle since the thumb landed
+let aimQuiet = false; // the thumb that started the mission: tapping with it doesn't fire
+
+const aimStick = makeStick(aimEl, {
+  start(quiet) {
+    aimed = false;
+    aimQuiet = quiet;
+    aimEl.style.removeProperty('--ka');
   },
   move(x, y, mag) {
-    if (mag < 0.25) return;
+    if (mag < AIM_DEAD) {
+      input.guide = false;
+      aimEl.classList.toggle('cancel', aimed);
+      return;
+    }
+    aimed = true;
+    aimEl.classList.remove('cancel');
+    // The knob's shell points along the aim (clockwise from up, as CSS rotates).
+    aimEl.style.setProperty('--ka', `${Math.atan2(x, -y)}rad`);
     const v = renderer.vecToWorld(x, y);
     input.aimDir = Math.atan2(v.y, v.x);
     input.aimPoint = null;
+    input.guide = true;
   },
   end(cancelled) {
     input.guide = false;
-    // A flick fires where it pointed; a tap fires wherever the turret points.
-    if (!cancelled) queueShot();
+    aimEl.style.removeProperty('--ka');
+    if (cancelled || phase !== 'play') return;
+    if (aimStick.mag >= AIM_DEAD) {
+      queueShot();
+    } else if (!aimed && !aimQuiet) {
+      aimAtNearest();
+      queueShot();
+    }
+    // Otherwise it was aimed, then brought back to the middle: cancelled.
   },
 });
 
-const mineBtn = $('mineBtn');
-mineBtn.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  mineBtn.classList.add('pressed');
-  queueMine();
-});
-for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
-  mineBtn.addEventListener(type, () => mineBtn.classList.remove('pressed'));
+const sticks = [moveStick, aimStick];
+let mineTouch = null;
+
+function pressMine(id) {
+  mineTouch = id;
+  mineBtn.classList.toggle('pressed', id !== null);
 }
 
-// The arena: a finger aims at a spot and fires on release; a mouse always aims.
-function pointerWorld(event) {
+/** Lets go of every stick and button whose finger is no longer on the screen. */
+function settle(touches) {
+  const down = new Set(Array.from(touches, (t) => t.identifier));
+  for (const s of sticks) if (s.id !== null && !down.has(s.id)) s.finish(true);
+  if (mineTouch !== null && !down.has(mineTouch)) pressMine(null);
+}
+
+pads.addEventListener(
+  'touchstart',
+  (event) => {
+    event.preventDefault();
+    settle(event.touches);
+    // A touch during the mission banner starts the mission, and can start driving too.
+    let quiet = false;
+    if (phase === 'brief' && phaseT > 0.35) {
+      startPlay();
+      quiet = true;
+    }
+    if (phase !== 'play') return;
+    const box = pads.getBoundingClientRect();
+    for (const touch of event.changedTouches) {
+      if (mineBtn.contains(touch.target)) {
+        pressMine(touch.identifier);
+        queueMine();
+        continue;
+      }
+      const stick = touch.clientX < box.left + box.width / 2 ? moveStick : aimStick;
+      if (stick.id === null) stick.begin(touch, quiet);
+    }
+  },
+  { passive: false },
+);
+
+pads.addEventListener(
+  'touchmove',
+  (event) => {
+    event.preventDefault();
+    for (const touch of event.changedTouches) {
+      for (const s of sticks) if (s.id === touch.identifier) s.track(touch);
+    }
+  },
+  { passive: false },
+);
+
+function touchEnd(event) {
+  for (const touch of event.changedTouches) {
+    for (const s of sticks) if (s.id === touch.identifier) s.finish(event.type === 'touchcancel');
+    if (touch.identifier === mineTouch) pressMine(null);
+  }
+  settle(event.touches);
+}
+
+pads.addEventListener('touchend', touchEnd);
+pads.addEventListener('touchcancel', touchEnd);
+// Touches that start or end anywhere else (the header) also say which fingers are still down.
+for (const type of ['touchstart', 'touchend', 'touchcancel']) {
+  document.addEventListener(type, (event) => settle(event.touches), { passive: true });
+}
+
+function releaseInput() {
+  for (const s of sticks) s.finish(true);
+  pressMine(null);
+  input.keys.clear();
+  input.stick = { x: 0, y: 0 };
+  input.guide = false;
+  input.reticle = false;
+  input.shots = 0;
+  input.mine = false;
+}
+
+function resetAim() {
+  input.aimDir = null;
+  input.aimPoint = null;
+}
+
+// Mouse: aim anywhere over the play area and click to fire; right-click lays a mine.
+const play = document.querySelector('.play-tanks');
+
+function aimAtMouse(event) {
   const r = canvas.getBoundingClientRect();
-  return renderer.toWorld(event.clientX - r.left, event.clientY - r.top);
+  input.aimPoint = renderer.toWorld(event.clientX - r.left, event.clientY - r.top);
+  input.guide = input.reticle = true;
 }
 
-canvas.addEventListener('pointerdown', (event) => {
-  if (phase !== 'play' || event.pointerId === skipPointer) return;
+play.addEventListener('pointerdown', (event) => {
+  if (event.pointerType !== 'mouse' || phase !== 'play' || event.pointerId === skipPointer) return;
   event.preventDefault();
-  const pt = pointerWorld(event);
-  if (event.pointerType === 'mouse') {
-    input.aimPoint = pt;
-    input.guide = input.reticle = true;
-    if (event.button === 0) queueShot();
-    else if (event.button === 2) queueMine();
+  if (mineBtn.contains(event.target)) {
+    queueMine();
     return;
   }
-  if (arenaPointer !== null) return;
-  arenaPointer = event.pointerId;
-  canvas.setPointerCapture?.(arenaPointer);
-  input.aimPoint = pt;
-  input.guide = input.reticle = true;
+  aimAtMouse(event);
+  if (event.button === 0) queueShot();
+  else if (event.button === 2) queueMine();
 });
 
-canvas.addEventListener('pointermove', (event) => {
-  if (phase !== 'play') return;
-  if (event.pointerType === 'mouse') {
-    input.aimPoint = pointerWorld(event);
-    input.guide = input.reticle = true;
-  } else if (event.pointerId === arenaPointer) {
-    input.aimPoint = pointerWorld(event);
-  }
+play.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'mouse' && phase === 'play') aimAtMouse(event);
 });
 
-function arenaUp(event) {
-  if (event.pointerId !== arenaPointer) return;
-  arenaPointer = null;
-  input.guide = input.reticle = false;
-  if (event.type === 'pointerup') queueShot();
-}
-
-canvas.addEventListener('pointerup', arenaUp);
-canvas.addEventListener('pointercancel', arenaUp);
-canvas.addEventListener('pointerleave', (event) => {
+play.addEventListener('pointerleave', (event) => {
   if (event.pointerType === 'mouse') input.reticle = false;
 });
-canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
-// iOS: no scrolling, zooming or back-swipes from the arena or the controls.
-for (const el of [canvas, $('moveZone'), $('aimZone'), mineBtn]) {
-  el.addEventListener('touchstart', (event) => event.preventDefault(), { passive: false });
-  el.addEventListener('touchmove', (event) => event.preventDefault(), { passive: false });
-}
+play.addEventListener('contextmenu', (event) => event.preventDefault());
 
-// Any touch or key during the mission banner starts the mission.
+// iOS: no scrolling, zooming or back-swipes from the arena.
+for (const type of ['touchstart', 'touchmove']) canvas.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+
+// Any touch or key during the mission banner starts the mission (the pads handle their own).
 document.addEventListener(
   'pointerdown',
   (event) => {
     skipPointer = null;
-    if (phase === 'brief' && phaseT > 0.35) {
+    if (phase === 'brief' && phaseT > 0.35 && !pads.contains(event.target)) {
       skipPointer = event.pointerId;
       startPlay();
     }
@@ -350,14 +416,24 @@ wrap.addEventListener('pointerdown', () => {
 });
 
 document.addEventListener('keydown', (event) => {
+  // macOS sends no keyup for keys let go while Cmd is down, so a held key would stick.
+  if (event.key === 'Meta') input.keys.clear();
   if (document.querySelector('dialog[open]') || event.metaKey || event.ctrlKey || event.altKey) return;
   audio.unlock();
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   if (key === 'p' || key === 'Escape') {
-    if (phase === 'play') pause();
-    else if (phase === 'paused') resume();
+    if (menu.isOpen()) menu.close();
+    else if (phase === 'play') menu.open();
     else return;
     event.preventDefault();
+    return;
+  }
+  if (menu.isOpen()) {
+    // Keys work the menu's own items; Space or Enter anywhere else closes it and plays on.
+    if ((key === ' ' || key === 'Enter') && !event.target.closest?.('.side-menu')) {
+      event.preventDefault();
+      menu.close();
+    }
     return;
   }
   if (phase === 'brief' && phaseT > 0.35 && !event.repeat) {
@@ -367,10 +443,6 @@ document.addEventListener('keydown', (event) => {
   } else if (phase === 'ending' && (key === ' ' || key === 'Enter')) {
     event.preventDefault();
     skipEnding();
-    return;
-  } else if (phase === 'paused' && (key === ' ' || key === 'Enter')) {
-    event.preventDefault();
-    resume();
     return;
   }
   if (KEY_DIRS[key]) {
@@ -449,7 +521,7 @@ function hideBanner() {
   $('banner').hidden = true;
 }
 
-const overlays = { menu: $('ovMenu'), pause: $('ovPause'), over: $('ovOver') };
+const overlays = { menu: $('ovMenu'), over: $('ovOver') };
 
 function showOverlay(name) {
   for (const [key, el] of Object.entries(overlays)) el.hidden = key !== name;
@@ -493,13 +565,16 @@ const LOOPING = ['brief', 'play', 'ending'];
 function setPhase(next) {
   phase = next;
   phaseT = 0;
-  $('pauseBtn').disabled = next !== 'play';
+  // The touch controls stay up from the banner to the end of the mission, and take touches
+  // while it is starting or being played.
+  pads.classList.toggle('shown', LOOPING.includes(next));
+  pads.classList.toggle('live', next === 'brief' || next === 'play');
   if (LOOPING.includes(next)) startLoop();
   else stopLoop();
 }
 
 function startLoop() {
-  if (raf || document.hidden) return;
+  if (raf || document.hidden || menu.isOpen()) return;
   last = performance.now();
   acc = 0;
   raf = requestAnimationFrame(frame);
@@ -735,20 +810,30 @@ async function chooseStart(index) {
   beginMission();
 }
 
-function pause() {
-  if (phase !== 'play') return;
+/* ---------- Side menu: the home button's options, and the pause ---------- */
+
+const menu = setupSideMenu($('sideMenu'), $('homeBtn'), { onOpen: hold, onClose: release });
+
+/** Holds the game while the menu is open: a battle pauses (and is saved), a banner waits. */
+function hold() {
   releaseInput();
+  if (phase === 'play') {
+    setPhase('paused');
+    saver.flush();
+  } else {
+    stopLoop();
+  }
+  const held = ['paused', 'brief', 'ending'].includes(phase);
+  $('menuTitle').hidden = !held;
+  $('resumeBtn').hidden = !held;
+  $('quitBtn').hidden = phase !== 'paused' && phase !== 'brief';
   $('soundToggle').checked = prefs.sound;
-  showOverlay('pause');
-  setPhase('paused');
-  saver.flush();
 }
 
-function resume() {
-  if (phase !== 'paused') return;
-  showOverlay(null);
+function release() {
   document.activeElement?.blur?.();
-  setPhase('play');
+  if (phase === 'paused') setPhase('play');
+  else if (LOOPING.includes(phase)) startLoop();
 }
 
 async function quit() {
@@ -757,6 +842,7 @@ async function quit() {
   closeCampaign(false, campaign.mission + 1);
   saver.flush();
   showMenu();
+  menu.close();
 }
 
 $('startBtn').addEventListener('click', () => {
@@ -765,8 +851,7 @@ $('startBtn').addEventListener('click', () => {
 });
 $('newBtn').addEventListener('click', () => chooseStart(0));
 $('againBtn').addEventListener('click', () => chooseStart(0));
-$('pauseBtn').addEventListener('click', pause);
-$('resumeBtn').addEventListener('click', resume);
+$('resumeBtn').addEventListener('click', () => menu.close());
 $('quitBtn').addEventListener('click', quit);
 $('soundToggle').addEventListener('change', (event) => {
   prefs.sound = event.target.checked;
@@ -796,7 +881,8 @@ window.addEventListener(
 // Leaving the app pauses the battle; the player resumes deliberately.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (phase === 'play') pause();
+    if (phase === 'play') menu.open();
+    releaseInput();
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
   } else if (LOOPING.includes(phase)) {
@@ -805,8 +891,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('blur', () => {
-  input.keys.clear();
-  if (phase === 'play') pause();
+  releaseInput();
+  if (phase === 'play') menu.open();
 });
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
@@ -815,33 +901,15 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
   draw();
 });
 
-// Sizing. With the thumb pads under the arena (portrait), the arena is sized first and
-// any spare height goes to the pads rather than to empty bands around the arena.
-const play = document.querySelector('.play-tanks');
-const sideways = matchMedia('(orientation: landscape) and (max-height: 600px)');
-const PADS_MIN = 112;
-const PADS_MAX = 210;
-
+// Sizing: the arena as big as the play area allows, under the header, turned upright on a
+// tall screen. The touch controls float over it, so they take no room.
 function fit() {
-  if (touchUI && !sideways.matches) {
-    const cs = getComputedStyle(play);
-    const innerW = play.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const innerH = play.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    const gap = parseFloat(cs.rowGap) || 0;
-    if (innerW <= 0 || innerH <= PADS_MIN + gap) return;
-    const size = renderer.layout(innerW, innerH - PADS_MIN - gap);
-    const pads = Math.max(PADS_MIN, Math.min(PADS_MAX, Math.floor(innerH - size.height - gap)));
-    play.style.setProperty('--controls-h', `${pads}px`);
-  } else {
-    play.style.removeProperty('--controls-h');
-    if (!wrap.clientWidth || !wrap.clientHeight) return;
-    renderer.layout(wrap.clientWidth, wrap.clientHeight);
-  }
+  if (!wrap.clientWidth || !wrap.clientHeight) return;
+  renderer.layout(wrap.clientWidth, wrap.clientHeight);
   draw();
 }
 
-new ResizeObserver(fit).observe(play);
-sideways.addEventListener?.('change', fit);
+new ResizeObserver(fit).observe(wrap);
 
 /* ---------- Boot ---------- */
 
@@ -852,9 +920,8 @@ if (saved && isCampaign(saved.campaign)) {
   if (saved.world && isWorld(saved.world)) {
     world = saved.world;
     renderHud();
-    $('soundToggle').checked = prefs.sound;
-    showOverlay('pause');
     setPhase('paused');
+    menu.open();
   } else {
     showMenu();
   }

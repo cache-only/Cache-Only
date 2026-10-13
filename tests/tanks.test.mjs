@@ -100,7 +100,7 @@ test('the map checks catch an unreachable enemy, a free shot at your start and a
   const crated = map({ 6: '...............xxx', 7: '..@............xbx', 8: '...............xxx' });
   assert.deepEqual(checkMap(crated).errors, []);
   // The same blocks as another mission, even with the tanks moved.
-  const twin = covered.map((line) => line.replace('b', '.')).map((line, r) => (r === 3 ? '.................b..' : line));
+  const twin = covered.map((line) => line.replace('b', '.')).map((line, r) => (r === 3 ? '.................b'.padEnd(COLS, '.') : line));
   assert.match(checkMap(twin, { others: [{ name: 'mission 1', rows: covered }] }).errors.map((e) => e.text).join(), /same blocks as mission 1/);
   // Nudges only: wide open and mirrored.
   const nudges = checkMap(covered).warnings.map((w) => w.text).join();
@@ -150,7 +150,7 @@ test('a bank shot off a wall destroys a tank around a corner', () => {
   // Mirror the target in the right-hand wall face, where the shell centre turns.
   const mirrorX = 2 * (COLS - SHELL_R) - e.x;
   const angle = Math.atan2(e.y - p.y, mirrorX - p.x);
-  const events = run(s, 0.05, { ...IDLE, aim: angle, fire: true }).concat(run(s, 10));
+  const events = run(s, 0.05, { ...IDLE, aim: angle, fire: true }).concat(run(s, 14));
   assert.equal(count(events, 'bounce'), 1);
   assert.equal(e.alive, false);
   assert.equal(s.phase, 'won');
@@ -252,7 +252,7 @@ test('tanks never drive into walls, crates or holes; shells fly over holes', () 
   assert.ok(Math.abs(p.x - 4.5) < 0.2 && Math.abs(p.y - 7.5) < 0.2, 'boxed in, the tank stays put');
 
   const h = inert(createWorld(level(['.........b', '', '', '', '', '', '', '..@.oooo'])));
-  const events = run(h, 0.05, { ...IDLE, aim: 0, fire: true }).concat(run(h, 5));
+  const events = run(h, 0.05, { ...IDLE, aim: 0, fire: true }).concat(run(h, 7));
   assert.equal(count(events, 'bounce'), 1, 'the first contact is the far wall, not the hole');
 });
 

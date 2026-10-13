@@ -48,6 +48,38 @@ export function confirmDialog(message, { ok = t('common.yes'), cancel = t('commo
   });
 }
 
+/**
+ * A game's side menu (.side-menu), opened and closed by its home button in the header.
+ * Tapping beside the list closes it too. onOpen runs as it opens, onClose as it closes.
+ */
+export function setupSideMenu(menu, button, { onOpen, onClose } = {}) {
+  let hiding = 0;
+  const isOpen = () => menu.classList.contains('open');
+  function open() {
+    if (isOpen()) return;
+    clearTimeout(hiding);
+    menu.hidden = false;
+    void menu.offsetWidth; // start the transition from the closed look
+    menu.classList.add('open');
+    button.setAttribute('aria-expanded', 'true');
+    onOpen?.();
+  }
+  function close() {
+    if (!isOpen()) return;
+    menu.classList.remove('open');
+    button.setAttribute('aria-expanded', 'false');
+    hiding = setTimeout(() => (menu.hidden = true), 240);
+    onClose?.();
+  }
+  button.setAttribute('aria-controls', menu.id);
+  button.setAttribute('aria-expanded', 'false');
+  button.addEventListener('click', () => (isOpen() ? close() : open()));
+  menu.addEventListener('click', (event) => {
+    if (!event.target.closest('.side-menu-list')) close();
+  });
+  return { open, close, isOpen };
+}
+
 /** Board sizing fallback for browsers without container query units. */
 export function fitBoard(wrap, board) {
   if (window.CSS && CSS.supports('width', '1cqmin')) return;

@@ -255,7 +255,7 @@
     scroll-margin-top: 12px;
   }
   .map:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
-  .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
+  .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: {{COLS}} / {{ROWS}}; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
   .map:hover .map-art { transform: translateY(-2px); }
   .map[aria-current="true"] .map-art { outline: 3px solid var(--signal); outline-offset: 2px; }
   .map-cap { display: grid; gap: 3px; min-width: 0; }
@@ -289,9 +289,9 @@
   @media (min-width: 900px) { .viewer-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
   figcaption { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-  .viewer-map, .ed-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
+  .viewer-map, .ed-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: {{COLS}} / {{ROWS}}; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
   .src-grid {
-    display: grid; grid-template-columns: 1.6em repeat(20, minmax(0, 1fr)); gap: 1px;
+    display: grid; grid-template-columns: 1.6em repeat({{COLS}}, minmax(0, 1fr)); gap: 1px;
     font-family: var(--font-mono); font-size: clamp(9px, 1.25vw, 13px); line-height: 1;
     background: var(--surface);
   }
@@ -669,21 +669,20 @@ function dotted(ctx, P, pts, alpha = 0.5) {
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 }
-/** A shot drawn along `a`, with a rocket's or missile's smoke behind it on `path`. */
+/** A shot drawn along `a`, with its smoke behind it on `path`: thick for rockets and missiles, faint for shells. */
 function shotAt(ctx, P, weapon, path, d) {
   const p = pointAt(path, d);
-  if (weapon === 'rocket' || weapon === 'missile') {
-    for (const k of [0.34, 0.58, 0.86, 1.18]) {
-      if (d - k < 0) continue;
-      const q = pointAt(path, d - k);
-      ctx.globalAlpha = 0.5 * (1 - k / 1.45);
-      ctx.fillStyle = P.smoke;
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07, 0, PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
+  const heavy = weapon === 'rocket' || weapon === 'missile';
+  for (const k of heavy ? [0.34, 0.58, 0.86, 1.18] : [0.22, 0.4, 0.6]) {
+    if (d - k < 0) continue;
+    const q = pointAt(path, d - k);
+    ctx.globalAlpha = heavy ? 0.5 * (1 - k / 1.45) : 0.32 * (1 - k / 0.8);
+    ctx.fillStyle = P.smoke;
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, heavy ? (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07 : 0.035 + k * 0.05, 0, PI * 2);
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
   drawShot(ctx, P, { x: p.x, y: p.y, vx: Math.cos(p.a), vy: Math.sin(p.a), weapon }, { flame: 0.5, blink: true });
 }
 
