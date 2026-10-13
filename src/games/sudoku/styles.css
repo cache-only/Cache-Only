@@ -1,0 +1,324 @@
+/* Sudoku: board, number pad, tools. Tokens come from /styles.css. */
+
+.sudoku-page {
+  --peer: #e9e3d2;
+  --same: #ffe9a6;
+  --entry: #1b5c9a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sudoku-page {
+    --peer: #20242b;
+    --same: #4b3f12;
+    --entry: #8cc4ff;
+  }
+}
+
+.sudoku-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  background: var(--rule);
+  border-radius: 2px;
+  container-type: inline-size;
+  touch-action: manipulation;
+}
+
+.box {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--line);
+}
+
+.cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.cell .v {
+  font: 500 22px/1 var(--font-display);
+  font-size: 6.4cqi;
+  font-variant-numeric: tabular-nums;
+  color: var(--entry);
+}
+
+.cell.given .v {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cell.peer {
+  background: var(--peer);
+}
+
+.cell.same {
+  background: var(--same);
+}
+
+.cell.selected {
+  background: var(--signal);
+}
+
+.cell.selected .v {
+  color: var(--on-signal);
+}
+
+.cell.conflict .v {
+  color: var(--danger);
+}
+
+.cell.conflict::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 9%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--danger);
+}
+
+.notes {
+  position: absolute;
+  inset: 6%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: center;
+  font: 600 10px/1 var(--font-mono);
+  font-size: 2.7cqi;
+  color: var(--muted);
+}
+
+.notes span {
+  visibility: hidden;
+  min-width: 1.3em;
+  text-align: center;
+  border-radius: 2px;
+}
+
+.notes span.on {
+  visibility: visible;
+}
+
+.notes span.match {
+  background: var(--signal);
+  color: var(--on-signal);
+}
+
+.cell.selected .notes {
+  color: var(--on-signal);
+}
+
+.board.masked .cell .v,
+.board.masked .cell .notes {
+  visibility: hidden;
+}
+
+/* ---------- Tools and pad ---------- */
+
+.tools {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 50px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tool:active {
+  background: var(--surface-2);
+}
+
+.tool[aria-pressed="true"] {
+  background: var(--signal);
+  color: var(--on-signal);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pad {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.key {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 50px;
+  padding: 0;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: 600 25px/1 var(--font-display);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.key:active {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+.key.done {
+  opacity: 0.28;
+}
+
+.pad.notes-mode .key:not(.key-erase) {
+  font: 600 17px/1 var(--font-mono);
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.key-erase .icon {
+  width: 24px;
+  height: 24px;
+}
+
+@media (min-width: 540px) {
+  .pad {
+    grid-template-columns: repeat(10, 1fr);
+  }
+}
+
+/* ---------- Levels (start overlay + menu) ---------- */
+
+.levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.level {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 64px;
+  padding: 11px 12px;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.level:active {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+.level-name {
+  font: 800 16px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.level-meta,
+.level-best {
+  font: 500 11px/1.2 var(--font-mono);
+  color: var(--muted);
+}
+
+.level-best {
+  color: inherit;
+}
+
+#ovStart .overlay-card {
+  width: min(100%, 360px);
+}
+
+.done-facts {
+  width: 100%;
+  max-width: 240px;
+  text-align: left;
+}
+
+.new-best {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+/* ---------- Sheets ---------- */
+
+.puzzle-input {
+  width: 100%;
+  min-height: 7.5em;
+  padding: 10px 12px;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--text);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  resize: vertical;
+}
+
+.puzzle-code {
+  padding: 12px 14px;
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+  word-break: break-all;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+@media (max-width: 380px) {
+  .bar-title .flight-tag {
+    display: none;
+  }
+}
+
+@media (max-height: 560px) {
+  .tool {
+    height: 44px;
+  }
+  .tool span {
+    display: none;
+  }
+  .key {
+    height: 44px;
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "gameplane",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gameplane: an offline-first PWA with a small collection of games.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "host": "node scripts/host.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "guide": "node scripts/guide.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

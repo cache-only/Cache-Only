@@ -1,0 +1,997 @@
+/* Gameplane shared tokens and base styles.
+   Identity: airport wayfinding. Ink header bars with a signal-yellow stripe,
+   heavy rules, mono "flight codes", square-ish signage corners. */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #f1ede3;
+  --surface: #faf8f2;
+  --surface-2: #e6e1d4;
+  --text: #16181d;
+  --muted: #64625b;
+  --line: #d5cfc0;
+  --rule: #16181d;
+  /* Pure black so the header continues the opaque iOS status bar without a seam. */
+  --bar: #000000;
+  --on-bar: #f1ede3;
+  --on-bar-muted: #9d9a90;
+  --signal: #ffc400;
+  --on-signal: #16181d;
+  --danger: #c42b3b;
+  --ok: #1d7a4c;
+  --focus: #2563eb;
+  --scrim: rgba(241, 237, 227, 0.9);
+
+  /* Tile scale for 2048 (and anything else that needs ranked colour):
+     runway concrete -> sky -> signal -> beacon -> night flight. */
+  --tile-2: #e4dfd2;    --tile-2-ink: #16181d;
+  --tile-4: #d2d9de;    --tile-4-ink: #16181d;
+  --tile-8: #a8d3ec;    --tile-8-ink: #16181d;
+  --tile-16: #6cb5e2;   --tile-16-ink: #16181d;
+  --tile-32: #2e8ccc;   --tile-32-ink: #ffffff;
+  --tile-64: #1b5c9a;   --tile-64-ink: #ffffff;
+  --tile-128: #ffe07a;  --tile-128-ink: #16181d;
+  --tile-256: #ffc400;  --tile-256-ink: #16181d;
+  --tile-512: #ff981e;  --tile-512-ink: #16181d;
+  --tile-1024: #e9552b; --tile-1024-ink: #ffffff;
+  --tile-2048: #16181d; --tile-2048-ink: #ffc400;
+  --tile-max: #6a3dc2;  --tile-max-ink: #ffffff;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;
+
+  --radius: 3px;
+  --tap: 44px;
+  --bar-h: 52px;
+  --stripe: 3px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  /* Extra black above the header row in the installed iOS app (see below). */
+  --edge-clear: 0px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* iOS 26 lays a progressive blur over the top ~40pt of an installed web app, even
+   under an opaque status bar, and no meta tag or CSS turns it off. Blurring plain
+   black is invisible, so the header grows a black band and keeps its text below
+   the blur. Installed iOS only (-webkit-touch-callout is iOS-only), and not on
+   landscape phones, where the status bar is hidden. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) and (min-height: 500px) {
+    :root {
+      --edge-clear: 40px;
+    }
+  }
+}
+
+/* iOS 26+ ignores theme-color and the status-bar-style meta, and an installed web app gets
+   a blur over the top of the screen (on iOS 27 it reaches well below the status bar). A fixed
+   element with a solid background at the very top makes iOS paint the status bar in that
+   colour instead of blurring: it must be at least 6px tall, at least 80% wide and within 4px
+   of the top. It uses the header's black, so the status bar still reads as part of the
+   header (the closest thing to transparent: a truly transparent bar can't avoid the blur).
+   Source: Modern Web Weekly, "So what's up with the iOS 27 blur" (linked in CLAUDE.md). */
+.status-tint {
+  display: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .status-tint {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: max(6px, env(safe-area-inset-top, 0px));
+    background: var(--bar);
+    pointer-events: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1114;
+    --surface: #181b20;
+    --surface-2: #23272e;
+    --text: #ece9e1;
+    --muted: #9b988f;
+    --line: #2d3139;
+    --rule: #ece9e1;
+    --bar: #000000;
+    --on-bar: #ece9e1;
+    --on-bar-muted: #8a877f;
+    --danger: #ff6170;
+    --ok: #46c487;
+    --focus: #7aa5ff;
+    --scrim: rgba(15, 17, 20, 0.9);
+
+    /* At night the sky brightens toward dawn. */
+    --tile-2: #2a2e35;    --tile-2-ink: #ece9e1;
+    --tile-4: #353f48;    --tile-4-ink: #ece9e1;
+    --tile-8: #2b5e80;    --tile-8-ink: #ffffff;
+    --tile-16: #3a8bc3;   --tile-16-ink: #ffffff;
+    --tile-32: #6cb5e2;   --tile-32-ink: #0f1114;
+    --tile-64: #a8d3ec;   --tile-64-ink: #0f1114;
+    --tile-2048: #ece9e1; --tile-2048-ink: #16181d;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--bar);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--text);
+  font: 400 16px/1.4 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+summary,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 16px;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: 600 15px/1 var(--font-sans);
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.btn:active {
+  background: var(--surface-2);
+}
+
+.btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+.btn-primary:active {
+  background: #e6b000;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.icon-btn:active {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+/* ---------- Ink bar (launcher masthead + game headers) ---------- */
+
+.bar {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  background: var(--bar);
+  color: var(--on-bar);
+  padding: calc(var(--safe-t) + var(--edge-clear)) calc(var(--safe-r) + 4px) 0 calc(var(--safe-l) + 4px);
+  border-bottom: var(--stripe) solid var(--signal);
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--bar-h);
+}
+
+.bar-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bar-title h1 {
+  font: 800 19px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flight-tag {
+  display: inline-block;
+  padding: 3px 5px 2px;
+  border-radius: 2px;
+  background: var(--signal);
+  color: var(--on-signal);
+  font: 700 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.bar-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 56px;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.bar-stat .label {
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--on-bar-muted);
+  margin-bottom: 4px;
+}
+
+.bar-stat .value {
+  font: 700 18px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--signal);
+}
+
+/* ---------- Game shell: fixed, never scrolls ---------- */
+
+.game-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.play {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px calc(var(--safe-r) + 12px) calc(var(--safe-b) + 12px) calc(var(--safe-l) + 12px);
+}
+
+.board-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: size;
+  display: grid;
+  place-items: center;
+}
+
+.board {
+  position: relative;
+  width: var(--board-size, 100cqmin);
+  height: var(--board-size, 100cqmin);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Overlay that sits exactly on top of a board */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--scrim);
+  text-align: center;
+}
+
+.overlay-card {
+  width: min(100%, 320px);
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+
+.overlay-title {
+  font: 800 26px/1.1 var(--font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.overlay-text {
+  color: var(--muted);
+}
+
+.overlay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* ---------- Sheets (dialog) ---------- */
+
+dialog.sheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 88vh;
+  max-height: min(88dvh, calc(100dvh - var(--safe-t) - var(--edge-clear) - 24px));
+  margin: auto auto 0;
+  padding: 0;
+  border: 0;
+  border-top: 4px solid var(--signal);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+dialog.sheet::backdrop {
+  background: rgba(8, 9, 11, 0.55);
+}
+
+@media (min-width: 600px) and (min-height: 600px) {
+  dialog.sheet {
+    margin: auto;
+    border-radius: var(--radius);
+  }
+}
+
+.sheet-inner {
+  display: grid;
+  gap: 18px;
+  padding: 18px calc(var(--safe-r) + 18px) calc(var(--safe-b) + 20px) calc(var(--safe-l) + 18px);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px -8px -4px 0;
+}
+
+.sheet-head h2 {
+  font: 800 20px/1.1 var(--font-display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sheet-section {
+  display: grid;
+  gap: 10px;
+}
+
+.sheet-section + .sheet-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.label {
+  font: 700 11px/1.2 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sheet-msg {
+  min-height: 1.4em;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.sheet-msg.is-error {
+  color: var(--danger);
+}
+
+.confirm-text {
+  font-size: 17px;
+}
+
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  font: 700 13px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 2px solid var(--rule);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--signal);
+  color: var(--on-signal);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--tap);
+  cursor: pointer;
+}
+
+.switch-row input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border: 2px solid var(--rule);
+  border-radius: 15px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.switch-row input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--rule);
+  transition: transform 0.15s var(--ease);
+}
+
+.switch-row input:checked {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.switch-row input:checked::after {
+  background: var(--on-signal);
+  transform: translateX(20px);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line);
+  border-top-color: var(--signal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Launcher ---------- */
+
+.masthead .bar-row {
+  padding-left: 10px;
+}
+
+.brand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.wordmark {
+  font: 800 21px/1 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.lang-switch {
+  border-color: var(--on-bar-muted);
+  border-width: 1px;
+}
+
+.lang-switch button {
+  min-width: 40px;
+  padding: 0 8px;
+  color: var(--on-bar);
+}
+
+.lang-switch button + button {
+  border-left: 1px solid var(--on-bar-muted);
+}
+
+.status {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 10px 10px 14px;
+}
+
+.status-light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--on-bar-muted);
+}
+
+.status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font: 700 13px/1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-version {
+  color: var(--on-bar-muted);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.status-hint {
+  grid-column: 2;
+  font-size: 14px;
+  color: var(--on-bar-muted);
+}
+
+.status[data-state="ready"] .status-light {
+  background: #3ddc84;
+  box-shadow: 0 0 0 3px rgba(61, 220, 132, 0.25);
+}
+
+.status[data-state="ready"] .status-text {
+  color: #3ddc84;
+}
+
+.status[data-state="downloading"] .status-light,
+.status[data-state="checking"] .status-light {
+  background: var(--signal);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+.status[data-state="downloading"] .status-text {
+  color: var(--signal);
+}
+
+.status[data-state="failed"] .status-light,
+.status[data-state="unsupported"] .status-light {
+  background: #ff5a5f;
+}
+
+.status[data-state="failed"] .status-text,
+.status[data-state="unsupported"] .status-text {
+  color: #ff8a8e;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.launcher-main {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px calc(var(--safe-r) + 16px) calc(var(--safe-b) + 32px) calc(var(--safe-l) + 16px);
+  display: grid;
+  gap: 20px;
+}
+
+.notice {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border: 2px solid var(--rule);
+  border-left-width: 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.notice-title {
+  font: 800 15px/1.2 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.notice-note {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.notice.install {
+  border-color: var(--signal);
+  border-left-color: var(--signal);
+}
+
+.notice.update {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--on-signal);
+}
+
+.notice.update .btn {
+  border-color: var(--on-signal);
+  color: var(--on-signal);
+  background: transparent;
+}
+
+.install-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.install-steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.install-steps .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.section-label::after {
+  content: "";
+  flex: 1;
+  height: 4px;
+  background: var(--rule);
+}
+
+/* Departure board */
+.departures {
+  list-style: none;
+  margin: -8px 0 0;
+  padding: 0;
+  border-bottom: 4px solid var(--rule);
+}
+
+.flight + .flight {
+  border-top: 1px dashed var(--line);
+}
+
+.flight-link {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 14px;
+  min-height: 88px;
+  padding: 16px 2px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.flight-link:active {
+  background: var(--surface-2);
+}
+
+.flight-code {
+  align-self: start;
+  margin-top: 4px;
+  padding: 5px 6px 4px;
+  min-width: 52px;
+  text-align: center;
+  border-radius: 2px;
+  background: var(--bar);
+  color: var(--signal);
+  font: 700 13px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.flight-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flight-name {
+  font: 800 24px/1.05 var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+.flight-desc {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.flight-status {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  text-align: right;
+}
+
+.flight-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px 0 12px;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flight-action .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.flight.has-session .flight-action {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+.flight-detail {
+  font: 500 12px/1.2 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Downloads: a game is either on this device (Play), downloadable (dashed Download),
+   downloading (the pill fills from below), or out of reach (dimmed, at the bottom). */
+.games {
+  display: grid;
+  gap: 12px;
+}
+
+.games .departures {
+  margin: 0;
+}
+
+.download-all .btn {
+  width: 100%;
+  min-height: 52px;
+  font-size: 16px;
+}
+
+button.flight-link {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.flight-link:disabled {
+  cursor: progress;
+}
+
+.flight.is-remote .flight-action {
+  border-style: dashed;
+}
+
+.flight.is-downloading .flight-action {
+  justify-content: center;
+  min-width: 72px;
+  border-color: var(--signal);
+  background: linear-gradient(var(--signal), var(--signal)) left bottom / var(--p, 0%) 5px no-repeat;
+}
+
+.flight.is-unavailable .flight-link,
+.flight.is-waiting .flight-link {
+  cursor: default;
+}
+
+.flight.is-unavailable .flight-link:active,
+.flight.is-waiting .flight-link:active {
+  background: transparent;
+}
+
+.flight.is-unavailable .flight-code,
+.flight.is-unavailable .flight-main {
+  opacity: 0.45;
+}
+
+.flight.is-unavailable .flight-detail,
+.flight-detail.is-error {
+  max-width: 10em;
+  white-space: normal;
+}
+
+.flight-detail.is-error {
+  color: var(--danger);
+}
+
+.launcher-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 360px) {
+  .wordmark {
+    letter-spacing: 0.1em;
+    font-size: 18px;
+  }
+  .flight-code {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

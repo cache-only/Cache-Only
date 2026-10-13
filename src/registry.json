@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sudoku",
+    "code": "GP 01",
+    "name": "Sudoku",
+    "path": "/games/sudoku/",
+    "description": {
+      "en": "Fill the grid so every row, column and box holds 1 to 9. Four levels.",
+      "ca": "Omple la graella perquè cada fila, columna i quadre tingui de l'1 al 9. Quatre nivells."
+    }
+  },
+  {
+    "id": "2048",
+    "code": "GP 02",
+    "name": "2048",
+    "path": "/games/2048/",
+    "description": {
+      "en": "Slide the tiles, merge equal numbers, reach 2048.",
+      "ca": "Llisca les fitxes, uneix els números iguals i arriba a 2048."
+    }
+  },
+  {
+    "id": "tanks",
+    "code": "GP 03",
+    "name": { "en": "Tanks", "ca": "Tancs" },
+    "path": "/games/tanks/",
+    "description": {
+      "en": "Top-down tank battles. Bank shots off the walls, lay mines, clear 20 missions.",
+      "ca": "Batalles de tancs vistes des de dalt. Fes rebotar els trets, posa mines i supera 20 missions."
+    }
+  }
+]

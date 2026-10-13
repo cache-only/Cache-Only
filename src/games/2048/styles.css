@@ -1,0 +1,198 @@
+/* 2048: the board is a dark departure-board panel; tiles use the shared
+   --tile-* scale from /styles.css. */
+
+.page-2048 {
+  --gap: 8px;
+  --empty: #262a31;
+  --slide: 100ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page-2048 {
+    --empty: #191c21;
+  }
+}
+
+@media (min-width: 500px) {
+  .page-2048 {
+    --gap: 12px;
+  }
+}
+
+.score-stat {
+  position: relative;
+}
+
+.score-gain {
+  position: absolute;
+  right: 100%;
+  bottom: 9px;
+  font: 700 13px/1 var(--font-mono);
+  color: var(--signal);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: gain 600ms var(--ease) forwards;
+}
+
+@keyframes gain {
+  from {
+    opacity: 1;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+.actions-2048 {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.actions-2048 .btn {
+  padding: 0 14px;
+}
+
+.board-2048 {
+  border-radius: var(--radius);
+  background: var(--bar);
+  container-type: inline-size;
+  touch-action: none;
+  outline-offset: 4px;
+}
+
+.board-2048 .cells,
+.board-2048 .tiles {
+  position: absolute;
+  inset: var(--gap);
+}
+
+.board-2048 .cells {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: var(--gap);
+}
+
+.board-2048 .cells span {
+  border-radius: 2px;
+  background: var(--empty);
+}
+
+.tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc((100% - 3 * var(--gap)) / 4);
+  height: calc((100% - 3 * var(--gap)) / 4);
+  transform: translate(calc(var(--c) * (100% + var(--gap))), calc(var(--r) * (100% + var(--gap))));
+  transition: transform var(--slide) ease-out;
+  will-change: transform;
+}
+
+.tile .face {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 800 30px/1 var(--font-display);
+  font-size: 10.5cqi;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.tile[data-len="3"] .face {
+  font-size: 24px;
+  font-size: 8.6cqi;
+}
+
+.tile[data-len="4"] .face {
+  font-size: 19px;
+  font-size: 6.8cqi;
+}
+
+.tile[data-len="5"] .face,
+.tile[data-len="6"] .face {
+  font-size: 15px;
+  font-size: 5.4cqi;
+}
+
+.t2 { --bg: var(--tile-2); --ink: var(--tile-2-ink); }
+.t4 { --bg: var(--tile-4); --ink: var(--tile-4-ink); }
+.t8 { --bg: var(--tile-8); --ink: var(--tile-8-ink); }
+.t16 { --bg: var(--tile-16); --ink: var(--tile-16-ink); }
+.t32 { --bg: var(--tile-32); --ink: var(--tile-32-ink); }
+.t64 { --bg: var(--tile-64); --ink: var(--tile-64-ink); }
+.t128 { --bg: var(--tile-128); --ink: var(--tile-128-ink); }
+.t256 { --bg: var(--tile-256); --ink: var(--tile-256-ink); }
+.t512 { --bg: var(--tile-512); --ink: var(--tile-512-ink); }
+.t1024 { --bg: var(--tile-1024); --ink: var(--tile-1024-ink); }
+.t2048 { --bg: var(--tile-2048); --ink: var(--tile-2048-ink); }
+.tmax { --bg: var(--tile-max); --ink: var(--tile-max-ink); }
+
+.t2048 .face {
+  box-shadow: inset 0 0 0 3px var(--signal);
+}
+
+.tile.new .face {
+  animation: appear 110ms var(--ease) both;
+}
+
+.tile.merged {
+  z-index: 1;
+}
+
+.tile.merged .face {
+  animation: pop 130ms var(--ease);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pop {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.hint-2048 {
+  flex: none;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-height: 600px) {
+  .hint-2048 {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .bar-title .flight-tag {
+    display: none;
+  }
+  .page-2048 .bar-stat {
+    min-width: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    transition: none;
+  }
+}

@@ -1,0 +1,446 @@
+/* Tanks: an apron seen from above. Paper slabs, ink blocks, hazard-striped crates
+   that mines can clear, and tanks in the shared signage colours. The canvas reads the
+   --tk-* tokens below, so light and dark mode follow the system. */
+
+.page-tanks {
+  --tk-frame: #000000;
+  --tk-floor: #e9e3d3;
+  --tk-joint: rgba(22, 24, 29, 0.08);
+  --tk-wall: #25282e;
+  --tk-wall-lit: #4a4e57;
+  --tk-wall-dark: #101114;
+  --tk-shadow: rgba(22, 24, 29, 0.24);
+  --tk-crate: #ffc400;
+  --tk-stripe: #16181d;
+  --tk-hole: #16181d;
+  --tk-hole-rim: #6d685d;
+  --tk-track: rgba(22, 24, 29, 0.16);
+  --tk-scorch: rgba(22, 24, 29, 0.3);
+  --tk-shell: #16181d;
+  --tk-aim: #16181d;
+  --tk-ink: #16181d;
+  --tk-tread: #2b2e34;
+  --tk-flash: #fff3c4;
+  --tk-fire: #ff8a1e;
+  --tk-smoke: #8a877f;
+
+  --tk-player: #2e8ccc;
+  --tk-brown: #9a6a3c;
+  --tk-ash: #949aa3;
+  --tk-marine: #149a90;
+  --tk-yellow: #f2b705;
+  --tk-pink: #ec5f9a;
+  --tk-green: #3c9a3c;
+  --tk-violet: #7d52d8;
+  --tk-white: #f7f5ef;
+  --tk-black: #2a2d33;
+
+  --stick: 96px;
+  --controls-h: clamp(112px, 18dvh, 164px);
+  --controls-w: clamp(128px, 22vw, 196px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .page-tanks {
+    --tk-floor: #1c1f25;
+    --tk-joint: rgba(236, 233, 225, 0.05);
+    --tk-wall: #474c56;
+    --tk-wall-lit: #636975;
+    --tk-wall-dark: #30343b;
+    --tk-shadow: rgba(0, 0, 0, 0.5);
+    --tk-hole: #050607;
+    --tk-hole-rim: #2d3139;
+    --tk-track: rgba(0, 0, 0, 0.38);
+    --tk-scorch: rgba(0, 0, 0, 0.5);
+    --tk-shell: #f1ede3;
+    --tk-aim: #f1ede3;
+    --tk-ink: #0b0c0e;
+    --tk-tread: #0e0f12;
+    --tk-smoke: #6b6962;
+    --tk-black: #3a3e46;
+  }
+}
+
+/* ---------- Layout: arena above the thumbs (portrait), between them (landscape) ---------- */
+
+.page-tanks .play-tanks {
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--controls-h);
+  grid-template-areas:
+    "board board board"
+    "move mine aim";
+  gap: 8px 10px;
+}
+
+.tanks-wrap {
+  grid-area: board;
+}
+
+.arena {
+  display: block;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: crosshair;
+  outline-offset: 4px;
+}
+
+.controls {
+  display: contents;
+}
+
+.zone-move {
+  grid-area: move;
+}
+
+.zone-aim {
+  grid-area: aim;
+}
+
+.mine-btn {
+  grid-area: mine;
+}
+
+/* Mouse and keyboard: no on-screen controls, the arena gets the room. */
+.page-tanks:not(.touch-ui) .play-tanks {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "board board board";
+}
+
+.page-tanks:not(.touch-ui) .controls > * {
+  display: none;
+}
+
+/* Phones on their side: drive on the left, aim and mines on the right. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .page-tanks.touch-ui .play-tanks {
+    max-width: none;
+    grid-template-columns: var(--controls-w) minmax(0, 1fr) var(--controls-w);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "move board aim"
+      "move board mine";
+    padding-top: 8px;
+  }
+  .page-tanks .bar-title .flight-tag {
+    display: none;
+  }
+}
+
+/* ---------- Thumb sticks ---------- */
+
+.zone {
+  position: relative;
+  container-type: size;
+  min-width: 0;
+  min-height: 0;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.zone-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Short pads (small phones): the stick needs the room more than the label. */
+@container (max-height: 130px) {
+  .zone-label {
+    display: none;
+  }
+}
+
+.stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stick);
+  height: var(--stick);
+  border: 2px solid var(--rule);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.stick.active {
+  opacity: 1;
+}
+
+.knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--rule);
+  transform: translate(calc(-50% + var(--kx, 0px)), calc(-50% + var(--ky, 0px)));
+}
+
+.zone-aim .knob {
+  background: var(--signal);
+  box-shadow: inset 0 0 0 2px var(--rule);
+}
+
+.mine-btn {
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 2px solid var(--rule);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mine-btn .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.mine-btn.pressed,
+.mine-btn:active {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+.pips {
+  display: flex;
+  gap: 4px;
+}
+
+.pips i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pips i.used {
+  opacity: 0.2;
+}
+
+/* ---------- Banners (mission briefs and results) ---------- */
+
+.banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 16px 16px 15px;
+  background: var(--bar);
+  color: var(--on-bar);
+  border-top: var(--stripe) solid var(--signal);
+  border-bottom: var(--stripe) solid var(--signal);
+  text-align: center;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.banner.in {
+  animation: banner-in 320ms var(--ease) both;
+}
+
+@keyframes banner-in {
+  from {
+    transform: translate(-30%, -50%);
+    opacity: 0;
+  }
+}
+
+.banner-title {
+  font: 800 30px/1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.banner-sub {
+  font: 700 13px/1.25 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.banner-sub:empty,
+.banner-note:empty,
+.banner-tanks:empty {
+  display: none;
+}
+
+.banner-note {
+  font-size: 14px;
+  color: var(--on-bar-muted);
+}
+
+.banner-tanks,
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px 10px;
+}
+
+.chip {
+  display: inline-block;
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--c);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45);
+  vertical-align: -1px;
+}
+
+/* On the black banner a black tank's chip needs a light edge to be seen. */
+.banner .chip {
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(241, 237, 227, 0.45);
+}
+
+.tally-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Menu and results ---------- */
+
+.menu-card {
+  width: min(100%, 380px);
+}
+
+.menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.checkpoints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.checkpoints:empty {
+  display: none;
+}
+
+.checkpoints .label {
+  width: 100%;
+}
+
+.checkpoints .btn {
+  min-height: 40px;
+  padding: 0 12px;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.record {
+  font: 600 12px/1.3 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.record:empty {
+  display: none;
+}
+
+.help {
+  max-width: 34ch;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.over-facts {
+  width: 100%;
+  max-width: 260px;
+  text-align: left;
+}
+
+.new-record {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.sound-row {
+  width: 100%;
+  max-width: 220px;
+}
+
+#ovPause .overlay-card {
+  gap: 16px;
+}
+
+/* Tight overlays on short screens (SE, landscape). */
+@media (max-height: 700px) {
+  .tanks-wrap .overlay {
+    align-items: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .tanks-wrap .overlay-card {
+    gap: 10px;
+    margin: auto 0;
+  }
+  .tanks-wrap .overlay-title {
+    font-size: 22px;
+  }
+  .help {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .page-tanks .bar-title .flight-tag {
+    display: none;
+  }
+  .page-tanks .bar-stat {
+    min-width: 48px;
+  }
+  .page-tanks {
+    --stick: 84px;
+  }
+  .banner-title {
+    font-size: 25px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner.in {
+    animation: none;
+  }
+}

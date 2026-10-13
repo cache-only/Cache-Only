@@ -1,0 +1,1236 @@
+<!-- Tanks field guide. Built by scripts/guide.mjs into guide/out/ (npm run guide). Edit this template and
+     guide/enemies.mjs, never the output. The build fills in the double-brace counts and the DATA object. -->
+<title>Tanks Field Guide</title>
+<style>
+  /* Layout: black wayfinding masthead on a signal stripe, then a 3x3 enemy roster, a wide comparison board,
+     the shared rules, a campaign matrix with 20 map tiles, and a map viewer that pairs each drawing with its source text. */
+  :root {
+    --paper: #f1ede3;
+    --surface: #faf8f2;
+    --surface-2: #e6e1d4;
+    --text: #16181d;
+    --muted: #64625b;
+    --line: #d5cfc0;
+    --rule: #16181d;
+    --bar: #000000;
+    --on-bar: #f1ede3;
+    --on-bar-muted: #9d9a90;
+    --signal: #ffc400;
+    --on-signal: #16181d;
+    --focus: #2563eb;
+    --you: rgba(255, 196, 0, 0.18);
+    --ring: rgba(22, 24, 29, 0.22);
+    --chip-dark: #16181d;
+    --chip-light: #faf8f2;
+
+    /*TK_LIGHT*/
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;
+    --radius: 3px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f1114; --surface: #181b20; --surface-2: #23272e; --text: #ece9e1; --muted: #9b988f;
+      --line: #2d3139; --rule: #ece9e1; --on-bar: #ece9e1; --on-bar-muted: #8a877f; --focus: #7aa5ff;
+      --you: rgba(255, 196, 0, 0.12); --ring: rgba(236, 233, 225, 0.24);
+      /*TK_DARK*/
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1114; --surface: #181b20; --surface-2: #23272e; --text: #ece9e1; --muted: #9b988f;
+    --line: #2d3139; --rule: #ece9e1; --on-bar: #ece9e1; --on-bar-muted: #8a877f; --focus: #7aa5ff;
+    --you: rgba(255, 196, 0, 0.12); --ring: rgba(236, 233, 225, 0.24);
+    /*TK_DARK*/
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .wrap { max-width: 1160px; margin-inline: auto; padding-inline: 16px; }
+  @media (min-width: 720px) { .wrap { padding-inline: 28px; } }
+  .mono { font-family: var(--font-mono); }
+  .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- Masthead ---------- */
+  .masthead { background: var(--bar); color: var(--on-bar); border-bottom: 4px solid var(--signal); }
+  .masthead .wrap { display: grid; gap: 18px; padding-block: 28px 26px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal); }
+  .masthead h1 { font-size: clamp(2.4rem, 7vw, 4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 0.95; }
+  .lede { max-width: 62ch; color: var(--on-bar); opacity: 0.86; font-size: 16px; }
+  .lineup { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .lineup a { text-decoration: none; }
+  .lineup .arrow { font-family: var(--font-mono); color: var(--on-bar-muted); font-size: 12px; margin-inline: 2px; }
+  .yours {
+    display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: baseline;
+    border-top: 1px solid #2a2c31; padding-top: 14px;
+    font-family: var(--font-mono); font-size: 13px;
+  }
+  .yours b { color: var(--signal); font-weight: 600; }
+  .yours span { color: var(--on-bar-muted); }
+  .yours .chip { vertical-align: -3px; margin-right: 6px; }
+
+  .toc { display: flex; flex-wrap: wrap; gap: 4px 18px; padding-block: 14px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .toc a { text-decoration: none; padding-block: 6px; border-bottom: 2px solid transparent; }
+  .toc a:hover { border-bottom-color: var(--signal); }
+
+  main.wrap { display: grid; gap: 64px; padding-block: 18px 56px; }
+  section { display: grid; gap: 20px; min-width: 0; scroll-margin-top: 12px; }
+  .sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; border-top: 3px solid var(--rule); padding-top: 10px; }
+  .sec-head h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); font-weight: 800; letter-spacing: -0.02em; }
+  .intro { max-width: 68ch; color: var(--muted); }
+
+  /* ---------- Chips ---------- */
+  .chip {
+    display: inline-grid; place-items: center;
+    width: 22px; height: 22px; border-radius: 2px;
+    background: var(--c); box-shadow: inset 0 0 0 1px var(--ring);
+    font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1;
+    flex: none;
+  }
+  .chip[data-ink="dark"] { color: var(--chip-dark); }
+  .chip[data-ink="light"] { color: var(--chip-light); }
+  .chip.lg { width: 30px; height: 30px; font-size: 15px; }
+  .masthead .chip { box-shadow: none; }
+
+  /* ---------- Roster ---------- */
+  .roster { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 940px) { .roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    display: grid; gap: 14px; padding: 14px; align-content: start; min-width: 0; scroll-margin-top: 12px;
+    grid-template-areas: "head" "scene" "body";
+  }
+  @media (min-width: 600px) and (max-width: 939px) {
+    .card { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-areas: "head head" "scene body"; column-gap: 18px; }
+  }
+  .card-head { grid-area: head; display: flex; align-items: center; gap: 12px; }
+  .card-title { flex: 1; min-width: 0; }
+  .card-title h3 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; }
+  .role { font-size: 13px; color: var(--muted); }
+  .gate {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    background: var(--bar); color: var(--signal); padding: 4px 7px; border-radius: 2px; white-space: nowrap;
+  }
+  .scene { grid-area: scene; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 8 / 5; max-width: 100%; background: var(--tk-floor); align-self: start; }
+  .scene canvas, .map-art canvas, .viewer-map canvas { display: block; width: 100%; height: 100%; }
+  .card-body { grid-area: body; display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .card-body > p { font-size: 14.5px; }
+  .perks { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; margin: 0; padding: 0; }
+  .perks li {
+    font-family: var(--font-mono); font-size: 11.5px; padding: 3px 7px; border-radius: 2px;
+    background: var(--surface-2); color: var(--text); white-space: nowrap;
+  }
+  .spec { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .spec div { padding: 7px 0 6px; display: grid; gap: 1px; }
+  .spec div + div { border-left: 1px solid var(--line); padding-left: 8px; }
+  .spec dt { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spec dd { margin: 0; font-family: var(--font-mono); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .weak { font-size: 13.5px; color: var(--muted); }
+  .weak b { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); margin-right: 6px; }
+
+  /* ---------- Tables ---------- */
+  .scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); -webkit-overflow-scrolling: touch; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
+  th, td { padding: 8px 7px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody th { text-align: left; }
+  tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+  thead th { text-align: left; font-weight: 600; vertical-align: bottom; background: var(--surface); }
+  .group th { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; padding-block: 8px 4px; border-bottom: 0; }
+  .group th + th { border-left: 1px solid var(--line); }
+  .stick { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+  thead .heads th { border-bottom: 2px solid var(--rule); }
+  .sort {
+    all: unset; cursor: pointer; display: grid; gap: 1px; text-align: right; justify-items: end; width: 100%;
+    font: inherit; font-weight: 700; white-space: nowrap; border-radius: 2px;
+  }
+  .sort.left { text-align: left; justify-items: start; }
+  .sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .sort small { font-family: var(--font-mono); font-size: 10px; font-weight: 400; color: var(--muted); letter-spacing: 0.02em; }
+  .sort .dir { font-size: 9px; color: var(--muted); margin-left: 3px; }
+  th[aria-sort] .sort { color: var(--text); }
+  th[aria-sort] .sort > span:first-child { box-shadow: inset 0 -2px 0 var(--signal); }
+  .tankcell { display: flex; align-items: center; gap: 9px; white-space: nowrap; font-weight: 700; }
+  .tankcell small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.txt { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+  .meter { display: block; height: 3px; background: var(--line); margin-top: 5px; min-width: 38px; border-radius: 1px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--text); }
+  .tag { display: inline-block; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 4px; margin-right: 5px; border-radius: 2px; background: var(--tk-fire); color: var(--chip-dark); vertical-align: 1px; }
+  tr.you th, tr.you td { background: var(--you); }
+  tr.you .stick { background: linear-gradient(var(--you), var(--you)), var(--surface); }
+  tbody tr:not(.you):hover td, tbody tr:not(.you):hover th { background: var(--surface-2); }
+  .legend-line { font-size: 13px; color: var(--muted); max-width: 80ch; }
+  .legend-line .meter { display: inline-block; width: 46px; vertical-align: middle; margin: 0 4px; }
+
+  /* ---------- Shared rules ---------- */
+  .two { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 860px) { .two { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 40px; } }
+  .rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .rules li { padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+  .rules li:first-child { border-top: 1px solid var(--line); }
+  .rules b { font-weight: 700; }
+  .aims { margin: 0; display: grid; gap: 0; }
+  .aims div { padding: 11px 0; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+  .aims div:first-child { border-top: 1px solid var(--line); }
+  .aims dt { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  .aims dt .who { display: inline-flex; gap: 3px; }
+  .aims dt .who .chip { width: 16px; height: 16px; font-size: 9.5px; }
+  .aims dd { margin: 0; font-size: 14px; color: var(--text); }
+  h3.sub { font-size: 15px; font-weight: 700; margin-bottom: 8px; font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+
+  /* ---------- Campaign ---------- */
+  .facts { display: flex; flex-wrap: wrap; gap: 8px 26px; font-family: var(--font-mono); font-size: 13px; }
+  .facts b { font-weight: 700; }
+  .matrix { font-size: 12.5px; width: auto; min-width: 100%; }
+  .matrix th, .matrix td { padding: 5px 4px; text-align: center; border-bottom: 1px solid var(--line); }
+  .matrix .stick { text-align: left; padding-inline: 10px 12px; }
+  .matrix thead th { font-family: var(--font-mono); font-weight: 600; font-size: 11.5px; }
+  .matrix thead a { text-decoration: none; display: inline-block; min-width: 24px; padding: 3px 0; border-radius: 2px; }
+  .matrix thead a:hover { background: var(--surface-2); }
+  .matrix .cp { border-left: 2px solid var(--rule); }
+  .matrix .marks th { font-size: 9.5px; font-weight: 500; letter-spacing: 0.04em; color: var(--muted); padding-block: 2px 4px; border-bottom: 2px solid var(--rule); }
+  .matrix .marks .bonus { color: var(--text); }
+  .mx { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 2px; background: var(--c); box-shadow: inset 0 0 0 1px var(--ring); font-family: var(--font-mono); font-weight: 700; font-size: 12px; }
+  .mx[data-ink="dark"] { color: var(--chip-dark); }
+  .mx[data-ink="light"] { color: var(--chip-light); }
+  .dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--line); }
+  .matrix tfoot td, .matrix tfoot th { font-family: var(--font-mono); font-weight: 700; border-top: 2px solid var(--rule); border-bottom: 0; }
+  .matrix td.total { font-family: var(--font-mono); font-weight: 700; padding-inline: 10px; border-left: 1px solid var(--line); }
+
+  .maps { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (min-width: 760px) { .maps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; } }
+  .map {
+    all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 7px; align-content: start; min-width: 0;
+    scroll-margin-top: 12px;
+  }
+  .map:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+  .map-art { display: block; border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); transition: transform 0.15s ease; }
+  .map:hover .map-art { transform: translateY(-2px); }
+  .map[aria-current="true"] .map-art { outline: 3px solid var(--signal); outline-offset: 2px; }
+  .map-cap { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .map-n { font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+  .map-chips { display: flex; flex-wrap: wrap; gap: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .map-chips span { display: inline-flex; align-items: center; gap: 3px; }
+  .map-chips .chip { width: 14px; height: 14px; font-size: 0; }
+  .map-tags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 0; }
+  .map-tags span { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 5px; border-radius: 2px; background: var(--surface-2); }
+  .map-tags .t-bonus { background: var(--signal); color: var(--on-signal); }
+  .map-tags .t-final { background: var(--bar); color: var(--signal); }
+  .map-tags:empty { display: none; }
+
+  /* ---------- Map anatomy ---------- */
+  .viewer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 14px; min-width: 0; }
+  .viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn {
+    font: inherit; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
+    min-height: 36px; padding: 0 12px; border-radius: 2px; border: 1px solid var(--rule); background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn.ink { background: var(--bar); color: var(--signal); border-color: var(--bar); }
+  select.btn { padding-right: 8px; }
+  .viewer-facts { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); flex-basis: 100%; }
+  .viewer-facts b { color: var(--text); }
+  .viewer-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  @media (min-width: 900px) { .viewer-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
+  figcaption { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .viewer-map { border: 3px solid var(--tk-frame); border-radius: 2px; aspect-ratio: 4 / 3; max-width: 100%; background: var(--tk-floor); cursor: crosshair; }
+  .src-grid {
+    display: grid; grid-template-columns: 1.6em repeat(20, minmax(0, 1fr)); gap: 1px;
+    font-family: var(--font-mono); font-size: clamp(9px, 1.25vw, 13px); line-height: 1;
+    background: var(--surface);
+  }
+  .src-grid span { display: grid; place-items: center; aspect-ratio: 1; border-radius: 1px; user-select: none; }
+  .src-grid .ruler { color: var(--muted); font-size: 0.78em; }
+  .src-grid .f { color: var(--muted); opacity: 0.55; }
+  .src-grid .w { background: var(--tk-wall); color: var(--on-bar); }
+  .src-grid .x { background: var(--tk-crate); color: var(--tk-stripe); font-weight: 700; }
+  .src-grid .o { background: var(--tk-hole); color: var(--on-bar-muted); }
+  .src-grid .t { background: var(--c); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ring); }
+  .src-grid .t[data-ink="dark"] { color: var(--chip-dark); }
+  .src-grid .t[data-ink="light"] { color: var(--chip-light); }
+  .src-grid .hot { outline: 2px solid var(--focus); outline-offset: 0; position: relative; z-index: 1; opacity: 1; }
+  .readout { font-family: var(--font-mono); font-size: 12.5px; min-height: 1.5em; color: var(--muted); }
+  .readout b { color: var(--text); }
+  #ana-copy { width: 100%; min-height: 15em; font-family: var(--font-mono); font-size: 12px; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 8px; }
+
+  .legend { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 700px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; } }
+  @media (min-width: 1040px) { .legend { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .legend > div { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .legend .sym { width: 30px; height: 30px; display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); }
+  .legend .sym.f { background: var(--tk-floor); color: var(--muted); }
+  .legend .sym.w { background: var(--tk-wall); color: var(--on-bar); }
+  .legend .sym.x { background: var(--tk-crate); color: var(--tk-stripe); }
+  .legend .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
+  .legend b { display: block; font-size: 14px; }
+  .legend p { font-size: 13.5px; color: var(--muted); }
+  .legend code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); padding: 1px 4px; border-radius: 2px; color: var(--text); }
+  .three { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 860px) { .three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; } }
+  .three ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; font-size: 14px; }
+  .three code, .intro code, .rules code { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 4px; border-radius: 2px; color: var(--text); }
+
+  footer.wrap { padding-block: 22px 40px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-art { transition: none; }
+    .map:hover .map-art { transform: none; }
+  }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Gameplane · Tanks</p>
+    <h1>Field guide</h1>
+    <p class="lede">Every enemy tank, all {{MISSIONS}} missions, and how the maps are written. Every number on this page is read from the game's own code. Distances are in grid cells (the arena is {{COLS}} × {{ROWS}} cells) and times are in seconds.</p>
+    <div class="lineup" id="lineup" aria-label="Enemies in order of appearance"></div>
+    <div class="yours" id="yours"></div>
+  </div>
+</header>
+
+<nav class="wrap toc" aria-label="Sections">
+  <a href="#enemies">Enemies</a>
+  <a href="#compare">Side by side</a>
+  <a href="#shared">Shared rules</a>
+  <a href="#missions">Missions</a>
+  <a href="#anatomy">How a map is made</a>
+</nav>
+
+<main class="wrap">
+  <section id="enemies">
+    <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · in order of appearance</span></header>
+    <p class="intro">Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up.</p>
+    <div class="roster" id="roster"></div>
+  </section>
+
+  <section id="compare">
+    <header class="sec-head"><h2>Side by side</h2><span class="label">Tap a column to sort</span></header>
+    <p class="legend-line">The bar under each number shows how dangerous that value is compared with the other enemies: <span class="meter"><i style="width:100%"></i></span> is the most dangerous. For reload, accuracy and timing, a lower number fills more of the bar. Your own tank sits on the top row for comparison.</p>
+    <div class="scroller"><table id="board"></table></div>
+  </section>
+
+  <section id="shared">
+    <header class="sec-head"><h2>What every enemy does</h2><span class="label">From ai.js</span></header>
+    <div class="two">
+      <div>
+        <h3 class="sub">Shared behaviour</h3>
+        <ul class="rules" id="rules"></ul>
+      </div>
+      <div>
+        <h3 class="sub">Aim styles</h3>
+        <dl class="aims" id="aims"></dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="missions">
+    <header class="sec-head"><h2>The {{MISSIONS}} missions</h2><span class="label">From missions.js</span></header>
+    <div class="facts" id="campaign-facts"></div>
+    <div class="scroller"><table class="matrix" id="matrix"></table></div>
+    <p class="intro">Every map below is drawn from its source text, at the start of the mission. Your tank is the blue one on the left; enemies start aimed at you. Tap a map to open its source.</p>
+    <div class="maps" id="maps"></div>
+  </section>
+
+  <section id="anatomy">
+    <header class="sec-head"><h2>How a map is made</h2><span class="label">{{ROWS}} rows × {{COLS}} characters</span></header>
+    <p class="intro">A mission is a list of {{ROWS}} strings in <code>missions.js</code>, one per row, each exactly {{COLS}} characters long. Every character is one cell. <code>parseLevel</code> in <code>engine.js</code> turns the text into a grid of blocks plus the spawn points. Point at a cell in either view to read it. Rows and columns count from 0, as they do in the code.</p>
+    <div class="viewer">
+      <div class="viewer-bar">
+        <button class="btn" id="ana-prev" type="button" aria-label="Previous mission">‹ Prev</button>
+        <select class="btn" id="ana-pick" aria-label="Mission"></select>
+        <button class="btn" id="ana-next" type="button" aria-label="Next mission">Next ›</button>
+        <button class="btn ink" id="ana-copy-btn" type="button">Copy map text</button>
+        <p class="viewer-facts" id="ana-facts"></p>
+      </div>
+      <div class="viewer-body">
+        <figure>
+          <div class="viewer-map"><canvas id="ana-canvas" role="img" aria-label="The selected mission drawn as in the game"></canvas></div>
+          <figcaption>As drawn in the game</figcaption>
+        </figure>
+        <figure>
+          <div class="src-grid" id="ana-grid" aria-label="The selected mission's source text"></div>
+          <figcaption>As written in missions.js</figcaption>
+        </figure>
+      </div>
+      <p class="readout" id="ana-read" aria-live="polite">Point at a cell to read it.</p>
+      <textarea id="ana-copy" readonly hidden aria-label="Map text to copy"></textarea>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="three">
+      <div>
+        <h3 class="sub">The parser requires</h3>
+        <ul>
+          <li>Exactly {{ROWS}} rows, each exactly {{COLS}} characters.</li>
+          <li>Exactly one <code>@</code>. A second one is an error.</li>
+          <li>At least one enemy letter.</li>
+          <li>No characters outside the legend. Anything else stops the game with an "Unknown map cell" error.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="sub">The tests check</h3>
+        <ul>
+          <li>There are exactly {{MISSIONS}} missions, with checkpoints at {{CHECKPOINTS}}.</li>
+          <li>Each mission has between 1 and 8 enemies.</li>
+          <li>You can reach every enemy: either drive next to it (crates count as open, since a mine blast clears them) or see it down a clear straight line from somewhere you can drive.</li>
+          <li>The enemy AI plays every mission for 20 seconds with 3 different seeds without a tank ending up inside a block or a shell inside a wall.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="sub">House style</h3>
+        <ul id="house"></ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">Source: src/games/tanks/rules.js, ai.js, engine.js and missions.js in Gameplane. Tank art is redrawn from render.js.</footer>
+
+<script>
+const DATA = __DATA__;
+
+const PI = Math.PI;
+const KINDS = DATA.kinds;
+const T = DATA.types;
+const COLS = DATA.cols;
+const ROWS = DATA.rows;
+const ART = 1.1;
+const MUZZLE = DATA.muzzle;
+const INK = DATA.ink; // chip text colour per tank, picked by contrast at build time
+const deg = (rad) => (rad * 180) / PI;
+const pad = (n) => String(n).padStart(2, '0');
+const fmt = (n, d = 1) => Number(n).toFixed(d);
+
+/* ---------- What each tank does: guide/enemies.mjs, resolved at build time ---------- */
+const INFO = DATA.info;
+
+/* ---------- Missions ---------- */
+const MISSIONS = DATA.missions.map((rows, i) => {
+  const enemies = [];
+  const counts = {};
+  let player = null;
+  let walls = 0, crates = 0, holes = 0;
+  rows.forEach((line, r) => [...line].forEach((ch, c) => {
+    if (ch === '#') walls++;
+    else if (ch === 'x') crates++;
+    else if (ch === 'o') holes++;
+    else if (ch === '@') player = { c, r };
+    else if (DATA.spawn[ch]) {
+      const kind = DATA.spawn[ch];
+      enemies.push({ kind, c, r });
+      counts[kind] = (counts[kind] || 0) + 1;
+    }
+  }));
+  const blocks = rows.map((l) => l.replace(/[^#xo]/g, '.'));
+  const mirrored = blocks.every((l, r) => l === blocks[rows.length - 1 - r]);
+  return { n: i + 1, rows, enemies, counts, player, walls, crates, holes, mirrored };
+});
+const FIRST = {};
+const TOTAL = {};
+for (const m of MISSIONS) for (const [k, n] of Object.entries(m.counts)) {
+  FIRST[k] ??= m.n;
+  TOTAL[k] = (TOTAL[k] || 0) + n;
+}
+const isCheckpoint = (n) => DATA.checkpoints.includes(n);
+const isBonus = (n) => DATA.bonusAfter.includes(n);
+
+/* ---------- DOM helper ---------- */
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+  return el;
+}
+function chip(kind, cls = '') {
+  return h('span', {
+    class: `chip ${cls}`.trim(),
+    'data-ink': INK[kind],
+    style: `--c: var(--tk-${kind})`,
+    title: kind === 'player' ? 'You' : INFO[kind].name,
+  }, kind === 'player' ? '@' : DATA.codes[kind]);
+}
+
+/* ---------- Drawing (mirrors render.js) ---------- */
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return [128, 128, 128];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function shade(hex, amount) {
+  const target = amount > 0 ? 255 : 0;
+  const k = Math.abs(amount);
+  const [r, g, b] = hexToRgb(hex).map((v) => Math.round(v + (target - v) * k));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+function palette() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n) => cs.getPropertyValue(n).trim();
+  const p = {
+    floor: g('--tk-floor'), joint: g('--tk-joint'), wall: g('--tk-wall'), wallLit: g('--tk-wall-lit'),
+    wallDark: g('--tk-wall-dark'), shadow: g('--tk-shadow'), crate: g('--tk-crate'), stripe: g('--tk-stripe'),
+    hole: g('--tk-hole'), holeRim: g('--tk-hole-rim'), track: g('--tk-track'), shell: g('--tk-shell'),
+    aim: g('--tk-aim'), ink: g('--tk-ink'), tread: g('--tk-tread'), fire: g('--tk-fire'), smoke: g('--tk-smoke'),
+    signal: g('--signal'), focus: g('--focus'), tanks: {},
+  };
+  for (const k of ['player', ...KINDS]) {
+    const base = g(`--tk-${k}`) || '#888888';
+    p.tanks[k] = { base, dark: shade(base, -0.32), light: shade(base, 0.22), deep: shade(base, -0.55) };
+  }
+  return p;
+}
+function prep(canvas, worldW) {
+  const r = canvas.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.round(r.width * dpr));
+  canvas.height = Math.max(1, Math.round(r.height * dpr));
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width / worldW;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  return { ctx, px: 1 / s };
+}
+function roundRect(ctx, x, y, w, hgt, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + hgt, r);
+  ctx.arcTo(x + w, y + hgt, x, y + hgt, r);
+  ctx.arcTo(x, y + hgt, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+/** Floor, holes, block shadows, walls and crates, the way buildFloor draws them. */
+function drawGround(ctx, P, cols, rows, kindAt, px) {
+  ctx.fillStyle = P.floor;
+  ctx.fillRect(0, 0, cols, rows);
+  ctx.strokeStyle = P.joint;
+  ctx.lineWidth = Math.max(px, 0.03);
+  ctx.beginPath();
+  for (let x = 1; x < cols; x++) { ctx.moveTo(x, 0); ctx.lineTo(x, rows); }
+  for (let y = 1; y < rows; y++) { ctx.moveTo(0, y); ctx.lineTo(cols, y); }
+  ctx.stroke();
+  const each = (type, fn) => { for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (kindAt(c, r) === type) fn(c, r); };
+  ctx.fillStyle = P.hole;
+  ctx.beginPath();
+  each('hole', (c, r) => ctx.rect(c, r, 1, 1));
+  ctx.fill();
+  ctx.fillStyle = P.holeRim;
+  ctx.beginPath();
+  each('hole', (c, r) => { if (kindAt(c, r + 1) !== 'hole') ctx.rect(c, r + 0.9, 1, 0.1); });
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, cols, rows);
+  ctx.clip();
+  ctx.fillStyle = P.shadow;
+  ctx.beginPath();
+  for (const type of ['wall', 'crate']) each(type, (c, r) => ctx.rect(c + 0.1, r + 0.14, 1, 1));
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = P.wall;
+  ctx.beginPath();
+  each('wall', (c, r) => ctx.rect(c, r, 1, 1));
+  ctx.fill();
+  ctx.fillStyle = P.wallLit;
+  ctx.beginPath();
+  each('wall', (c, r) => { if (kindAt(c, r - 1) !== 'wall') ctx.rect(c, r, 1, 0.09); });
+  ctx.fill();
+  ctx.fillStyle = P.wallDark;
+  ctx.beginPath();
+  each('wall', (c, r) => { if (kindAt(c, r + 1) !== 'wall') ctx.rect(c, r + 0.91, 1, 0.09); });
+  ctx.fill();
+  each('crate', (c, r) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(c + 0.04, r + 0.04, 0.92, 0.92);
+    ctx.clip();
+    ctx.fillStyle = P.crate;
+    ctx.fillRect(c, r, 1, 1);
+    ctx.strokeStyle = P.stripe;
+    ctx.lineWidth = 0.13;
+    ctx.beginPath();
+    for (let k = -1; k <= 2; k += 0.36) { ctx.moveTo(c + k, r); ctx.lineTo(c + k - 1, r + 1); }
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = P.stripe;
+    ctx.lineWidth = 0.08;
+    ctx.strokeRect(c + 0.08, r + 0.08, 0.84, 0.84);
+  });
+}
+function drawTankShadow(ctx, P, x, y, body, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = P.shadow;
+  ctx.save();
+  ctx.translate(x + 0.07, y + 0.1);
+  ctx.scale(ART, ART);
+  ctx.rotate(body);
+  roundRect(ctx, -0.43, -0.39, 0.86, 0.78, 0.08);
+  ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawTank(ctx, P, kind, x, y, body, turret, alpha = 1) {
+  const tone = P.tanks[kind];
+  ctx.globalAlpha = alpha;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(ART, ART);
+  ctx.rotate(body);
+  ctx.fillStyle = P.tread;
+  roundRect(ctx, -0.43, -0.39, 0.86, 0.21, 0.05);
+  ctx.fill();
+  roundRect(ctx, -0.43, 0.18, 0.86, 0.21, 0.05);
+  ctx.fill();
+  ctx.strokeStyle = tone.deep;
+  ctx.lineWidth = 0.035;
+  ctx.beginPath();
+  for (let k = -0.42; k < 0.42; k += 0.14) {
+    ctx.moveTo(k, -0.37); ctx.lineTo(k, -0.2);
+    ctx.moveTo(k, 0.2); ctx.lineTo(k, 0.37);
+  }
+  ctx.stroke();
+  ctx.fillStyle = tone.base;
+  roundRect(ctx, -0.37, -0.26, 0.74, 0.52, 0.09);
+  ctx.fill();
+  ctx.strokeStyle = P.ink;
+  ctx.lineWidth = 0.045;
+  ctx.stroke();
+  ctx.fillStyle = tone.dark;
+  ctx.fillRect(-0.3, -0.2, 0.08, 0.4);
+  ctx.fillRect(0.22, -0.2, 0.08, 0.4);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(turret);
+  ctx.fillStyle = tone.dark;
+  ctx.strokeStyle = P.ink;
+  ctx.lineWidth = 0.04;
+  ctx.beginPath();
+  ctx.rect(0.08, -0.065, MUZZLE - 0.08, 0.13);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = tone.light;
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.2 * ART, 0, PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = tone.dark;
+  ctx.beginPath();
+  ctx.arc(-0.05 * ART, 0, 0.065 * ART, 0, PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawMine(ctx, P, kind, x, y) {
+  ctx.fillStyle = P.shadow;
+  ctx.beginPath(); ctx.arc(x + 0.04, y + 0.06, 0.24, 0, PI * 2); ctx.fill();
+  ctx.fillStyle = P.ink;
+  ctx.beginPath(); ctx.arc(x, y, 0.24, 0, PI * 2); ctx.fill();
+  ctx.fillStyle = P.tanks[kind].base;
+  ctx.beginPath(); ctx.arc(x, y, 0.16, 0, PI * 2); ctx.fill();
+  ctx.fillStyle = P.signal;
+  ctx.beginPath(); ctx.arc(x, y, 0.07, 0, PI * 2); ctx.fill();
+}
+function drawShell(ctx, P, x, y, a, rocket) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  if (rocket) {
+    ctx.fillStyle = P.fire;
+    ctx.beginPath();
+    ctx.moveTo(-0.13, -0.05);
+    ctx.lineTo(-0.34, 0);
+    ctx.lineTo(-0.13, 0.05);
+    ctx.fill();
+  }
+  ctx.fillStyle = P.shell;
+  roundRect(ctx, -0.14, -0.065, 0.28, 0.13, 0.065);
+  ctx.fill();
+  ctx.restore();
+}
+function drawTracks(ctx, P, pts) {
+  const segs = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1];
+    const [bx, by] = pts[i];
+    const len = Math.hypot(bx - ax, by - ay);
+    segs.push({ ax, ay, bx, by, len, a: Math.atan2(by - ay, bx - ax), from: total });
+    total += len;
+  }
+  ctx.fillStyle = P.track;
+  for (let d = 0; d < total - 0.3; d += 0.16) {
+    const s = segs.find((q) => d >= q.from && d <= q.from + q.len) || segs[segs.length - 1];
+    const t = (d - s.from) / s.len;
+    const mx = s.ax + (s.bx - s.ax) * t;
+    const my = s.ay + (s.by - s.ay) * t;
+    const hx = Math.cos(s.a);
+    const hy = Math.sin(s.a);
+    ctx.globalAlpha = 0.3 + 0.7 * (d / total);
+    ctx.beginPath();
+    for (const side of [-0.27, 0.27]) {
+      const cx = mx - hy * side;
+      const cy = my + hx * side;
+      const ax = hx * 0.045, ay = hy * 0.045, bx = -hy * 0.085, by = hx * 0.085;
+      ctx.moveTo(cx - ax - bx, cy - ay - by);
+      ctx.lineTo(cx + ax - bx, cy + ay - by);
+      ctx.lineTo(cx + ax + bx, cy + ay + by);
+      ctx.lineTo(cx - ax + bx, cy - ay + by);
+      ctx.closePath();
+    }
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- Card scenes: an 8 x 5 cell patch of arena ---------- */
+const SW = 8, SH = 5;
+const SCENES = DATA.scenes; // from guide/enemies.mjs
+/** The route a shell takes from (x, y): straight, or bouncing between the scene's wall faces. */
+function shotPath(sc, x, y, a) {
+  const pts = [[x, y]];
+  let vx = Math.cos(a), vy = Math.sin(a);
+  let left = sc.bank || 0;
+  for (let i = 0; i < 6; i++) {
+    let t = Infinity;
+    if (vy < 0 && sc.top != null) t = (sc.top - y) / vy;
+    if (vy > 0 && sc.bottom != null) t = (sc.bottom - y) / vy;
+    const tx = vx > 0 ? (SW + 0.6 - x) / vx : Infinity;
+    if (tx <= t) { pts.push([x + vx * tx, y + vy * tx]); break; }
+    x += vx * t; y += vy * t;
+    pts.push([x, y]);
+    if (left-- <= 0) break;
+    vy = -vy;
+  }
+  return pts;
+}
+function pointAt(pts, d) {
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1];
+    const [bx, by] = pts[i];
+    const len = Math.hypot(bx - ax, by - ay);
+    if (d <= len || i === pts.length - 1) {
+      const t = Math.min(1, Math.max(0, d / len));
+      return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, a: Math.atan2(by - ay, bx - ax) };
+    }
+    d -= len;
+  }
+  return { x: pts[0][0], y: pts[0][1], a: 0 };
+}
+function drawScene(canvas, kind) {
+  const sc = SCENES[kind];
+  const rocket = T[kind].shot > 6; // the engine's own rule
+  const { ctx, px } = prep(canvas, SW);
+  const P = palette();
+  const solid = new Set();
+  for (const [x, y, w, hgt] of sc.walls) for (let c = x; c < x + w; c++) for (let r = y; r < y + hgt; r++) solid.add(`${c},${r}`);
+  drawGround(ctx, P, SW, SH, (c, r) => (solid.has(`${c},${r}`) ? 'wall' : 'floor'), px);
+
+  let x, y, body = 0;
+  if (sc.tracks) {
+    const pts = sc.tracks;
+    [x, y] = pts[pts.length - 1];
+    const [ax, ay] = pts[pts.length - 2];
+    body = Math.atan2(y - ay, x - ax);
+    drawTracks(ctx, P, pts);
+  } else {
+    [x, y] = sc.at;
+  }
+  if (sc.sweep) {
+    const [mid, half] = sc.sweep;
+    ctx.fillStyle = P.aim;
+    ctx.globalAlpha = 0.07;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.arc(x, y, 3.3, mid - half, mid + half);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = P.aim;
+    ctx.lineWidth = 0.05;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.02, 0.2]);
+    ctx.beginPath();
+    ctx.arc(x, y, 3.3, mid - half, mid + half);
+    ctx.stroke();
+    for (const e of [mid - half, mid + half]) {
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(e) * 0.7, y + Math.sin(e) * 0.7);
+      ctx.lineTo(x + Math.cos(e) * 3.3, y + Math.sin(e) * 3.3);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  if (T[kind].mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, kind, mx, my);
+
+  const path = shotPath(sc, x + Math.cos(sc.turret) * MUZZLE, y + Math.sin(sc.turret) * MUZZLE, sc.turret);
+  if (sc.bank) {
+    ctx.strokeStyle = P.aim;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 0.06;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.02, 0.22]);
+    ctx.beginPath();
+    path.forEach(([px2, py2], i) => (i ? ctx.lineTo(px2, py2) : ctx.moveTo(px2, py2)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  const alpha = sc.ghost ?? 1;
+  drawTankShadow(ctx, P, x, y, body, alpha);
+  drawTank(ctx, P, kind, x, y, body, sc.turret, alpha);
+  for (const d of sc.shots) {
+    const p = pointAt(path, d);
+    if (rocket) {
+      for (const k of [0.34, 0.58, 0.86, 1.18]) {
+        if (d - k < 0) continue;
+        const q = pointAt(path, d - k);
+        ctx.globalAlpha = 0.5 * (1 - k / 1.45);
+        ctx.fillStyle = P.smoke;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 0.05 + k * 0.07, 0, PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    drawShell(ctx, P, p.x, p.y, p.a, rocket);
+  }
+}
+/** A whole mission at its first frame: enemies face your side with turrets aimed at you. */
+function drawMission(canvas, m, hover) {
+  const { ctx, px } = prep(canvas, COLS);
+  const P = palette();
+  const at = (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS ? '#' : m.rows[r][c]);
+  const kindAt = (c, r) => ({ '#': 'wall', x: 'crate', o: 'hole' })[at(c, r)] || 'floor';
+  drawGround(ctx, P, COLS, ROWS, kindAt, px);
+  const p = { x: m.player.c + 0.5, y: m.player.r + 0.5 };
+  const tanks = [{ kind: 'player', x: p.x, y: p.y, body: 0, turret: 0 }];
+  for (const e of m.enemies) {
+    const x = e.c + 0.5, y = e.r + 0.5;
+    const toward = Math.atan2(p.y - y, p.x - x);
+    tanks.push({ kind: e.kind, x, y, body: Math.abs(toward) > PI / 2 ? PI : 0, turret: toward });
+  }
+  for (const t of tanks) drawTankShadow(ctx, P, t.x, t.y, t.body);
+  for (const t of tanks) drawTank(ctx, P, t.kind, t.x, t.y, t.body, t.turret);
+  if (hover) {
+    ctx.strokeStyle = P.focus;
+    ctx.lineWidth = Math.max(px * 2, 0.1);
+    ctx.strokeRect(hover.c + 0.05, hover.r + 0.05, 0.9, 0.9);
+  }
+}
+
+/* ---------- Canvas registry: redraw on resize and theme change ---------- */
+const painters = new Map();
+const pending = new Set();
+let frame = 0;
+function schedule(canvas) {
+  pending.add(canvas);
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    for (const c of pending) painters.get(c)?.();
+    pending.clear();
+  });
+}
+const ro = new ResizeObserver((entries) => { for (const e of entries) schedule(e.target); });
+function paint(canvas, fn) {
+  painters.set(canvas, fn);
+  ro.observe(canvas);
+  schedule(canvas);
+}
+const redrawAll = () => { for (const c of painters.keys()) schedule(c); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', redrawAll);
+new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+
+/* ---------- Masthead ---------- */
+const lineup = document.getElementById('lineup');
+KINDS.forEach((k, i) => {
+  if (i) lineup.append(h('span', { class: 'arrow', 'aria-hidden': 'true' }, '›'));
+  lineup.append(h('a', { href: `#t-${k}`, 'aria-label': INFO[k].name }, chip(k, 'lg')));
+});
+const P0 = T.player;
+document.getElementById('yours').append(
+  h('span', {}, chip('player'), 'Your tank, for scale'),
+  h('span', {}, 'moves ', h('b', {}, fmt(P0.speed))),
+  h('span', {}, 'shells ', h('b', {}, String(P0.bullets)), ' at once'),
+  h('span', {}, 'ricochets ', h('b', {}, String(P0.bounces))),
+  h('span', {}, 'mines ', h('b', {}, String(P0.mines))),
+  h('span', {}, 'reload ', h('b', {}, `${fmt(P0.reload, 2)} s`)),
+);
+
+/* ---------- Roster ---------- */
+const roster = document.getElementById('roster');
+for (const k of KINDS) {
+  const t = T[k];
+  const info = INFO[k];
+  const canvas = h('canvas', { role: 'img', 'aria-label': info.scene });
+  const rocket = t.shot > 6;
+  roster.append(h('article', { class: 'card', id: `t-${k}` },
+    h('header', { class: 'card-head' },
+      chip(k, 'lg'),
+      h('div', { class: 'card-title' }, h('h3', {}, info.name), h('p', { class: 'role' }, info.role)),
+      h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}` }, `M${pad(FIRST[k])}`),
+    ),
+    h('div', { class: 'scene' }, canvas),
+    h('div', { class: 'card-body' },
+      h('p', {}, info.desc),
+      h('ul', { class: 'perks' }, info.perks.map((p) => h('li', {}, p))),
+      h('dl', { class: 'spec' },
+        h('div', {}, h('dt', {}, 'Moves'), h('dd', {}, t.speed ? fmt(t.speed) : 'Fixed')),
+        h('div', {}, h('dt', {}, rocket ? 'Rocket' : 'Shell'), h('dd', {}, fmt(t.shot))),
+        h('div', {}, h('dt', {}, 'Bounces'), h('dd', {}, String(t.bounces))),
+        h('div', {}, h('dt', {}, 'At once'), h('dd', {}, String(t.bullets))),
+        h('div', {}, h('dt', {}, 'Mines'), h('dd', {}, String(t.mines))),
+      ),
+      h('p', { class: 'weak' }, h('b', {}, 'Weak spot'), info.weak),
+    ),
+  ));
+  paint(canvas, () => drawScene(canvas, k));
+}
+
+/* ---------- Comparison board ---------- */
+const AIM_RANK = { sweep: 0, direct: 1, bank: 2 };
+const aimText = (t) => {
+  if (!t.aim) return 'You';
+  let s = { sweep: 'Sweep', direct: 'Direct', bank: 'Bank' }[t.aim];
+  if (t.aim === 'bank' && t.bounces > 1) s += ' ×2';
+  if (t.lead) s += ' + lead';
+  return s;
+};
+const COLUMNS = [
+  { key: 'speed', group: 'Movement', label: 'Moves', unit: 'cells/s', val: (t) => t.speed, show: (v) => (v ? fmt(v) : 'Fixed'), bar: 'high' },
+  { key: 'turret', group: 'Movement', label: 'Turret', unit: '°/s', val: (t) => (t.turret != null ? deg(t.turret) : null), show: (v) => String(Math.round(v)), bar: 'high' },
+  { key: 'shot', group: 'Gun', label: 'Shell', unit: 'cells/s', val: (t) => t.shot, show: (v) => fmt(v), bar: 'high', tag: (t) => (t.shot > 6 ? 'rocket' : null) },
+  { key: 'bounces', group: 'Gun', label: 'Ricochets', unit: 'per shell', val: (t) => t.bounces, show: String, bar: 'high' },
+  { key: 'bullets', group: 'Gun', label: 'At once', unit: 'in flight', val: (t) => t.bullets, show: String, bar: 'high' },
+  { key: 'reload', group: 'Gun', label: 'Reload', unit: 's', val: (t) => t.reload, show: (v) => fmt(v, 2), bar: 'low' },
+  { key: 'mines', group: 'Mines', label: 'Mines', unit: 'at once', val: (t) => t.mines, show: String, bar: 'high' },
+  { key: 'aim', group: 'Intelligence', label: 'Aim', unit: 'style', val: (t) => (t.aim ? AIM_RANK[t.aim] + (t.bounces > 1 ? 0.3 : 0) + (t.lead ? 0.5 : 0) : null), text: aimText },
+  { key: 'spread', group: 'Intelligence', label: 'Accuracy', unit: '± degrees', val: (t) => (t.spread != null ? deg(t.spread) : null), show: (v) => fmt(v), bar: 'low' },
+  { key: 'think', group: 'Intelligence', label: 'Thinks', unit: 'every s', val: (t) => t.think ?? null, show: (v) => fmt(v, 2), bar: 'low' },
+  { key: 'react', group: 'Intelligence', label: 'Reacts', unit: 'in s', val: (t) => t.react ?? null, show: (v) => fmt(v, 2), bar: 'low' },
+  { key: 'dodge', group: 'Intelligence', label: 'Dodges', unit: '% of shells', val: (t) => (t.dodge != null ? t.dodge * 100 : null), show: (v) => (v ? `${Math.round(v)}%` : 'Never'), bar: 'high' },
+  { key: 'range', group: 'Intelligence', label: 'Keeps', unit: 'cells away', val: (t) => (t.range ? t.range[0] : null), low: true, text: (t) => (t.range ? `${t.range[0]}–${t.range[1]}` : t.aim ? 'Fixed' : '—') },
+  { key: 'first', group: 'Campaign', label: 'First', unit: 'mission', val: (t, k) => FIRST[k] ?? null, low: true, text: (t, k) => (FIRST[k] ? `M${pad(FIRST[k])}` : '—') },
+  { key: 'total', group: 'Campaign', label: 'Tanks', unit: 'in campaign', val: (t, k) => TOTAL[k] ?? null, show: String },
+];
+for (const c of COLUMNS) {
+  if (!c.bar) continue;
+  const vals = KINDS.map((k) => c.val(T[k], k)).filter((v) => v != null && v > 0);
+  c.max = Math.max(...vals);
+  c.min = Math.min(...vals);
+}
+const barFrac = (c, v) => {
+  if (v == null || !c.bar || v <= 0) return 0;
+  return Math.min(1, c.bar === 'high' ? v / c.max : c.min / v);
+};
+let sortKey = 'first';
+let sortFlip = 1;
+const board = document.getElementById('board');
+function renderBoard() {
+  const groups = [];
+  for (const c of COLUMNS) {
+    const last = groups[groups.length - 1];
+    if (last && last.name === c.group) last.span++;
+    else groups.push({ name: c.group, span: 1 });
+  }
+  const sortCol = COLUMNS.find((c) => c.key === sortKey);
+  const dangerFirst = (a, b) => (sortCol.low || sortCol.bar === 'low' ? a - b : b - a);
+  const order = KINDS.slice().sort((a, b) => {
+    const va = sortCol.val(T[a], a);
+    const vb = sortCol.val(T[b], b);
+    if (va == null && vb == null) return FIRST[a] - FIRST[b];
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return dangerFirst(va, vb) * sortFlip || FIRST[a] - FIRST[b];
+  });
+  const ascending = (sortCol.low || sortCol.bar === 'low') === (sortFlip === 1);
+
+  const thead = h('thead', {},
+    h('tr', { class: 'group' }, h('th', { class: 'stick' }, ''), groups.map((g) => h('th', { colspan: g.span }, g.name))),
+    h('tr', { class: 'heads' },
+      h('th', { class: 'stick', scope: 'col' }, 'Tank'),
+      COLUMNS.map((c) => h('th', { scope: 'col', 'aria-sort': c.key === sortKey ? (ascending ? 'ascending' : 'descending') : null },
+        h('button', {
+          class: `sort ${c.text ? 'left' : ''}`, type: 'button',
+          onclick: () => {
+            if (sortKey === c.key) sortFlip = -sortFlip;
+            else { sortKey = c.key; sortFlip = 1; }
+            renderBoard();
+            board.querySelector('th[aria-sort] .sort')?.focus();
+          },
+        },
+          h('span', {}, c.label, c.key === sortKey ? h('span', { class: 'dir', 'aria-hidden': 'true' }, ascending ? '▲' : '▼') : null),
+          h('small', {}, c.unit),
+        ),
+      )),
+    ),
+  );
+  const row = (k, you) => {
+    const t = T[k];
+    return h('tr', { class: you ? 'you' : null },
+      h('th', { class: 'stick', scope: 'row' },
+        h('span', { class: 'tankcell' }, chip(k), h('span', {}, you ? 'You' : INFO[k].name, h('small', {}, you ? 'for comparison' : INFO[k].role))),
+      ),
+      COLUMNS.map((c) => {
+        if (c.text) return h('td', { class: 'txt' }, c.text(t, k));
+        const v = c.val(t, k);
+        if (v == null) return h('td', { class: 'num' }, '—');
+        const tag = c.tag?.(t);
+        return h('td', { class: 'num' },
+          tag ? h('span', { class: 'tag' }, tag) : null,
+          c.show(v),
+          c.bar ? h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: `width:${Math.round(barFrac(c, v) * 100)}%` })) : null,
+        );
+      }),
+    );
+  };
+  board.replaceChildren(thead, h('tbody', {}, row('player', true), order.map((k) => row(k, false))));
+}
+renderBoard();
+
+/* ---------- Shared rules ---------- */
+const RULES = [
+  ['Holds fire at the start.', ` No enemy shoots during the first ${DATA.opening} s of a mission, and each adds its own reaction time on top.`],
+  ['Never wastes a shot.', ' It traces the shell’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre.'],
+  ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself.'],
+  ['Pauses on a new angle.', ' When it finds a new line of fire it waits its reaction time before shooting.'],
+  ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one.`],
+  ['Keeps its distance.', ' Each mover has a preferred distance from you along the route. It closes in or backs off to stay there, keeps a cell apart from other enemies, and sometimes stops for a moment to size things up.'],
+  ['Lays mines carefully.', ` Minelayers drop a mine only when 2 to 9 cells from you, never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine.`],
+  ['Dies to one hit,', ` like you. Shells that meet cancel out, and a mine blast (${fmt(DATA.blastR)} cells) destroys every tank in reach, enemies included.`],
+  ['Dodging is per shell.', ' The dodge figure is the share of shells a tank notices. The choice is fixed for each shell, so a shell it missed stays missed. Stationary tanks never dodge or flee.'],
+];
+document.getElementById('rules').append(...RULES.map(([b, rest]) => h('li', {}, h('b', {}, b), rest)));
+const who = (aim, extra = (t) => true) => KINDS.filter((k) => T[k].aim === aim && extra(T[k]));
+const doubleBank = KINDS.filter((k) => T[k].aim === 'bank' && T[k].bounces > 1).map((k) => INFO[k].name);
+const leaders = KINDS.filter((k) => T[k].lead);
+const AIMS = [
+  ['Sweep', who('sweep'), 'The turret wanders to a new heading every 1.4 to 3.4 s, toward you 60% of the time and anywhere otherwise. It fires when that line happens to cross you.'],
+  ['Direct', who('direct'), 'The turret turns straight at you. It only considers the straight line, though a shell can still hit you off its natural ricochet.'],
+  ['Bank', who('bank'), `Also looks for one-bounce shots by mirroring your position in every wall face, and picks the shot that needs the least turret turning.${doubleBank.length ? ` ${doubleBank.join(' and ')}, with more than one ricochet, also ${doubleBank.length > 1 ? 'try' : 'tries'} 160 directions for a two-bounce shot when nothing simpler works.` : ''}`],
+  ['Lead', leaders, leaders.length ? `Aims ${Math.round(T[leaders[0]].lead * 100)}% of the way toward where you will be when the shot arrives, so driving in a straight line is dangerous.` : ''],
+].filter(([, kinds]) => kinds.length);
+document.getElementById('aims').append(...AIMS.map(([name, kinds, text]) => h('div', {},
+  h('dt', {}, name, h('span', { class: 'who' }, kinds.map((k) => chip(k)))),
+  h('dd', {}, text),
+)));
+
+/* ---------- Campaign ---------- */
+const totalEnemies = MISSIONS.reduce((n, m) => n + m.enemies.length, 0);
+document.getElementById('campaign-facts').append(
+  h('span', {}, h('b', {}, String(MISSIONS.length)), ' missions'),
+  h('span', {}, h('b', {}, String(totalEnemies)), ' enemy tanks'),
+  h('span', {}, h('b', {}, String(DATA.lives)), ' lives to start'),
+  h('span', {}, 'bonus tank after ', h('b', {}, DATA.bonusAfter.join(', '))),
+  h('span', {}, 'checkpoints at ', h('b', {}, DATA.checkpoints.join(', '))),
+  h('span', {}, 'a retry keeps destroyed enemies destroyed'),
+);
+const matrix = document.getElementById('matrix');
+const cpClass = (n) => (n > 1 && isCheckpoint(n) ? 'cp' : null);
+matrix.append(
+  h('thead', {},
+    h('tr', {},
+      h('th', { class: 'stick', scope: 'col' }, 'Mission'),
+      MISSIONS.map((m) => h('th', { scope: 'col', class: cpClass(m.n) }, h('a', { href: `#m-${pad(m.n)}`, 'aria-label': `Mission ${m.n}` }, pad(m.n)))),
+      h('th', { scope: 'col' }, 'Total'),
+    ),
+    h('tr', { class: 'marks' },
+      h('th', { class: 'stick', scope: 'row' }, 'Campaign'),
+      MISSIONS.map((m) => h('th', { class: [cpClass(m.n), isBonus(m.n) ? 'bonus' : null].filter(Boolean).join(' ') || null, title: [isCheckpoint(m.n) ? 'Checkpoint' : '', isBonus(m.n) ? 'Bonus tank after this mission' : ''].filter(Boolean).join(' · ') || null },
+        isCheckpoint(m.n) ? 'CP' : isBonus(m.n) ? '+1' : '')),
+      h('th', {}, ''),
+    ),
+  ),
+  h('tbody', {}, KINDS.map((k) => h('tr', {},
+    h('th', { class: 'stick', scope: 'row' }, h('span', { class: 'tankcell' }, chip(k), INFO[k].name)),
+    MISSIONS.map((m) => h('td', { class: cpClass(m.n) }, m.counts[k]
+      ? h('span', { class: 'mx', 'data-ink': INK[k], style: `--c: var(--tk-${k})`, title: `${m.counts[k]} ${INFO[k].name} in mission ${m.n}` }, String(m.counts[k]))
+      : h('span', { class: 'dot', 'aria-hidden': 'true' }))),
+    h('td', { class: 'total' }, String(TOTAL[k])),
+  ))),
+  h('tfoot', {}, h('tr', {},
+    h('th', { class: 'stick', scope: 'row' }, 'Enemies'),
+    MISSIONS.map((m) => h('td', { class: cpClass(m.n) }, String(m.enemies.length))),
+    h('td', { class: 'total' }, String(totalEnemies)),
+  )),
+);
+
+const mapsEl = document.getElementById('maps');
+const mapButtons = [];
+const summary = (m) => KINDS.filter((k) => m.counts[k]).map((k) => `${m.counts[k]} ${INFO[k].name}`).join(', ');
+for (const [i, m] of MISSIONS.entries()) {
+  const canvas = h('canvas', { role: 'img', 'aria-label': `Mission ${m.n} map: ${summary(m)}` });
+  const tags = [];
+  if (isCheckpoint(m.n)) tags.push(h('span', {}, 'Checkpoint'));
+  if (isBonus(m.n)) tags.push(h('span', { class: 't-bonus' }, '+1 tank after'));
+  if (m.n === MISSIONS.length) tags.push(h('span', { class: 't-final' }, 'Final'));
+  const btn = h('button', {
+    class: 'map', id: `m-${pad(m.n)}`, type: 'button', 'aria-label': `Mission ${m.n}: ${summary(m)}. Open its source.`,
+    onclick: () => { select(i); document.getElementById('anatomy').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
+  },
+    h('span', { class: 'map-art' }, canvas),
+    h('span', { class: 'map-cap' },
+      h('span', { class: 'map-n' }, `M${pad(m.n)}`),
+      h('span', { class: 'map-chips' }, KINDS.filter((k) => m.counts[k]).map((k) => h('span', {}, chip(k), `×${m.counts[k]}`))),
+    ),
+    h('span', { class: 'map-tags' }, tags),
+  );
+  mapButtons.push(btn);
+  mapsEl.append(btn);
+  paint(canvas, () => drawMission(canvas, m));
+}
+
+/* ---------- Map anatomy ---------- */
+const MEANING = { '.': 'Floor', '#': 'Wall', x: 'Crate', o: 'Hole', '@': 'Your tank' };
+const LEGEND = [
+  ['f', '.', 'Floor', 'Open ground. Tanks drive, shells fly.'],
+  ['w', '#', 'Wall', 'Stops tanks and shells. Shells ricochet off it and mine blasts never touch it. The arena edge counts as wall.'],
+  ['x', 'x', 'Crate', 'Hazard-striped. Works like a wall until a mine blast clears it, which opens a new route mid-mission.'],
+  ['o', 'o', 'Hole', 'Stops tanks, but shells fly straight over it. A firing lane you can’t drive through.'],
+  ['t', '@', 'You', 'Exactly one per map. You start facing right.'],
+  ['e', DATA.codes[KINDS[0]], 'Enemies', `One letter per tank: ${KINDS.map((k) => `${DATA.codes[k]} ${INFO[k].name.toLowerCase()}`).join(', ')}. Each starts at the centre of its cell, facing your side with its turret aimed at you.`],
+];
+document.getElementById('legend').append(...LEGEND.map(([cls, sym, name, text]) => h('div', {},
+  cls === 't' || cls === 'e'
+    ? h('span', { class: 'sym', style: `background: var(--tk-${cls === 't' ? 'player' : KINDS[0]}); color: var(--chip-${INK[cls === 't' ? 'player' : KINDS[0]]})` }, sym)
+    : h('span', { class: `sym ${cls}` }, sym),
+  h('div', {}, h('b', {}, name), h('p', {}, text)),
+)));
+
+const mirroredCount = MISSIONS.filter((m) => m.mirrored).length;
+const notMirrored = MISSIONS.filter((m) => !m.mirrored).map((m) => m.n);
+const starts = {};
+for (const m of MISSIONS) { const key = `${m.player.r},${m.player.c}`; (starts[key] ||= []).push(m.n); }
+const [mainStart] = Object.entries(starts).sort((a, b) => b[1].length - a[1].length);
+const [sr, scol] = mainStart[0].split(',').map(Number);
+const odd = MISSIONS.filter((m) => `${m.player.r},${m.player.c}` !== mainStart[0]);
+const firstWith = (key) => MISSIONS.find((m) => m[key] > 0)?.n;
+const rightSide = MISSIONS.every((m) => m.enemies.every((e) => e.c >= COLS / 2 - 1));
+document.getElementById('house').append(
+  h('li', {}, `You start on the left in the middle row: row ${sr}, column ${scol} in ${mainStart[1].length} of ${MISSIONS.length} missions${odd.length ? ` (mission ${odd.map((m) => `${m.n} uses column ${m.player.c}`).join(', ')})` : ''}.`),
+  h('li', {}, rightSide ? 'Enemies always start on the right half of the arena.' : 'Enemies mostly start on the right half of the arena.'),
+  h('li', {}, `Blocks are mirrored top to bottom in ${mirroredCount} of ${MISSIONS.length} maps${notMirrored.length ? ` (all but mission ${notMirrored.join(', ')})` : ''}, so neither flank is the safe one.`),
+  h('li', {}, `New ideas arrive one at a time: crates first appear in mission ${firstWith('crates')}, holes in mission ${firstWith('holes')}.`),
+  h('li', {}, 'On a tall phone screen the game turns the arena 90°, so the left edge of every map, your side, sits at the bottom next to your thumbs.'),
+);
+
+const pick = document.getElementById('ana-pick');
+pick.append(...MISSIONS.map((m, i) => h('option', { value: String(i) }, `Mission ${pad(m.n)}`)));
+const grid = document.getElementById('ana-grid');
+const read = document.getElementById('ana-read');
+const anaCanvas = document.getElementById('ana-canvas');
+const facts = document.getElementById('ana-facts');
+const copyBox = document.getElementById('ana-copy');
+const copyBtn = document.getElementById('ana-copy-btn');
+let current = MISSIONS.length - 1;
+let hover = null;
+let cells = [];
+
+function describe(m, c, r) {
+  const ch = m.rows[r][c];
+  const kind = DATA.spawn[ch];
+  const what = kind ? `${INFO[kind].name} enemy (${INFO[kind].role.toLowerCase()})` : MEANING[ch];
+  return [h('b', {}, `Row ${r} · Column ${c}`), ` · "${ch}" · ${what}`];
+}
+function setHover(next) {
+  const m = MISSIONS[current];
+  if (hover) cells[hover.r * COLS + hover.c]?.classList.remove('hot');
+  hover = next;
+  if (hover) {
+    cells[hover.r * COLS + hover.c]?.classList.add('hot');
+    read.replaceChildren(...describe(m, hover.c, hover.r));
+  } else read.textContent = 'Point at a cell to read it.';
+  schedule(anaCanvas);
+}
+function select(i) {
+  current = (i + MISSIONS.length) % MISSIONS.length;
+  const m = MISSIONS[current];
+  hover = null;
+  pick.value = String(current);
+  mapButtons.forEach((b, j) => b.setAttribute('aria-current', j === current ? 'true' : 'false'));
+  const tags = [isCheckpoint(m.n) ? 'checkpoint' : '', isBonus(m.n) ? 'bonus tank after' : '', m.n === MISSIONS.length ? 'final mission' : ''].filter(Boolean);
+  facts.replaceChildren(
+    h('b', {}, `Mission ${m.n}`), ` · ${m.enemies.length} ${m.enemies.length === 1 ? 'enemy' : 'enemies'}: ${summary(m)} · ${m.walls} walls, ${m.crates} crates, ${m.holes} holes`,
+    m.mirrored ? ' · mirrored top to bottom' : ' · not mirrored',
+    tags.length ? ` · ${tags.join(', ')}` : '',
+  );
+  const out = [h('span', { class: 'ruler' }, '')];
+  for (let c = 0; c < COLS; c++) out.push(h('span', { class: 'ruler' }, String(c)));
+  cells = [];
+  m.rows.forEach((line, r) => {
+    out.push(h('span', { class: 'ruler' }, String(r)));
+    [...line].forEach((ch, c) => {
+      const kind = ch === '@' ? 'player' : DATA.spawn[ch];
+      const cls = kind ? 't' : { '#': 'w', x: 'x', o: 'o' }[ch] || 'f';
+      const cell = h('span', {
+        class: cls, 'data-ink': kind ? INK[kind] : null, style: kind ? `--c: var(--tk-${kind})` : null,
+        onpointerenter: () => setHover({ c, r }),
+      }, ch);
+      cells.push(cell);
+      out.push(cell);
+    });
+  });
+  grid.replaceChildren(...out);
+  read.textContent = 'Point at a cell to read it.';
+  copyBox.hidden = true;
+  schedule(anaCanvas);
+}
+paint(anaCanvas, () => drawMission(anaCanvas, MISSIONS[current], hover));
+grid.addEventListener('pointerleave', () => setHover(null));
+anaCanvas.addEventListener('pointermove', (e) => {
+  const r = anaCanvas.getBoundingClientRect();
+  const c = Math.floor(((e.clientX - r.left) / r.width) * COLS);
+  const row = Math.floor(((e.clientY - r.top) / r.height) * ROWS);
+  if (c < 0 || row < 0 || c >= COLS || row >= ROWS) return;
+  if (!hover || hover.c !== c || hover.r !== row) setHover({ c, r: row });
+});
+anaCanvas.addEventListener('pointerleave', () => setHover(null));
+pick.addEventListener('change', () => select(Number(pick.value)));
+document.getElementById('ana-prev').addEventListener('click', () => select(current - 1));
+document.getElementById('ana-next').addEventListener('click', () => select(current + 1));
+copyBtn.addEventListener('click', () => {
+  const m = MISSIONS[current];
+  const text = `  [\n${m.rows.map((l) => `    '${l}',`).join('\n')}\n  ],`;
+  const fallback = () => {
+    copyBox.value = text;
+    copyBox.hidden = false;
+    copyBox.focus();
+    copyBox.select();
+    copyBtn.textContent = 'Selected, press copy';
+  };
+  try {
+    navigator.clipboard.writeText(text).then(() => {
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy map text'; }, 1600);
+    }, fallback);
+  } catch { fallback(); }
+});
+select(current);
+</script>
