@@ -163,8 +163,39 @@ the plates at the front and back of the hull have rounded corners.
   in the static floor layer, so it costs nothing a frame.
 - **Colours:** one per kind, as before. Hornet is cream (`#e8d4a2`) instead of Yellow with hazard
   stripes, so `VARIANTS` is empty; the art still draws stripes for any kind named in it.
-- Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS),
-  which also covers a darker-body V2 look that is on hold.
+- Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS).
+  Its ideas for later are R7, R8, P1–P4, M9 and M10. Its on-hold colour plan (a V2 in its V1's
+  colour, renamed after animals) is dropped with the lines (N1); its darker-body V2 look becomes
+  the night look.
+- **Passed over in the study:** tall walls with a face and long shadows, low crates and sunken
+  pits; wood crates with boards and nails; toy-brick studs on walls; a kerb round pits (it looks
+  like something a shell would hit, and shells fly over pits); a recessed panel on every wall;
+  crates built from the logo's pixels; a signal-yellow band round every pit.
+
+### R7. Tells: see what a tank is about to do
+**Status:** idea · **Size:** M
+
+From the Paint Study. Each one shows something the game knows but doesn't show, so each is a rule
+change as much as art: the field guide and the reduced-motion rules need them too.
+
+- **Muzzle tell:** an enemy's barrel tip glows for 0.2 s before it fires. Fairer dodging, above all
+  against Black.
+- **Reload light:** a shell tank's hatch dims while it reloads and lights when it can fire again.
+- **Hot minigun:** Lime's barrels glow orange after a long spray and cool over its 2.5 s
+  spin-down, so you can see when it is ready again.
+- **Empty pods:** a missile pod shows a dark bore while its missile is out, beside the light that
+  already says so.
+- **White's shimmer:** White still fades out, but a faint shimmer shows where it drives. Its tread
+  marks already give it away.
+
+### R8. Identity: your emblem and kind glyphs
+**Status:** idea · **Size:** S
+
+- **Your emblem:** your tank wears the app's cent mark on its rear deck. No other tank does.
+- **Kind glyphs:** each kind's spawn letter in the logo's pixels on its turret top, so shape says
+  the kind as well as colour, for colour-blind players.
+- **Keep:** no tank is drawn bigger for being heavy. Art bigger than the hit circle lies about
+  where a shot lands.
 
 ---
 
@@ -325,6 +356,97 @@ Yellow with a plan: it mines your way to it, watches each mine, and sets it off 
 
 ---
 
+## N. Night versions
+
+### N1. Night versions instead of lines
+**Status:** planned, design only (decided 2026-10-15) · **Size:** L
+
+Lines (A5) grouped kinds as a first version and its upgrade (Brown → Grey and so on). They go.
+Every kind stands alone, told apart by its own colour, as on the field today: Grey, Green, Violet,
+White and Hornet are kinds of their own, not upgrades of another. A stronger version of a kind is
+its **night version**.
+
+- **What it is:** the same kind with better numbers or a better behaviour. It keeps the kind's
+  colour, weapon and shape, so you read it as that kind, only worse news. Any kind can have one;
+  none has one yet.
+- **Rule:** a night version is at least as good as its day kind everywhere and better somewhere.
+  The test that held a V2 to its V1 (reacts and thinks at least as fast) moves here and grows: no
+  night number is worse than the day's.
+- **Data:** `NIGHT` in `rules.js`, per kind, holds only what changes: numbers that replace the
+  day's (`{ ...TYPES[kind], ...NIGHT[kind] }`) and behaviour flags the engine and AI read. Two
+  ways to put it on a tank: a generated entry in `TYPES` (a key such as `redNight` with
+  `base: 'red'`), which keeps every `TYPES[t.type]` lookup as it is, or a `night` flag on the tank
+  and a stats helper everywhere `TYPES[t.type]` is read today. The generated key is less to change;
+  colour and name then come from `base`.
+- **Maps:** the kind's spawn letter in upper case (`R` night Red, `L` night Lime). Nothing uses
+  upper case today. `engine.js`, `maps.js` and `mapcheck.js` read letters through `SPAWN_CODES`,
+  so one place maps an upper-case letter to the night version.
+- **Look:** the Paint Study's on-hold V2 look, which reads as night: the hull a deep shade of the
+  kind's colour (about half way to black), the cleats (a pad's bolts) bright on black treads, the
+  turret and weapon as the day kind. Worked out from the kind's colour, so no new tokens, and the
+  colour plan's test still holds. Headlights were another V2 look the study drew, if it needs more.
+- **Name:** "Night Red" / "Vermell de nit", built from the kind's name with one string per
+  language, not one per kind.
+- **Where it shows:** the test range gets a Night switch next to the kind; the field guide shows a
+  night version on its kind's card (what changes, and a scene) and as its own row in the stats
+  table.
+- **Not night missions:** a night version is a tank; M10 is the arena going dark. They would suit
+  each other, but neither needs the other.
+- **What changes in the code when built:** `upgrade` and `twin` leave `TYPES`; the lines test
+  becomes the night test; the guide stops grouping kinds by line (roster, intelligence table and
+  what a V2 gains and gives up); `guide/plans.mjs` drops its V2 reasons; CLAUDE.md's Tanks
+  section follows.
+
+### N2. Night Red: twin missiles that find their way
+**Status:** idea, design only · **Size:** M · **Needs:** N1
+
+Red already has two launch pods. At night it uses both.
+
+- **Two at once:** each shot fires a missile from each pod, about 10° apart either side of its
+  aim, so they come at you from two sides and close in. Up to 2 in the air (one pair); reload as
+  today.
+- **Faster:** 3.2 → about 3.8 cells a second. Still slower than your shell (4.6), so it still
+  reads as a missile and you can still meet it with a shell.
+- **Tighter turn:** 2.2 → about 3.2 rad a second. Its turning circle goes from about 1.45 cells
+  to about 1.2 (radius = speed ÷ turn), so a sidestep has to come later.
+- **Finds its way:** today a missile steers straight at you and dies on the first wall. A night
+  missile steers along the shortest open path to you (the AI's path map from your cell): toward
+  the next turn while a wall is in the way, then straight at you. It steers round tanks in its
+  way, so it stops hitting allies. It still dies on any wall it touches. The lock cone becomes "the
+  next point on its path is within 90° of its nose", and fuel may need 5 s instead of 4 for the
+  longer way round. The path map lives in `ai.js`; the engine would need it from a DOM-free shared
+  place, and it must stay deterministic.
+- **Counterplay left:** two shells shoot down a pair; a mine blast clears both; a turn tighter
+  than its circle still beats it; a corner cut too fine still kills it. Cover still helps for a
+  moment, but not for long.
+- **AI:** fires with a line on you, as today. Option (W1's old question): at night it also fires
+  round a corner, since the missile can find you. Scarier; playtest first.
+- **Look and sound:** both pod lights lit while their missiles fly; a double lock-on beep.
+- **Tests:** the pair leaves symmetric; each missile obeys the new turn limit; one reaches you
+  round a corner on a test map; none steers into an ally; a save mid-flight with two missiles
+  resumes exactly.
+- **To tune:** if a pair is too much, fire them 0.3 s apart instead of together.
+
+### N3. Night Lime: a minigun that moves
+**Status:** idea, design only · **Size:** M · **Needs:** N1, and day Lime tuned first (W3, M6)
+
+Ideas to pick from, not all at once: three day Limes already play harder than three Blacks.
+
+- **Dodges faster:** day Lime notices 15% of shots, and only checks when it re-plans (every
+  0.2 s). At night it notices about half, re-plans every 0.12 s and steps aside quicker. Its turret
+  still drags while the barrels spin, so circling it close in stays the counter.
+- **From where you aren't looking:** it picks a firing spot as far round from your turret's
+  direction as it can reach at its distance, so its stream starts on your blind side. (To settle:
+  is this the "furthest angle from you", or is the next one?)
+- **Sweeps the edges:** instead of holding the stream on you, it walks it across the arc you could
+  sidestep into, so a dodge runs into rounds.
+- **Bouncing rounds:** its rounds get one ricochet, so it can hose you round a corner off a wall.
+  The strongest of the four, and its own stream becomes a danger to it and its allies (the ally
+  check already traces ricochets).
+- **Look:** the night look (N1). The hot barrels (R7) would suit both versions.
+
+---
+
 ## A. AI
 
 ### A1. Tanks jam in narrow gaps and shove each other
@@ -441,7 +563,14 @@ Violet, White and Black carried 2 mines each, and Yellow laid its 4 only now and
 - **Mine discs:** Yellow's rear deck holds 2, Hornet's 4, in one row as before.
 
 ### A5. Lines (V1 → V2) and five axes of intelligence
-**Status:** lines done 2026-10-14; behaviours planned · **Size:** L
+**Status:** lines done 2026-10-14, to be dropped (N1, decided 2026-10-15); behaviours planned ·
+**Size:** L
+
+**2026-10-15:** the lines go (N1). Every kind stands alone in its own colour, and the stronger
+version of a kind is its night version. The five axes and the plan below stay; read "V2" in them
+as "the stronger kind" until they are rewritten. A ladder per axis (a tier is a behaviour, numbers
+are tuning, a ★ god tier at the top such as shooting shells down) is drawn in the Tanks
+Intelligence artifact (https://claude.ai/artifact/5GzqxRK63bc1jDfxZ7S1c1); not adopted yet.
 
 Stats were one flat list (aim, think, react, spread, dodge, range, lead, layRate, trap, detonate), and
 Hornet's planning had no place on it. Now kinds are grouped into **lines** and rated on **five axes**.
@@ -643,6 +772,23 @@ enemies, each within reach; a clear shot at your start is only a note. A map pla
 - Start a new map from a campaign mission or the test range instead of open floor.
 - A best time per map of yours.
 
+### M9. Crates that warn
+**Status:** idea · **Size:** S
+
+From the Paint Study.
+
+- **Cracks as warning:** a crate within reach of a mine or a landing bomb shows a crack while the
+  danger lasts, so you see what the blast will clear.
+- **Cracked crates:** if crates ever take two hits, a hit crate shows a crack.
+
+### M10. Night missions
+**Status:** idea · **Size:** L
+
+From the Paint Study: the arena goes dark and the light comes from the field (flames, mine lights,
+missile lights, burning wrecks). Needs a rule for what the AI can see in the dark; today every
+enemy knows where you are, through walls. Not the same thing as night versions (N1), though they
+would suit each other.
+
 ## C. Controls and screen
 
 ### C1. A 4:3 arena that fills the screen
@@ -747,14 +893,91 @@ banner shows and you are back on the range sheet. The last pick is kept in `pref
   hollow while both of yours are down, and it shrinks a little while pressed. The pixel mine icon
   comes from `shared/icons.js` (`i-mine`, `i-mine-empty`).
 
+### C9. An arena that runs to the screen's edges
+**Status:** done 2026-10-15 · **Size:** M
+
+The dark frame round the arena and the page's side padding are gone. The arena's canvas covers
+the whole screen, and all of it round the field is brick wall (the rules already call everything
+outside the map wall).
+
+- **Portrait:** the field fills the width but for half a cell of wall each side, with two cells of
+  wall over it starting right under the header (it used to sit 10 px lower, then centred). Past
+  those two cells, above and below the field, the wall blurs out deeper toward the screen's top and
+  bottom under a shade to the background, the launcher's top edge (`.pblur-deep`, shared).
+- **Landscape:** the field fills the height but for half a cell of wall top and bottom, centred.
+  Past two cells of wall left and right, the wall in the gutters blurs out toward the screen's
+  sides, with no shade.
+- **Cost:** everything past the wall's first cell is drawn once per layout; a crate blown away or
+  an editor stroke redraws only the field and that cell (`buildFloor` in `render.js`).
+  `drawGround` in `art.js` takes an `area`, so it can draw cells past the field.
+
+A first version (same day) kept floor past the field, blurred toward the edges in the canvas, with
+a single wall only on the sides facing the header or the gutters; it went for wall all round.
+
+## P. Polish
+
+Art only: none of it changes what a player can learn or do. From the Paint Study, under R6's
+light. Time each on an iPhone (a 3x screen).
+
+### P1. Tanks with weight
+**Status:** idea · **Size:** M
+
+- **Recoil:** the barrel kicks back about 0.06 cells as it fires and eases out over 150 ms. One
+  number per tank.
+- **Exhaust puffs:** two small puffs from the rear as a tank pulls away or turns hard, from the
+  smoke the game already draws.
+- **Sprockets:** a wheel at each end of each tread, turning with the cleats, so a tank turning on
+  the spot shows it.
+- **Suspension:** the hull rides a hair up and down over its treads while it drives.
+- **Drop-in:** in the 1.2 s hold at a mission's start each tank lands: its shadow grows first,
+  then it settles with a small dust ring.
+- **A toy's shine:** a small soft highlight on every turret toward the light.
+
+### P2. Shots
+**Status:** idea · **Size:** S
+
+- **Ricochet sparks:** a short spark and a pale chip on the wall face where a shell bounces,
+  fading in a second. It teaches the bank shots the AI makes.
+- **Trails by owner:** a rocket's smoke takes a hint of its owner's colour.
+- **Drawn, then left out:** a rocket's flame lighting the floor; a band in the owner's colour on
+  rockets and rounds.
+
+### P3. The arena
+**Status:** idea · **Size:** M to L
+
+- **Wrecks:** a destroyed tank leaves its hull, dark and without its turret, on its scorch mark for
+  the rest of the mission. Decoration only; it never blocks.
+- **Crate rubble:** a broken crate leaves a few splinters where it stood.
+- **Wall wear:** a ricochet leaves a pale chip on the wall that fades in a few seconds.
+- **Soft scorch:** scorch marks as soft dark stains, darkest in the middle, in place of today's
+  crossed strokes.
+- **Spawn marks:** faint corner brackets where each enemy and you start, so a retry shows which
+  ones come back.
+- **A tray:** the arena's frame drawn as a wall under the same light, so the tanks sit in a tray.
+- **Dust in the light:** a few slow motes drifting through the light; off under reduced motion.
+- **Pits you can see into:** a faint glow or a grate far down, so a pit never reads as a black
+  tile on a dark floor.
+- **Hazard edging:** low yellow-and-black kerbs where a pit meets open floor.
+- **Chapters:** a second wall material for later chapters (steel plates with rivets), a floor per
+  five missions (concrete, packed earth, steel deck, a dark hangar, all dark enough that the kind
+  colours still lead), and the light moving from morning to evening across the campaign.
+
+### P4. Sprites per angle
+**Status:** idea · **Size:** M
+
+Only if soft tanks cost too much on a phone: draw each kind's lit hull and turret once at 64
+angles and reuse them, with cleats and moving parts drawn over.
+
 ## Suggested order
 
-Every entry except A3, M5, M6 and M7 has shipped (the last, M8, on 2026-10-14). Next:
+Every entry has shipped (the last, M8, on 2026-10-14) except A3, M5, M6, M7 and the ideas added
+on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P4). Next:
 
 1. **C1 and C2 on a real iPhone:** the floating home button and stats in landscape, the stick
    size, the cancel zone and the 20% opacity.
 2. **Tuning:** Red, Olive and the new lead tiers together (W2's flight time first), then **A3**.
 3. **M5.**
+4. **N1:** drop the lines (mostly removal), then N2 and N3 once Red and Lime are tuned.
 
 ## Parking lot
 

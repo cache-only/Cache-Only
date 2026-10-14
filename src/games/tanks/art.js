@@ -280,9 +280,11 @@ const CRATE_CAST = 0.2;
  * what it does: walls are brick and stay, crates are toy crates braced with an X, one a cell,
  * because a blast clears them a cell at a time, and a pit is a hole broken in the floor. The
  * floor has a slab tone per cell, dims into its corners, and darkens softly round every block.
- * light is the screen angle the light travels at.
+ * light is the screen angle the light travels at. area ([x, y, w, h] in whole cells) is what gets
+ * drawn, the patch by default; cells past the patch come from kindAt too, and the light falls on
+ * them as it does round the patch.
  */
-export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT }) {
+export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT, area = [0, 0, cols, rows] }) {
   const M = c.getTransform();
   const L = lightOf(M, light);
   const u = L.unit;
@@ -290,10 +292,11 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT }) {
   const ln = Math.hypot(lw.x, lw.y);
   const right = axisOf(M, 1, 0);
   const down = axisOf(M, 0, 1);
-  const bounds = [-2, -2, cols + 4, rows + 4];
+  const [ax, ay, aw, ah] = area;
+  const bounds = [ax - 2, ay - 2, aw + 4, ah + 4];
   const is = (type, col, r) => kindAt(col, r) === type;
   const each = (type, fn) => {
-    for (let r = 0; r < rows; r++) for (let col = 0; col < cols; col++) if (is(type, col, r)) fn(col, r);
+    for (let r = ay; r < ay + ah; r++) for (let col = ax; col < ax + aw; col++) if (is(type, col, r)) fn(col, r);
   };
   const lit = (build, near, far, d = 0.08, blur = 0.05) => innerLight(c, build, near, far, d * u, blur * u, L, bounds);
   const clipped = (build, fn) => {
@@ -307,7 +310,7 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT }) {
 
   // Floor: a tone per slab, the joints, and the light's falloff into the corners.
   c.fillStyle = pal.floor;
-  c.fillRect(0, 0, cols, rows);
+  c.fillRect(ax, ay, aw, ah);
   each(FLOOR, (col, r) => {
     c.fillStyle = shade(pal.floor, (hash(col, r) - 0.5) * 0.075);
     c.fillRect(col, r, 1, 1);
@@ -321,23 +324,23 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT }) {
     g.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
     g.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
     c.fillStyle = g;
-    c.fillRect(0, 0, cols, rows);
+    c.fillRect(ax, ay, aw, ah);
     const v = c.createRadialGradient(cx, cy, D * 0.45, cx, cy, D * 1.05);
     v.addColorStop(0, 'rgba(0, 0, 0, 0)');
     v.addColorStop(1, 'rgba(0, 0, 0, 0.28)');
     c.fillStyle = v;
-    c.fillRect(0, 0, cols, rows);
+    c.fillRect(ax, ay, aw, ah);
   }
   c.strokeStyle = pal.joint;
   c.lineWidth = Math.max(1 / u, 0.03);
   c.beginPath();
-  for (let x = 1; x < cols; x++) {
-    c.moveTo(x, 0);
-    c.lineTo(x, rows);
+  for (let x = ax + 1; x < ax + aw; x++) {
+    c.moveTo(x, ay);
+    c.lineTo(x, ay + ah);
   }
-  for (let y = 1; y < rows; y++) {
-    c.moveTo(0, y);
-    c.lineTo(cols, y);
+  for (let y = ay + 1; y < ay + ah; y++) {
+    c.moveTo(ax, y);
+    c.lineTo(ax + aw, y);
   }
   c.stroke();
 
@@ -408,7 +411,7 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT }) {
   // Shadows: a soft halo where blocks meet the floor, then each kind's shadow along the light.
   c.save();
   c.beginPath();
-  c.rect(0, 0, cols, rows);
+  c.rect(ax, ay, aw, ah);
   c.clip();
   {
     const FAR = farOf(c, u);

@@ -55,39 +55,73 @@
   --pad-alpha: 0.2;
 }
 
-/* ---------- Layout: a 4:3 arena right under the header, controls floating over it ---------- */
+/* ---------- Layout: a 4:3 field across the screen, controls floating over it ---------- */
 
-/* The arena takes the full width (upright on a phone, straight under the header) or the full
-   height (landscape, between the home and stats gutters); whatever room is left stays empty. The touch controls
-   float over the whole play area, arena included. */
+/* The arena's canvas covers the whole screen, under everything else on the page, and all of it
+   round the field is wall. The play area only says where the field goes (render.js): as wide as
+   the screen in portrait (upright, two cells of wall over it starting right under the header), as
+   tall as the screen in landscape (centred between the home and stats gutters), keeping half a
+   cell of wall to each screen edge it runs to. The touch controls float over the whole play area. */
 .page-tanks .play-tanks {
   position: relative;
   max-width: none;
   gap: 0;
-  padding: 10px calc(var(--safe-r) + 16px) var(--safe-b) calc(var(--safe-l) + 16px);
+  padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
 .play-tanks > .tanks-wrap {
   flex: 1 1 auto;
   aspect-ratio: auto;
   max-width: none;
+  container-type: normal; /* so the canvas is fixed to the screen, not to this box */
 }
 
 .arena {
+  position: fixed;
+  left: 0;
+  top: 0;
   display: block;
-  border-radius: 10px;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   cursor: crosshair;
-  outline-offset: 4px;
+}
+
+/* Past the two cells of wall round the field, the screen's edges blur the wall (deep): in portrait
+   at the top and bottom, fading into the page like the launcher's top edge; in landscape at the
+   sides, the blur alone. tanks.js sets --wall-top, --wall-bottom, --wall-left and --wall-right from
+   where those two cells of wall start and end. Over the arena, under the rest of the page. */
+.page-tanks :is(.edge-top, .edge-bottom, .edge-left, .edge-right) {
+  z-index: 1;
+}
+
+.page-tanks .edge-top {
+  height: var(--wall-top, 0px);
+}
+
+.page-tanks .edge-bottom {
+  height: var(--wall-bottom, 0px);
+}
+
+.page-tanks .edge-left {
+  width: var(--wall-left, 0px);
+}
+
+.page-tanks .edge-right {
+  width: var(--wall-right, 0px);
 }
 
 @media (orientation: landscape) {
-  /* The arena fills the height, centred between the gutters that hold home and the stats. */
+  .page-tanks :is(.edge-top, .edge-bottom) {
+    display: none;
+  }
+  .page-tanks :is(.edge-left, .edge-right) {
+    display: block;
+  }
+  /* The field fills the height, centred between the gutters that hold home and the stats. */
   .page-tanks .play-tanks {
-    padding: max(var(--safe-t), 8px) calc(var(--safe-r) + var(--side-w)) max(var(--safe-b), 8px) calc(var(--safe-l) + var(--side-w));
+    padding: 0 calc(var(--safe-r) + var(--side-w)) 0 calc(var(--safe-l) + var(--side-w));
   }
   .play-tanks > .tanks-wrap {
     align-self: stretch;
@@ -344,6 +378,8 @@
 }
 
 .page-tanks .edit-tools {
+  position: relative; /* over the arena's canvas and its fading ends */
+  z-index: 2;
   gap: 10px;
   padding-top: 12px;
 }
@@ -364,11 +400,11 @@
   border-radius: 2px;
 }
 
-/* Portrait: the arena as wide as the page, upright, giving up height only on a short screen. */
+/* Portrait: the field as wide as the page, upright, giving up height only on a short screen. */
 @media (orientation: portrait) {
   .page-tanks.is-editing .play-tanks > .tanks-wrap {
     flex: 0 1 auto;
-    aspect-ratio: 156 / 206; /* the upright arena with its frame, (15 + 0.6) x (20 + 0.6) cells */
+    aspect-ratio: 16 / 24; /* the upright field with its skirts and walls, (15 + 1) x (20 + 4) cells */
   }
 }
 

@@ -786,6 +786,17 @@ button {
 .pblur-side > i:nth-child(3) { --b: 14px; --from: 15%; --to: 50%; }
 .pblur-side > b { background: linear-gradient(var(--dir), rgba(11, 11, 11, 0.85), rgba(11, 11, 11, 0)); }
 
+/* Deep, with -top, -bottom or -side: a blur that deepens all the way to the edge (each layer stays
+   on once it has come in), under a shade from transparent to the background there (its <b>; leave
+   that out for the blur alone). The launcher's top edge on its home view, and the Tanks arena's
+   wall past its field: the top and bottom in portrait, the sides (blur alone) in landscape. */
+:is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(1) { --b: 3px; --from: 80%; --to: 100%; }
+:is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(2) { --b: 7px; --from: 45%; --to: 80%; }
+:is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(3) { --b: 14px; --from: 10%; --to: 45%; }
+:is(.pblur-deep, .launcher[data-view="home"] .edge-top) > b {
+  background: linear-gradient(var(--dir), var(--bg), rgba(11, 11, 11, 0.86) 24%, rgba(11, 11, 11, 0.68) 46%, rgba(11, 11, 11, 0.42) 66%, rgba(11, 11, 11, 0.18) 84%, rgba(11, 11, 11, 0));
+}
+
 /* The fixed edges of a scrolling screen: top and bottom, or left and right when it scrolls
    sideways (shown only there, by the page). */
 .edge-top,
@@ -1487,22 +1498,15 @@ dialog.sheet[open] {
 
 /* The home view starts right under the status bar, with the big logo over the suggested game's
    art. The top edge is always there, from the top of the screen down to the foot of the settings
-   button: a blur that starts at the button's foot and deepens all the way up (each layer stays on
-   once it has come in), under a shade from transparent to the background at the top. The logo
-   centres in the room below it, so it sits sharp. */
+   button, and deep (.pblur-deep, above): a blur that starts at the button's foot and deepens all
+   the way up, under a shade from transparent to the background at the top. The logo centres in
+   the room below it, so it sits sharp. */
 .launcher[data-view="home"] .home {
   padding-top: var(--safe-t);
 }
 
 .launcher[data-view="home"] .edge-top {
   height: var(--bar-total);
-}
-
-.launcher[data-view="home"] .edge-top > i:nth-child(1) { --b: 3px; --from: 80%; --to: 100%; }
-.launcher[data-view="home"] .edge-top > i:nth-child(2) { --b: 7px; --from: 45%; --to: 80%; }
-.launcher[data-view="home"] .edge-top > i:nth-child(3) { --b: 14px; --from: 10%; --to: 45%; }
-.launcher[data-view="home"] .edge-top > b {
-  background: linear-gradient(to bottom, var(--bg), rgba(11, 11, 11, 0.86) 24%, rgba(11, 11, 11, 0.68) 46%, rgba(11, 11, 11, 0.42) 66%, rgba(11, 11, 11, 0.18) 84%, rgba(11, 11, 11, 0));
 }
 
 .launcher[data-view="home"] .home-mark {
@@ -2097,7 +2101,7 @@ dialog.sheet[open] {
 .art-arena {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(20, minmax(0, 1fr));
+  grid-template-columns: repeat(15, minmax(0, 1fr));
   gap: max(1px, 0.5cqi);
   width: 100%;
 }
@@ -2159,17 +2163,6 @@ dialog.sheet[open] {
 
 .art-hero.art-sudoku {
   gap: 1.2cqi;
-}
-
-/* The hero is square, so the 4:3 arena fills its height and loses an eighth of its width at
-   each side (no tank sits there). */
-.art-hero.art-tanks {
-  height: 100%;
-}
-
-.art-hero > .art-arena {
-  width: calc(100% * 4 / 3);
-  margin-inline: calc(100% / -6);
 }
 
 /* ---------- Motion ---------- */

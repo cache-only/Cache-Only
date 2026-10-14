@@ -229,8 +229,8 @@ service worker with scope `/` covers everything.
     starting 18 in like a tile's, and it blurs what's behind it like a sheet (`--sheet`,
     `--blur-sheet`). Plays are counted in
     `gh:app:plays` (`{ id: n }`) whenever a game is opened from the launcher; ties and no history
-    fall back to registry order. Its board art (`.hero`) is a square (Tanks' 4:3 arena fills it
-    and loses an eighth at each side). In portrait it starts at the top of the screen, as wide as
+    fall back to registry order. Its board art (`.hero`) is a square (Tanks' art is a square 15 × 15
+    arena of its own, not a game map). In portrait it starts at the top of the screen, as wide as
     the page, and fades out toward the panel. In landscape it runs from the screen's left edge
     (through the safe area) to the column's far gutter, centred on the screen's height, and fades
     out to the right, toward the tiles.
@@ -379,7 +379,9 @@ style a button, header, card, sheet or menu locally.
 - **Progressive blur** (`.pblur` with `.pblur-top/-bottom/-side/-tile/-left`, or `blurLayers()` in
   `shared/ui.js`): stacked backdrop-filter layers with staggered mask gradients, at the top and
   bottom edges of scrolling screens (left and right where one scrolls sideways), behind the side
-  menu and under each game tile's title.
+  menu and under each game tile's title. `.pblur-deep` makes an edge's blur deepen all the way to
+  the screen's edge under a shade to `--bg` (the launcher's top edge, the Tanks arena's ends);
+  without its `<b>` it is the blur alone.
   Nothing that wraps the layers may set opacity, filter or mask.
 - **Blur out and blur in** (`.blur-out` / `.blur-in` in `styles.css`, `blurOut()` / `blurIn()` in
   `shared/ui.js`): the one animation for something that steps away and comes back in place. Blur
@@ -469,10 +471,20 @@ style a button, header, card, sheet or menu locally.
 
 - Top-down tank battles in the style of Wii Play's *Tanks!*, with original code, art and sound.
   The arena is 20 × 15 cells (4:3). On a tall screen the renderer turns it 90°, so the player's side
-  (the left of every map) sits at the bottom, next to the thumbs. In portrait it fills the width right
-  under the header; spare room stays empty below it. In landscape there is no header band: the home
-  button floats in the top-left corner, mission and lives in the top-right, and the arena fills the
-  height, centred on the screen with equal room on both sides. Up on screen is always up for input.
+  (the left of every map) sits at the bottom, next to the thumbs. The arena's canvas covers the
+  whole screen, under everything else on the page, and all of it round the field is brick wall
+  (`cellAt` already calls everything outside the map wall); the play area only says where the field
+  goes (`layout` in `render.js`). In portrait the field fills the width but for half a cell of wall
+  each side, with two cells of wall over it starting right under the header; past those two cells,
+  above and below the field, the wall blurs out deeper toward the screen's top and bottom under a
+  shade to `--bg` (`.edge-top`/`.edge-bottom` with `.pblur-deep`, the launcher's top edge). In
+  landscape there is no header band: the home button floats in the top-left corner, mission and
+  lives in the top-right, and the field fills the height but for half a cell of wall top and bottom,
+  centred on the screen with equal room on both sides; past two cells of wall left and right, the
+  wall in the gutters blurs out toward the screen's sides with no shade (`.edge-left`/`.edge-right`,
+  deep, without their `<b>`). `tanks.js` sets `--wall-top/-bottom/-left/-right` for those edges.
+  Everything past the wall's first cell is drawn once per layout; a crate blown away or an editor
+  stroke redraws only the field and that cell. Up on screen is always up for input.
 - **Rules** (`rules.js`, `engine.js`): one hit destroys a tank. Shells ricochet off walls and crates;
   the player has 5 shells in flight with 1 ricochet each and 2 mines. Shells that meet cancel out
   (missiles and minigun rounds too), your own shell can destroy you after a ricochet, and a barrel inside a wall fizzles.
@@ -493,7 +505,7 @@ style a button, header, card, sheet or menu locally.
   Brown → Grey, Teal → Green, Yellow → Hornet, Pink → Violet and White (Violet's twin, `twin`); Red,
   Black, Olive and Lime stand alone. A V2 reacts and thinks at least as fast as its V1 (a test
   checks), and the field guide rates every kind on five axes: Aim, Awareness, Defence, Tactics,
-  Mines (TANKS.md A5 plans the rest). Yellow and Hornet lay mines. Yellow drops one of its 2 now and then. Hornet lays its 4 by
+  Mines (TANKS.md A5 plans the rest). Lines are on their way out (TANKS.md N1): every kind will stand alone in its own colour, and the stronger version of a kind is its night version (none has one yet), so add no new `upgrade` links. Yellow and Hornet lay mines. Yellow drops one of its 2 now and then. Hornet lays its 4 by
   plan: at a cell on your shortest way to it that it reaches well before you, then watches the mine
   from a lookout and shoots it as you pass (only when the blast spares every enemy); it knows its
   side's quiet mines only go off when driven onto, and drives clear of any about to blow. No enemy
