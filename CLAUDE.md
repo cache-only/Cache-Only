@@ -347,7 +347,9 @@ style a button, header, card, sheet or menu locally.
   with `--bg` text, at most one per screen. `.icon-btn` is a 44 glass rounded square (home,
   settings, close, the moves under a board, pressed = solid white), its pixel icon filling it to
   one gap from the edge. `.btn-icon` makes a `.btn` a 48 square holding only its icon, filled the
-  same way (the launcher's "Download all games", the Tanks map editor's Play). `.btn-small` is 32 tall with 13px text, only in a section header next to
+  same way (the launcher's "Download all games"). `.icon-btn-primary` is the 44 icon button solid
+  `--ink`, for a header action that is the screen's one primary, at the home button's size (the
+  Tanks map editor's Play). `.btn-small` is 32 tall with 13px text, only in a section header next to
   a 12px label, its tap area still 44. Disabled is the same button at 40% opacity, never a new
   style. (Tanks' thumbsticks are round: they are sticks, not buttons.)
 - **Concentric radii:** an outer radius is the inner radius plus the inset between them, starting
@@ -534,7 +536,7 @@ style a button, header, card, sheet or menu locally.
   with Edit, New map and Play; with none yet it explains the editor and offers only New map. A
   new map is open floor with you at the left (column 2, row 7), named "Map n". The editor is a
   phase of its own (`edit`, `.is-editing` on the page): the header holds only home and a square
-  primary Play (`.btn-icon`, off while the map can't be played), and under the arena in portrait
+  primary Play (`.icon-btn-primary`, the home button's size, off while the map can't be played), and under the arena in portrait
   (beside it, two columns, in landscape) sit a line about the map's state and the tools: Wall,
   Crate, Hole, Erase, You, Enemy and Undo, the brushes drawn by the game's own art. Enemy opens a
   modal sheet with the test range's kind grid, and the pick becomes the brush. Tap or drag on the

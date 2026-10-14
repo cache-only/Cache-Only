@@ -92,15 +92,22 @@ export function makePalette(get) {
 
 /** Spare canvases for the soft light, made with create() (the caller's, so art.js has no DOM). */
 export function makeKit(create) {
-  return { scratch: create(), mask: create(), field: create(), lit: create(), shade: create(), drop: create(), soft: create() };
+  return { scratch: create(), field: create(), floor: create(), small: create(), lit: create(), shade: create(), drop: create(), soft: create() };
 }
 
 /* ---------- The light ---------- */
 
 const LIT = 'rgba(255, 255, 255, 0.34)';
 const SHADE = 'rgba(0, 0, 0, 0.4)';
+// Hard light lays each edge twice, the inner half in both passes, so it fades out like a blur.
+const LIT_STEP = 'rgba(255, 255, 255, 0.24)';
+const SHADE_STEP = 'rgba(0, 0, 0, 0.27)';
+const DROP_STEP = 'rgba(0, 0, 0, 0.26)';
 const BAND = 0.032; // cells: how far a lit or shaded edge reaches in
-const EDGE_BLUR = 0.03; // cells of canvas shadowBlur on a part's edges
+// Device px: no edge or layer shadow is ever narrower, or a phone-sized tank's light can't be seen.
+const BAND_MIN = 2.6;
+const DROP_MIN = 2.2;
+const EDGE_BLUR = 0.03; // cells of blur on a part's soft edges
 const DROP = 'rgba(0, 0, 0, 0.42)';
 const DROP_BLUR = 0.05;
 const CAST = 0.6; // a shadow on the floor reaches this much of its part's height along the light
@@ -637,30 +644,64 @@ function solid(c, s) {
   c.restore();
 }
 
-/** Hard light, part by part: each part's edges and each layer's shadow drawn straight on c. */
+/**
+ * Fills the band of a part that faces away from (dx, dy), in device px: the part, less itself
+ * moved by that much. Plain fills and a clip, so it draws the same in every browser.
+ */
+function edgeBand(c, path, dx, dy, fill) {
+  const M = c.getTransform();
+  c.save();
+  c.beginPath();
+  path(c);
+  c.clip();
+  c.setTransform(M.a, M.b, M.c, M.d, M.e + dx, M.f + dy);
+  c.beginPath();
+  c.rect(...frameOf(path));
+  path(c);
+  c.fillStyle = fill;
+  c.fill('evenodd');
+  c.restore();
+}
+
+/**
+ * Hard light, part by part: each part's edges and each layer's shadow drawn straight on c, with
+ * plain fills only (canvas shadows on spare canvases go missing on some iPhones). Each edge and
+ * each layer shadow goes down in two steps, the inner half darker or lighter, so it reads as soft.
+ */
 function paintHard(c, t, layers, L) {
   const base = c.getTransform();
+  const band = Math.max(BAND * L.unit, BAND_MIN);
   layers.forEach((layer, i) => {
     if (i > 0 && layer.solids.length) {
-      // This layer's shadow, only on the layers already down.
+      // This layer's shadow, only on the layers already down, under the layer itself.
+      const drop = Math.max(layer.drop * L.unit, DROP_MIN);
       c.save();
       c.beginPath();
       for (let j = 0; j < i; j++) {
         c.setTransform(base);
         enter(c, t, layers[j].frame);
-        for (const s of layers[j].solids) s.path(c);
+        for (const sol of layers[j].solids) sol.path(c);
       }
       c.setTransform(base);
       c.clip();
-      enter(c, t, layer.frame);
-      softShadow(c, (cc) => { for (const s of layer.solids) s.path(cc); }, DROP, layer.drop * L.unit, 0, L);
+      for (const k of [0.5, 1]) {
+        c.setTransform(base.a, base.b, base.c, base.d, base.e + L.x * drop * k, base.f + L.y * drop * k);
+        enter(c, t, layer.frame);
+        union(c, layer.solids);
+        c.fillStyle = DROP_STEP;
+        c.fill();
+      }
       c.restore();
     }
     c.save();
     enter(c, t, layer.frame);
     for (const s of layer.solids) {
       solid(c, s);
-      if (s.bevel !== false) innerLight(c, s.path, LIT, SHADE, BAND * L.unit, 0, L, frameOf(s.path));
+      if (s.bevel === false) continue;
+      for (const k of [0.5, 1]) {
+        edgeBand(c, s.path, L.x * band * k, L.y * band * k, LIT_STEP);
+        edgeBand(c, s.path, -L.x * band * k, -L.y * band * k, SHADE_STEP);
+      }
     }
     for (const d of layer.decals) d(c);
     c.restore();
@@ -668,17 +709,53 @@ function paintHard(c, t, layers, L) {
 }
 
 /**
+ * Blurs the w x h corner of canvas src into canvas out, painted in col: drawn down to a small
+ * canvas and back up, smoothing as it scales, about blur device px. No canvas shadows, which some
+ * iPhones drop when one canvas is drawn onto another.
+ */
+function soften(small, src, out, w, h, blur, col) {
+  const f = Math.max(1, Math.round(blur));
+  const sw = Math.max(1, Math.ceil(w / f));
+  const sh = Math.max(1, Math.ceil(h / f));
+  if (small.width < sw || small.height < sh) {
+    small.width = Math.max(small.width, sw);
+    small.height = Math.max(small.height, sh);
+  }
+  if (out.width < w || out.height < h) {
+    out.width = Math.max(out.width, w);
+    out.height = Math.max(out.height, h);
+  }
+  const s = small.getContext('2d');
+  s.setTransform(1, 0, 0, 1, 0, 0);
+  s.clearRect(0, 0, sw, sh);
+  s.imageSmoothingEnabled = true;
+  s.imageSmoothingQuality = 'high';
+  s.drawImage(src, 0, 0, w, h, 0, 0, w / f, h / f);
+  const o = out.getContext('2d');
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.clearRect(0, 0, w, h);
+  o.imageSmoothingEnabled = true;
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(small, 0, 0, w / f, h / f, 0, 0, w, h);
+  o.globalCompositeOperation = 'source-in';
+  o.fillStyle = col;
+  o.fillRect(0, 0, w, h);
+  o.globalCompositeOperation = 'source-over';
+  return out;
+}
+
+/**
  * Soft light: the lit edges, the shaded edges and each layer's shadow on the layers under it are
- * drawn hard into three masks (kit.lit, kit.shade, kit.drop), then each mask is blurred once and
- * laid on the tank. A canvas shadow costs about the same whatever its size, so three of them a
- * tank, not three a part. The masks are opaque: a part covers whatever lies under it in a mask,
- * then the part moved along the light erases all of it but its edge band.
+ * drawn hard into three masks (kit.lit, kit.shade, kit.drop), then each mask is blurred once (by
+ * scaling, soften) and laid on the tank. The masks are opaque: a part covers whatever lies under
+ * it in a mask, then the part moved along the light erases all of it but its edge band.
  */
 function paintSoft(c, t, layers, L, kit, size) {
   const base = c.getTransform();
   const u = L.unit;
+  const band = Math.max(BAND * u, BAND_MIN);
   const mk = {};
-  for (const key of ['lit', 'shade', 'drop', 'soft']) {
+  for (const key of ['lit', 'shade', 'drop']) {
     const cv = kit[key];
     if (cv.width < size || cv.height < size) {
       cv.width = Math.max(cv.width, size);
@@ -700,7 +777,8 @@ function paintSoft(c, t, layers, L, kit, size) {
   };
   layers.forEach((layer, i) => {
     if (layer.solids.length) {
-      if (i > 0) fillIn(mk.drop, layer.frame, layer.solids, L.x * layer.drop * u, L.y * layer.drop * u);
+      const drop = Math.max(layer.drop * u, DROP_MIN);
+      if (i > 0) fillIn(mk.drop, layer.frame, layer.solids, L.x * drop, L.y * drop);
       fillIn(mk.drop, layer.frame, layer.solids, 0, 0, 'destination-out');
     }
     c.save();
@@ -710,9 +788,9 @@ function paintSoft(c, t, layers, L, kit, size) {
       const one = [s];
       if (s.bevel !== false) {
         fillIn(mk.lit, layer.frame, one);
-        fillIn(mk.lit, layer.frame, one, L.x * BAND * u, L.y * BAND * u, 'destination-out');
+        fillIn(mk.lit, layer.frame, one, L.x * band, L.y * band, 'destination-out');
         fillIn(mk.shade, layer.frame, one);
-        fillIn(mk.shade, layer.frame, one, -L.x * BAND * u, -L.y * BAND * u, 'destination-out');
+        fillIn(mk.shade, layer.frame, one, -L.x * band, -L.y * band, 'destination-out');
       } else {
         fillIn(mk.lit, layer.frame, one, 0, 0, 'destination-out');
         fillIn(mk.shade, layer.frame, one, 0, 0, 'destination-out');
@@ -721,21 +799,13 @@ function paintSoft(c, t, layers, L, kit, size) {
     for (const d of layer.decals) d(c);
     c.restore();
   });
-  // Blur each mask into kit.soft, then lay it on the tank, only where the tank is painted.
+  // Blur each mask, then lay it on the tank, only where the tank is painted.
   for (const [m, col, blur] of [[mk.lit, LIT, EDGE_BLUR], [mk.shade, SHADE, EDGE_BLUR], [mk.drop, DROP, DROP_BLUR]]) {
-    const tmp = mk.soft;
-    tmp.setTransform(1, 0, 0, 1, 0, 0);
-    tmp.clearRect(0, 0, size, size);
-    const far = size + 64;
-    tmp.shadowColor = col;
-    tmp.shadowBlur = L.soft * blur * u;
-    tmp.shadowOffsetX = far;
-    tmp.drawImage(m.canvas, 0, 0, size, size, -far, 0, size, size);
-    tmp.shadowColor = 'rgba(0, 0, 0, 0)';
+    const soft = soften(kit.small, m.canvas, kit.soft, size, size, L.soft * blur * u, col);
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'source-atop';
-    c.drawImage(tmp.canvas, 0, 0, size, size, 0, 0, size, size);
+    c.drawImage(soft, 0, 0, size, size, 0, 0, size, size);
     c.restore();
   }
 }
@@ -808,7 +878,7 @@ function castInto(m, at, M, pal, t, alpha, L) {
 
 /**
  * Tanks' shadows on the floor: every part of each, moved along the light by its height, all
- * filled into one mask the size of c and laid down with one blur. tanks: [{ t, alpha }]. Draw
+ * filled into one mask the size of c, blurred once by scaling and laid down. tanks: [{ t, alpha }]. Draw
  * them all before any tank, so no tank's shadow falls on another tank. Without a kit, each part
  * is laid down as it is, hard.
  */
@@ -838,12 +908,10 @@ export function drawShadows(c, pal, tanks, { light = LIGHT, kit = null } = {}) {
   m.setTransform(1, 0, 0, 1, 0, 0);
   m.clearRect(0, 0, W, H);
   for (const { t, alpha = 1 } of tanks) castInto(m, M, M, pal, t, alpha, L);
+  const soft = soften(kit.small, field, kit.floor, W, H, CAST_BLUR * L.unit, pal.shadow);
   c.save();
   c.setTransform(1, 0, 0, 1, 0, 0);
-  c.shadowColor = pal.shadow;
-  c.shadowBlur = CAST_BLUR * L.unit;
-  c.shadowOffsetX = W * 2 + 64;
-  c.drawImage(field, 0, 0, W, H, -(W * 2 + 64), 0, W, H);
+  c.drawImage(soft, 0, 0, W, H, 0, 0, W, H);
   c.restore();
 }
 

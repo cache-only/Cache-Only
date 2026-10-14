@@ -138,11 +138,17 @@ and a tank's shadow on the floor is built from all of them, each moved along the
 height, so the turret and barrel are in it. The cleats run across each tread from edge to edge, and
 the plates at the front and back of the hull have rounded corners.
 
-- **Soft and cheap:** edges and shadows are canvas shadows. A tank's lit edges, shaded edges and
-  layer shadows go into three masks, each blurred once (`paintSoft`); every tank's floor shadow
-  goes into one mask, blurred once a frame (`drawShadows`). Under about 1.5 px of blur (a small
-  tank on a 2x screen) a tank is lit hard, part by part (`paintHard`). `render.js` and the guide
-  give the art a kit of spare canvases (`makeKit`), so `art.js` still has no DOM.
+- **Soft and cheap:** a tank's lit edges, shaded edges and layer shadows go into three masks,
+  each blurred once (`paintSoft`); every tank's floor shadow goes into one mask, blurred once a
+  frame (`drawShadows`). Blurs are done by drawing a mask down to a small canvas and back up
+  (`soften`), never with canvas shadows: an iPhone dropped canvas shadows when one spare canvas
+  was drawn onto another, so tanks lost all their light in game while the badges kept it. Under
+  about 1.5 px of blur (a small tank on a 2x screen) a tank is lit hard, part by part
+  (`paintHard`), with plain clipped fills, each edge in two steps so it fades like a blur. No edge
+  is narrower than 2.6 device px and no layer shadow shorter than 2.2: at a cell's true width they
+  came out one pixel wide on an iPhone. Canvas shadows are left only where they draw on a canvas
+  the page shows or the static floor (blocks, shots, mines, bombs). `render.js` and the guide give
+  the art a kit of spare canvases (`makeKit`), so `art.js` still has no DOM.
 - **Shots:** today's shapes and pale, with their own shape blurred on the floor below them and a
   shaded edge. Only a missile glows (flame and nose light) and wears its owner's colour. A bomb is
   a dark ball shaded round, with a soft pale glow at its edge, over a shadow that sharpens as it

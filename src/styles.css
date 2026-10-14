@@ -376,6 +376,24 @@ button {
   color: var(--on-ink);
 }
 
+/* Primary: the same 44 square, solid like .btn-primary, for a header action that is the screen's
+   one primary (Tanks' map editor: Play, beside the home button and its size). */
+.icon-btn-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--on-ink);
+}
+
+.icon-btn-primary:active {
+  background: #d6d6d6;
+}
+
+.icon-btn-primary:disabled:active {
+  background: var(--ink);
+}
+
 /* A move under a board: an icon button with its name below; the whole column is the button. */
 .tool {
   display: flex;

@@ -1035,11 +1035,13 @@ function problemText(p) {
   return t(`tanks.edit.${p.code}`, { n: p.n, max: MAX_ENEMIES, kind: p.kind ? t(`tanks.type.${p.kind}`) : '' });
 }
 
-/** One line on a map: what stops it being played, or that it's ready (and the first note, if any). */
+/**
+ * One sentence on a map, so it fits beside the arena in landscape: what stops it being played,
+ * else a note (Play being on says it's ready), else that it's ready.
+ */
 function reportText(report) {
-  const blocking = report.problems.find((p) => p.blocking);
-  if (blocking) return problemText(blocking);
-  return [t('tanks.edit.ready', { n: report.enemies, max: MAX_ENEMIES }), ...report.problems.slice(0, 1).map(problemText)].join(' ');
+  const first = report.problems.find((p) => p.blocking) || report.problems[0];
+  return first ? problemText(first) : t('tanks.edit.ready', { n: report.enemies, max: MAX_ENEMIES });
 }
 
 /** Draws a map, frozen, behind the sheets or under the editor's tools. */
