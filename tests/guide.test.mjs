@@ -3,10 +3,10 @@
 // enemy kind with no text or scene in guide/enemies.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkMap } from '../guide/mapcheck.mjs';
+import { checkMap } from '../src/games/tanks/mapcheck.js';
 import { buildGuide, bundle } from '../scripts/guide.mjs';
 import { createWorld, parseLevel, step } from '../src/games/tanks/engine.js';
-import { MISSIONS } from '../src/games/tanks/missions.js';
+import { MISSIONS, testMap } from '../src/games/tanks/missions.js';
 import { ENEMY_KINDS, STEP, TYPES } from '../src/games/tanks/rules.js';
 
 test('the field guide builds from the game and covers every enemy kind', async () => {
@@ -36,6 +36,21 @@ test('the game code bundled into the guide behaves exactly like the game', async
     MOD.engine.step(b, script(i), STEP);
   }
   assert.equal(JSON.stringify(b), JSON.stringify(a));
+  // And the test range full of miniguns, whose barrels spin up and spray. You start above the
+  // walls, in plain sight, so they get going at once.
+  const range = testMap('lime', 6).map((line, r) => (r === 7 ? `.${line.slice(1)}` : r === 2 ? `@${line.slice(1)}` : line));
+  const c = createWorld(parseLevel(range), { seed: 4 });
+  const d = MOD.engine.createWorld(MOD.engine.parseLevel(range), { seed: 4 });
+  // You drive without firing, so your own ricochets don't end it before they get going.
+  const drive = (i) => ({ ...script(i), fire: false, mine: false });
+  let spun = false;
+  for (let i = 0; i < 120 * 8; i++) {
+    step(c, drive(i), STEP);
+    MOD.engine.step(d, drive(i), STEP);
+    spun ||= c.tanks.some((t) => t.spin > 0);
+  }
+  assert.ok(spun, 'a minigun spun up');
+  assert.equal(JSON.stringify(d), JSON.stringify(c));
   for (const rows of MISSIONS) assert.deepEqual(MOD.mapcheck.checkMap(rows), checkMap(rows));
   assert.deepEqual(Object.keys(MOD.art).sort(), Object.keys(await import('../src/games/tanks/art.js')).sort());
 });

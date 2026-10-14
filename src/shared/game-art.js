@@ -11,20 +11,29 @@ const SAMPLE_2048 = [2, 0, 0, 2, 4, 8, 0, 0, 16, 32, 4, 2, 128, 64, 8, 4];
 const SAMPLE_ARENA = [
   '####################',
   '#..................#',
-  '#..##........##..E.#',
-  '#..#..........#....#',
-  '#.......##.........#',
-  '#.......##.....##..#',
-  '#P.............##..#',
-  '#....##.....E......#',
-  '#....##............#',
-  '#.........##.......#',
-  '#..#......##..#....#',
-  '#..##........##....#',
-  '#...............E..#',
+  '#..##....##........#',
+  '#..#.....##.....#..#',
+  '#...............#..#',
+  '#..................#',
+  '#..........##......#',
+  '#..........##......#',
+  '#..................#',
+  '#......##..........#',
+  '#..##..##..........#',
+  '#...#..............#',
+  '#..........##......#',
   '#..................#',
   '####################',
 ];
+// The tanks on it, in cells: centre, the way the hull faces (degrees, 0 = right) and the tank
+// the turret aims at. They are drawn larger than in the game, so the shape reads on a tile.
+const SAMPLE_TANKS = [
+  { x: 4, y: 6, body: -8, aim: 1, you: true },
+  { x: 14.5, y: 4, body: 195, aim: 0 },
+  { x: 15, y: 11, body: -105, aim: 0 },
+];
+const TANK_SCALE = 2.6;
+const SVG = 'http://www.w3.org/2000/svg';
 
 function span(className, text) {
   const el = document.createElement('span');
@@ -65,11 +74,33 @@ function tile2048Art() {
   return art;
 }
 
+function svg(tag, attrs, ...children) {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.append(...children);
+  return el;
+}
+
+/** A tank seen from above, as the game draws it: treads, hull, turret and barrel. */
+function tankShape(t, target) {
+  const aim = (Math.atan2(target.y - t.y, target.x - t.x) * 180) / Math.PI;
+  return svg('g', { class: t.you ? 'art-tank is-you' : 'art-tank', transform: `translate(${t.x} ${t.y}) scale(${TANK_SCALE})` },
+    svg('g', { transform: `rotate(${t.body})` },
+      svg('rect', { class: 'art-tread', x: -0.43, y: -0.39, width: 0.86, height: 0.21, rx: 0.05 }),
+      svg('rect', { class: 'art-tread', x: -0.43, y: 0.18, width: 0.86, height: 0.21, rx: 0.05 }),
+      svg('rect', { class: 'art-hull', x: -0.37, y: -0.26, width: 0.74, height: 0.52, rx: 0.09 })),
+    svg('g', { transform: `rotate(${aim.toFixed(1)})` },
+      svg('rect', { class: 'art-barrel', x: 0.08, y: -0.07, width: 0.5, height: 0.14 }),
+      svg('circle', { class: 'art-turret', r: 0.22 })));
+}
+
 function tanksArt() {
   const art = span('art art-tanks');
   const arena = span('art-arena');
-  const kind = { '#': 'is-wall', P: 'is-you', E: 'is-enemy' };
-  for (const row of SAMPLE_ARENA) for (const ch of row) arena.append(span(kind[ch] || ''));
+  for (const row of SAMPLE_ARENA) for (const ch of row) arena.append(span(ch === '#' ? 'is-wall' : ''));
+  const tanks = svg('svg', { class: 'art-tanks-layer', viewBox: '0 0 20 15' });
+  for (const t of SAMPLE_TANKS) tanks.append(tankShape(t, SAMPLE_TANKS[t.aim]));
+  arena.append(tanks);
   art.append(arena);
   return art;
 }

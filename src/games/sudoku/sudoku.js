@@ -551,8 +551,6 @@ function complete() {
 function pause() {
   stopClock();
   if (S && !S.completed && !busy) paused = true;
-  $('menuTitle').textContent = paused ? `${t('sudoku.paused')} · ${formatTime(elapsed())}` : t('common.menu');
-  $('resumeBtn').hidden = !paused;
   $('shareBtn').disabled = !S;
   $('conflictsToggle').checked = !!prefs.showConflicts;
   render();

@@ -3,9 +3,11 @@
 // one idea; its name and briefing are tanks.name.<n> and tanks.brief.<n> in i18n.js.
 //   .  floor      #  wall      x  crate (a blast clears it)      o  hole
 //   @  player     enemies: b brown, a grey, m teal, y yellow, p pink, g green,
-//                          v violet, r red, w white, k black, d olive
+//                          v violet, r red, w white, k black, d olive, l lime
 // A bonus tank is awarded after missions 5, 10 and 15, and each of those is a checkpoint.
 // guide/mapcheck.mjs holds the rules every map must pass; the field guide has an editor.
+// Below the missions: the test range, where any one kind can be tried out.
+import { COLS, ROWS, SPAWN_CODES } from './rules.js';
 
 export const BONUS_AFTER = [5, 10, 15];
 export const CHECKPOINTS = [1, 6, 11, 16];
@@ -372,3 +374,25 @@ export const MISSIONS = [
     '....................',
   ],
 ];
+
+/* ---------- Test range ---------- */
+
+export const TEST_MAX = 6;
+const TEST_WALLS = [2, 6, 13, 17]; // columns; each wall runs down rows 4 to 10
+const TEST_SPOTS = [[15, 7], [15, 2], [15, 12], [18, 4], [18, 10], [11, 7]]; // filled in this order
+
+/**
+ * The test range, from the start sheet's Test button: four short walls, two on each side,
+ * so that side on your half reads _|__|__ and theirs __|__|_. You start at the far left,
+ * behind the first wall, and `count` enemies of one kind (1 to TEST_MAX) take the spots on
+ * the right.
+ */
+export function testMap(kind, count) {
+  const letter = Object.keys(SPAWN_CODES).find((ch) => SPAWN_CODES[ch] === kind);
+  if (!letter) throw new Error(`No map letter for "${kind}"`);
+  const rows = Array.from({ length: ROWS }, () => Array(COLS).fill('.'));
+  for (const c of TEST_WALLS) for (let r = 4; r <= 10; r++) rows[r][c] = '#';
+  rows[7][0] = '@';
+  for (const [c, r] of TEST_SPOTS.slice(0, Math.max(1, Math.min(TEST_MAX, count)))) rows[r][c] = letter;
+  return rows.map((row) => row.join(''));
+}

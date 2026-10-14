@@ -71,7 +71,7 @@ function ask(worker, message, timeout = 4000) {
   });
 }
 
-/** The active worker's packs: { version, core, games: { id: { cache, files, bytes } } }. */
+/** The active worker's packs: { version, release, core, games: { id: { cache, files, bytes } } }. */
 export async function getManifest() {
   const worker = (await navigator.serviceWorker.ready).active;
   return ask(worker, { type: 'GET_MANIFEST' });
@@ -87,7 +87,7 @@ export async function countCached(pack) {
 
 /**
  * Reports whether the app itself (the shell) works offline, through
- * onStatus({ state, done, total, version }).
+ * onStatus({ state, done, total, version, release }).
  * state is 'checking' | 'downloading' | 'ready' | 'failed' | 'unsupported'.
  * "ready" is only reported after every app-shell file of the active worker is
  * confirmed present in its cache.
@@ -118,7 +118,7 @@ export function watchOfflineStatus(reg, onStatus) {
     try {
       const manifest = await ask(worker, { type: 'GET_MANIFEST' });
       const done = await countCached(manifest.core);
-      const status = { done, total: manifest.core.files.length, version: manifest.version };
+      const status = { done, total: manifest.core.files.length, version: manifest.version, release: manifest.release };
       if (done === manifest.core.files.length) {
         settled = true;
         onStatus({ state: 'ready', ...status });

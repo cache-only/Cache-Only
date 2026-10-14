@@ -96,6 +96,17 @@ export function createAudio() {
       tone({ type: 'square', from: 1760, dur: 0.06, vol: 0.07, at: 0.07 });
       hiss({ dur: 0.3, vol: 0.16, type: 'highpass', from: 1200, to: 3200, q: 0.7, at: 0.05 });
     },
+    spin(dur = 1.2) {
+      // A minigun's motor winding up: a whine that climbs until the barrels are at speed.
+      const d = Math.max(0.15, dur);
+      tone({ type: 'sawtooth', from: 120, to: 520, dur: d, vol: 0.035 });
+      tone({ type: 'triangle', from: 240, to: 1040, dur: d, vol: 0.05 });
+    },
+    minigun() {
+      // One round: a short dry crack, light enough to repeat ten times a second.
+      hiss({ dur: 0.04, vol: 0.14, from: 2600, to: 1200, q: 1.2 });
+      tone({ type: 'square', from: 210, to: 110, dur: 0.035, vol: 0.05 });
+    },
     lob(flight = 1.5) {
       // A thump from the tube, then a whistle that falls as the bomb does.
       tone({ type: 'sine', from: 150, to: 48, dur: 0.18, vol: 0.4 });

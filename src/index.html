@@ -19,26 +19,15 @@
   <script type="module" src="/launcher.js"></script>
 </head>
 <body class="launcher">
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
-    <symbol id="i-share" viewBox="0 0 24 24"><path d="M8 10H6v10h12V10h-2"/><path d="M12 3v11M8 7l4-4 4 4"/></symbol>
-    <symbol id="i-add" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></symbol>
-    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="18.5" r="1.2"/></symbol>
-    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
-    <symbol id="i-update" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4.5V8h-3.5"/></symbol>
-    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
-  </svg>
-
+  <!-- Only settings floats up here, at the top right. The logo is in the page, over the suggested
+       game; the status words are there for screen readers. -->
   <header class="bar">
-    <span id="barLogo" class="bar-logo"></span>
-    <div class="bar-title">
-      <span class="wordmark">Cache Only</span>
-      <span class="status-line" id="statusLine" role="status" aria-live="polite"></span>
-    </div>
-    <!-- While an update waits, the settings circle grows to the left into a pill with Update. -->
+    <span class="visually-hidden" id="statusLine" role="status" aria-live="polite"></span>
+    <!-- While an update waits, the settings button turns white: the update icon takes the
+         settings icon's place and "Update" grows out to its left. -->
     <div class="bar-actions" id="barActions" hidden>
       <button type="button" class="bar-update" id="reloadBtn" data-i18n-label="update.text" hidden>
-        <span><svg class="icon"><use href="#i-update"/></svg><span class="bar-update-label" data-i18n="update.action"></span></span>
+        <span class="bar-update-label" data-i18n="update.action"></span><svg class="icon"><use href="#i-update"/></svg>
       </button>
       <button type="button" class="icon-btn" id="openSettings" data-i18n-label="launcher.settings">
         <svg class="icon"><use href="#i-settings"/></svg>
@@ -47,28 +36,40 @@
   </header>
 
   <div class="pblur pblur-top edge-top" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  <!-- Landscape: the games scroll sideways, under these. -->
+  <div class="pblur pblur-side edge-left" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  <div class="pblur pblur-side edge-right" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+
+  <!-- A browser tab: the app icon's pixel field across the whole page (shared/pixel-field.js). -->
+  <div class="pixel-field" id="installField" aria-hidden="true" hidden></div>
 
   <main class="home" id="home">
-    <div class="hero" id="hero" aria-hidden="true"></div>
+    <!-- The installed app: one square (.lead) holding the logo, large and centred over the
+         suggested game's art (it is the status: it comes into focus once the app is ready offline
+         and as games download), with the suggested game at its foot; then a note while offline,
+         then every game and the fillers still to come. While nothing is downloaded, the same panel
+         offers every game (.is-all): no art, no eyebrow, and a download icon for its button. -->
+    <div class="lead">
+      <div class="hero" id="hero" aria-hidden="true"></div>
 
-    <!-- The installed app: the suggested game, then every game. -->
-    <section class="suggest" id="suggest" hidden>
-      <h2 class="eyebrow" data-i18n="launcher.suggested"></h2>
-      <div class="panel">
-        <span class="panel-text t-title" id="suggestName"></span>
-        <a class="btn btn-primary" id="suggestBtn"></a>
-      </div>
-    </section>
+      <div class="home-mark" id="homeMark" aria-hidden="true"></div>
+
+      <section class="suggest" id="suggest" hidden>
+        <h2 class="eyebrow" data-i18n="launcher.suggested"></h2>
+        <div class="panel">
+          <span class="panel-text t-title" id="suggestName"></span>
+          <a class="btn btn-primary" id="suggestBtn"></a>
+          <button type="button" class="btn btn-primary btn-icon" id="getAllBtn" data-i18n-label="launcher.downloadAll" hidden>
+            <svg class="icon"><use href="#i-download"/></svg>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <p class="t-note home-note" id="homeNote"></p>
 
     <section class="games" id="gamesSection" hidden>
-      <div class="section-head">
-        <h2 class="eyebrow" data-i18n="launcher.games"></h2>
-        <button type="button" class="btn-small" id="downloadAllBtn" hidden>
-          <span><svg class="icon"><use href="#i-download"/></svg><span data-i18n="launcher.downloadAll"></span></span>
-        </button>
-      </div>
       <ul class="tile-grid" id="games"></ul>
-      <p class="t-note home-note" id="homeNote"></p>
     </section>
 
     <!-- First launch: the app shell is still downloading. -->
@@ -86,18 +87,16 @@
       </div>
     </section>
 
-    <!-- A browser tab: only how to install. -->
+    <!-- A browser tab: only how to install, over the pixel field (#installField). -->
     <section class="intro install" id="install" hidden>
-      <!-- No header on this page: the logo and the name are one lockup. -->
+      <!-- No header on this page: the logo and the name are one lockup. The logo only holds the
+           place of the field's lit mark. -->
       <div class="intro-mark" id="installMark">
         <div class="intro-logo"></div>
-        <p class="t-heading">Cache Only</p>
-      </div>
-      <div class="intro-text">
-        <h1 class="t-title" data-i18n="install.title"></h1>
-        <p class="t-body" data-i18n="install.lead"></p>
+        <p class="t-display">Cache Only</p>
       </div>
       <div class="intro-side">
+        <h1 class="t-title" data-i18n="install.title"></h1>
         <ol class="steps" id="installSteps"></ol>
         <p class="t-note" data-i18n="install.note"></p>
       </div>
@@ -126,6 +125,22 @@
           </section>
 
           <section class="sheet-section">
+            <h3 class="eyebrow" data-i18n="settings.sound"></h3>
+            <!-- One switch for every sound in the app (shared/sound.js). -->
+            <label class="toggle-row">
+              <span data-i18n="settings.soundEffects"></span>
+              <input type="checkbox" class="switch" id="soundToggle" role="switch">
+            </label>
+          </section>
+
+          <section class="sheet-section sheet-last">
+            <!-- Answers in its own label: No updates, or white with Update (launcher.js). -->
+            <button type="button" class="btn" id="checkUpdateBtn" data-i18n="settings.check" aria-live="polite"></button>
+          </section>
+        </div>
+
+        <div class="sheet-col">
+          <section class="sheet-section">
             <h3 class="eyebrow" data-i18n="settings.saves"></h3>
             <div class="sheet-actions">
               <button type="button" class="btn" id="exportBtn" data-i18n="settings.export"></button>
@@ -135,21 +150,14 @@
             <p class="msg" id="savesMsg" role="status"></p>
           </section>
 
-          <section class="sheet-section sheet-last">
-            <button type="button" class="btn" id="checkUpdateBtn" data-i18n="settings.check"></button>
-            <p class="msg" id="updateMsg" role="status"></p>
+          <section class="sheet-section">
+            <h3 class="eyebrow" data-i18n="settings.device"></h3>
+            <dl class="facts">
+              <dt data-i18n="settings.version"></dt><dd class="is-num" id="factVersion">—</dd>
+              <dt data-i18n="settings.games"></dt><dd class="is-num" id="factGames">—</dd>
+            </dl>
           </section>
         </div>
-
-        <section class="sheet-section">
-          <h3 class="eyebrow" data-i18n="settings.device"></h3>
-          <dl class="facts">
-            <dt data-i18n="settings.version"></dt><dd class="is-num" id="factVersion">—</dd>
-            <dt data-i18n="settings.offline"></dt><dd id="factOffline">—</dd>
-            <dt data-i18n="settings.games"></dt><dd class="is-num" id="factGames">—</dd>
-            <dt data-i18n="settings.persisted"></dt><dd id="factPersisted">—</dd>
-          </dl>
-        </section>
       </div>
     </form>
   </dialog>

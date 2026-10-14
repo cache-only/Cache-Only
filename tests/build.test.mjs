@@ -42,12 +42,17 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 const allPacks = () => [packs.core, ...Object.values(packs.games)];
 
-test('sw.js has VERSION and PACKS inlined', async () => {
+test('sw.js has VERSION, RELEASE and PACKS inlined', async () => {
   const sw = await readFile(path.join(DIST, 'sw.js'), 'utf8');
-  assert.ok(!sw.includes('__VERSION__') && !sw.includes('__PACKS__'));
+  assert.ok(!sw.includes('__VERSION__') && !sw.includes('__RELEASE__') && !sw.includes('__PACKS__'));
   assert.ok(sw.includes(`const VERSION = "${info.version}"`));
   assert.ok(!/importScripts/.test(sw), 'the manifest must live in sw.js itself');
   assert.match(info.version, /^[0-9a-f]{12}$/);
+  // The version people see is package.json's, set by hand.
+  const pkg = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(info.release, pkg.version);
+  assert.ok(sw.includes(`const RELEASE = "${pkg.version}"`));
 });
 
 test('every shipped file belongs to exactly one pack', async () => {

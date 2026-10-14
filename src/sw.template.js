@@ -3,6 +3,7 @@
 // PACKS.core is the app shell, cached at install so the app always opens offline.
 // PACKS.games has one pack per game, downloaded only when the player asks for it.
 const VERSION = '__VERSION__';
+const RELEASE = '__RELEASE__'; // package.json's version, shown in Settings
 const PACKS = __PACKS__;
 
 const CORE = PACKS.core;
@@ -147,7 +148,7 @@ self.addEventListener('message', (event) => {
   if (data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   } else if (data.type === 'GET_MANIFEST') {
-    reply({ version: VERSION, core: CORE, games: GAMES });
+    reply({ version: VERSION, release: RELEASE, core: CORE, games: GAMES });
   } else if (data.type === 'REPAIR') {
     // Re-fetch app-shell files that went missing (e.g. storage pressure).
     event.waitUntil(

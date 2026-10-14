@@ -20,6 +20,8 @@ import {
   ROWS,
   SHELL_R,
   SPAWN_CODES,
+  SPIN_DOWN,
+  SPIN_UP,
   TANK_R,
   TYPES,
   VEL_SMOOTH,
@@ -34,7 +36,9 @@ import {
 } from './rules.js';
 
 // 2: bullets carry `weapon` (and missiles `fuel`), the world has `bombs`, and the player
-// tank carries a smoothed velocity (svx, svy) that the AI aims with.
+// tank carries a smoothed velocity (svx, svy) that the AI aims with. Minigun tanks also carry
+// their barrels' spin (0-1) and whether they are driving them (rev); no world saved before
+// them has one, so older saves stay valid.
 export const WORLD_VERSION = 2;
 
 /** Parses a mission map (ROWS strings of COLS characters) into grid and spawns. */
@@ -64,7 +68,12 @@ export function parseLevel(rows) {
 }
 
 function makeTank(s, type, x, y, body, turret, slot) {
-  return { id: s.nextId++, type, slot, x, y, vx: 0, vy: 0, body, turret, alive: true, reload: 0, mineCool: 0 };
+  const t = { id: s.nextId++, type, slot, x, y, vx: 0, vy: 0, body, turret, alive: true, reload: 0, mineCool: 0 };
+  if (TYPES[type].weapon === 'minigun') {
+    t.spin = 0;
+    t.rev = false;
+  }
+  return t;
 }
 
 /**
@@ -220,12 +229,14 @@ function destroy(s, t, cause, events) {
 /* ---------- Shells, missiles, bombs and mines ---------- */
 
 /**
- * Fires a shell, rocket or missile if reloaded and under the limit. A barrel buried in a
- * wall fizzles. Bombs are lobbed with lob() instead.
+ * Fires a shell, rocket, missile or minigun round if reloaded and under the limit. A minigun
+ * fires only with its barrels at full speed. A barrel buried in a wall fizzles. Bombs are
+ * lobbed with lob() instead.
  */
 export function fire(s, t, angle, events) {
   const T = TYPES[t.type];
   if (!t.alive || T.weapon === 'bomb' || t.reload > 0 || owned(s.bullets, t) >= T.bullets) return false;
+  if (T.weapon === 'minigun' && !(t.spin >= 1)) return false;
   t.reload = T.reload;
   const ux = Math.cos(angle);
   const uy = Math.sin(angle);
@@ -253,6 +264,16 @@ export function lob(s, t, tx, ty, events) {
   s.bombs.push({ id: s.nextId++, owner: t.id, x0: t.x, y0: t.y, tx, ty, t: 0, flight: BOMB_FLIGHT });
   events.push({ type: 'lob', x: t.x, y: t.y, tx, ty, flight: BOMB_FLIGHT });
   return true;
+}
+
+/**
+ * Spins a minigun's barrels up toward full speed while it drives them (SPIN_UP seconds from
+ * rest), or lets them run down (SPIN_DOWN seconds from full). They whine as they start up.
+ */
+function revBarrels(t, on, dt, events) {
+  if (on && !t.rev && t.spin < 1) events.push({ type: 'spin', id: t.id, x: t.x, y: t.y, dur: (1 - t.spin) * SPIN_UP });
+  t.rev = on;
+  t.spin = on ? Math.min(1, t.spin + dt / SPIN_UP) : Math.max(0, t.spin - dt / SPIN_DOWN);
 }
 
 export function layMine(s, t, events) {
@@ -346,7 +367,7 @@ function updateBullets(s, dt, events) {
       return true;
     });
   }
-  // Shells that meet cancel out.
+  // Shells that meet cancel out: rockets, missiles and minigun rounds too.
   const live = s.bullets.filter((b) => !b.dead);
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {
@@ -416,6 +437,7 @@ export function step(s, input, dt) {
     if (!t.alive || t.slot < 0) continue;
     const intent = updateBrain(s, t, dt);
     drive(t, intent.mx, intent.my, dt);
+    if (TYPES[t.type].weapon === 'minigun') revBarrels(t, intent.spin, dt, events);
     if (intent.fire != null) fire(s, t, intent.fire, events);
     if (intent.lob) lob(s, t, intent.lob.x, intent.lob.y, events);
     if (intent.mine) layMine(s, t, events);
@@ -474,7 +496,14 @@ export function isWorld(s) {
     s.tanks[0].type === 'player' &&
     Number.isFinite(s.tanks[0].svx) &&
     Number.isFinite(s.tanks[0].svy) &&
-    s.tanks.every((t) => TYPES[t.type] && Number.isFinite(t.x) && Number.isFinite(t.y) && (t.slot < 0 || t.ai)) &&
+    s.tanks.every(
+      (t) =>
+        TYPES[t.type] &&
+        Number.isFinite(t.x) &&
+        Number.isFinite(t.y) &&
+        (t.slot < 0 || t.ai) &&
+        (TYPES[t.type].weapon !== 'minigun' || Number.isFinite(t.spin)),
+    ) &&
     Array.isArray(s.bullets) &&
     Array.isArray(s.bombs) &&
     Array.isArray(s.mines) &&

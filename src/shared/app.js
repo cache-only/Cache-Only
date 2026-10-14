@@ -2,6 +2,11 @@
 // viewport meta to every .html page (scripts/build.mjs), so no screen has to remember them.
 // The CSS half (touch-action, no selection, no rubber-banding) lives in styles.css.
 
+import { installIcons } from './icons.js';
+
+// Every page's icons: the pixel sprite from shared/icons.js, which pages <use> by id.
+installIcons();
+
 // iOS Safari only applies :active styles when a touchstart listener exists.
 document.addEventListener('touchstart', () => {}, { passive: true });
 

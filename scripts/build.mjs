@@ -129,22 +129,31 @@ export async function build({ quiet = false } = {}) {
 
   // 3. VERSION: SHA-256 over every file's path and content, sorted by path.
   //    The SW template is hashed too, so a worker logic change gets a new version.
+  //    RELEASE is the version people see (Settings): package.json's, bumped by hand when we
+  //    choose. Every push still updates phones through VERSION, bumped or not.
+  const { version: RELEASE } = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
+  if (!/^\d+\.\d+\.\d+$/.test(RELEASE ?? '')) {
+    throw new Error(`package.json version must look like 1.0.0, not ${JSON.stringify(RELEASE)}`);
+  }
   const hash = createHash('sha256');
   for (const f of files) hash.update(f.url).update('\0').update(f.content).update('\0');
   const template = await readFile(TEMPLATE, 'utf8');
   hash.update('/sw.template.js').update('\0').update(template);
+  hash.update('\0').update(RELEASE);
   const VERSION = hex12(hash);
 
-  // 4. Write dist/sw.js with VERSION and PACKS inlined as literals.
+  // 4. Write dist/sw.js with VERSION, RELEASE and PACKS inlined as literals.
   const versionToken = "'__VERSION__'";
+  const releaseToken = "'__RELEASE__'";
   const packsToken = '__PACKS__';
-  for (const token of [versionToken, packsToken]) {
+  for (const token of [versionToken, releaseToken, packsToken]) {
     if (template.split(token).length !== 2) {
       throw new Error(`sw.template.js must contain ${token} exactly once`);
     }
   }
   const sw = template
     .replace(versionToken, JSON.stringify(VERSION))
+    .replace(releaseToken, JSON.stringify(RELEASE))
     .replace(packsToken, JSON.stringify(PACKS, null, 2));
   await writeFile(path.join(DIST, 'sw.js'), sw);
 
@@ -157,6 +166,7 @@ export async function build({ quiet = false } = {}) {
   );
   const info = {
     version: VERSION,
+    release: RELEASE,
     builtAt: new Date().toISOString(),
     files: entries,
     bytes,
@@ -169,7 +179,7 @@ export async function build({ quiet = false } = {}) {
   const swBytes = (await stat(path.join(DIST, 'sw.js'))).size;
   const line = (name, p, note = '') =>
     `  ${name.padEnd(12)} ${String(p.files.length).padStart(3)} entries  ${formatBytes(p.bytes).padStart(9)}${note}`;
-  log(`Built Cache Only ${VERSION}`);
+  log(`Built Cache Only ${RELEASE} (${VERSION})`);
   log(line('app shell', PACKS.core, '  (cached on install)'));
   for (const game of registry) log(line(game.id, PACKS.games[game.id]));
   log(line('everything', { files: { length: entries }, bytes }, `  (+ sw.js ${formatBytes(swBytes)})`));

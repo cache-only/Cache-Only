@@ -1,75 +1,65 @@
-// Renders the app icons (a pixel cent sign: white dots on #111) to PNG with
-// Node built-ins only. Run once with `npm run icons`; the PNGs are committed.
+// Renders the app icons to PNG with Node built-ins only: the pixel logo in white on #070707, with
+// one empty cell around it and, past that, a scattered field of dim pixels at several greys (some
+// left out), from fieldShade() in shared/logo.js. The install page lays the same field across the
+// screen; the logo inside the app stays plain.
+// Run once with `npm run icons`; the PNGs are committed.
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
+import { MARK, fieldShade } from '../src/shared/logo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'src/icons');
 
-const BG = [0x11, 0x11, 0x11];
-const INK = [0xff, 0xff, 0xff];
+const BG = 0x07;
 
-// Same grid as the #i-mark symbol in index.html. The stem is two dots wide.
-const GLYPH = [
-  '.....##...',
-  '...######.',
-  '..########',
-  '.###.##.##',
-  '###..##...',
-  '##...##...',
-  '##...##...',
-  '##...##...',
-  '###..##...',
-  '.###.##.##',
-  '..########',
-  '...######.',
-  '.....##...',
-];
-const COLS = GLYPH[0].length;
-const ROWS = GLYPH.length;
-// The C's open right side weighs less than its left, so centring the outline
-// looks too far right. Shift left by this share of the grid pitch.
-const NUDGE = 0.5;
-const DOT = 0.85; // dot size, as a share of the grid pitch
-const ROUND = 0.2; // corner radius, as a share of the dot
+// The logo's 11 x 13 mark (shared/logo.js), centred, in the field fieldShade() draws around it.
+const COLS = MARK[0].length;
+const ROWS = MARK.length;
+const DOT = 0.75; // dot size, as a share of the grid pitch
+const ROUND = 0.34; // corner radius, as a share of the dot
+// The mark is centred on its box, not optically: the field is on the mark's grid, so any nudge
+// would leave the grid off centre, its dots cut unevenly at opposite edges.
 
-function inRoundRect(x, y, x0, y0, w, r) {
-  const dx = Math.max(x0 + r - x, 0, x - (x0 + w - r));
-  const dy = Math.max(y0 + r - y, 0, y - (y0 + w - r));
-  if (x < x0 || x > x0 + w || y < y0 || y > y0 + w) return false;
-  return dx * dx + dy * dy <= r * r;
-}
-
-// Pitch and dot are whole pixels so every dot lands on the pixel grid.
-function render(size, pitchRatio) {
-  const pitch = Math.round(size * pitchRatio);
-  const dot = Math.round(pitch * DOT);
+// pitch is in pixels. A whole pitch snaps every dot to the pixel grid; a fractional one doesn't.
+function render(size, pitch) {
+  const snap = (v) => (Number.isInteger(pitch) ? Math.round(v) : v);
+  const dot = snap(pitch * DOT);
   const r = dot * ROUND;
-  const ox = Math.round((size - (COLS - 1) * pitch - dot) / 2 - NUDGE * pitch);
-  const oy = Math.round((size - (ROWS - 1) * pitch - dot) / 2);
-  const dots = [];
-  GLYPH.forEach((row, j) => {
-    [...row].forEach((ch, i) => {
-      if (ch === '#') dots.push([ox + i * pitch, oy + j * pitch]);
-    });
-  });
+  const ox = snap((size - (COLS - 1) * pitch - dot) / 2);
+  const oy = snap((size - (ROWS - 1) * pitch - dot) / 2);
+  const cells = new Map();
+  const cell = (i, j) => {
+    const key = `${i},${j}`;
+    if (!cells.has(key)) cells.set(key, fieldShade(i, j));
+    return cells.get(key);
+  };
   const SS = 4;
   const rgb = Buffer.alloc(size * size * 3);
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
-      let hits = 0;
+      let sum = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const x = px + (sx + 0.5) / SS;
-          const y = py + (sy + 0.5) / SS;
-          if (dots.some(([x0, y0]) => inRoundRect(x, y, x0, y0, dot, r))) hits++;
+          const x = px + (sx + 0.5) / SS - ox;
+          const y = py + (sy + 0.5) / SS - oy;
+          const i = Math.floor(x / pitch);
+          const j = Math.floor(y / pitch);
+          const lx = x - i * pitch;
+          const ly = y - j * pitch;
+          const grey = cell(i, j);
+          let hit = grey !== null && lx <= dot && ly <= dot;
+          if (hit) {
+            const dx = Math.max(r - lx, 0, lx - (dot - r));
+            const dy = Math.max(r - ly, 0, ly - (dot - r));
+            hit = dx * dx + dy * dy <= r * r;
+          }
+          sum += hit ? grey : BG;
         }
       }
-      const a = hits / (SS * SS);
       const o = (py * size + px) * 3;
-      for (let k = 0; k < 3; k++) rgb[o + k] = Math.round(BG[k] + (INK[k] - BG[k]) * a);
+      rgb.fill(Math.round(sum / (SS * SS)), o, o + 3);
     }
   }
   return encodePng(size, size, rgb);
@@ -116,37 +106,53 @@ function encodePng(width, height, rgb) {
   ]);
 }
 
-function svgDots(pitch, cx, cy) {
+// Every cell whose dot shows in the size x size square, grouped by grey.
+function svgDots(size, pitch) {
   const d = +(pitch * DOT).toFixed(2);
   const r = +(d * ROUND).toFixed(2);
-  const out = [];
-  GLYPH.forEach((row, j) => {
-    [...row].forEach((ch, i) => {
-      if (ch !== '#') return;
-      const x = +(cx + (i - (COLS - 1) / 2 - NUDGE) * pitch - d / 2).toFixed(2);
-      const y = +(cy + (j - (ROWS - 1) / 2) * pitch - d / 2).toFixed(2);
-      out.push(`<rect x="${x}" y="${y}" width="${d}" height="${d}" rx="${r}"/>`);
-    });
-  });
-  return out.join('');
+  const c = size / 2;
+  const at = (k, n) => c + (k - (n - 1) / 2) * pitch - d / 2;
+  const groups = new Map();
+  for (let j = Math.floor(-at(0, ROWS) / pitch) - 1; at(j, ROWS) < size; j++) {
+    for (let i = Math.floor(-at(0, COLS) / pitch) - 1; at(i, COLS) < size; i++) {
+      const grey = fieldShade(i, j);
+      if (grey === null || at(i, COLS) + d <= 0 || at(j, ROWS) + d <= 0) continue;
+      const x = +at(i, COLS).toFixed(2);
+      const y = +at(j, ROWS).toFixed(2);
+      if (!groups.has(grey)) groups.set(grey, []);
+      groups.get(grey).push(`<rect x="${x}" y="${y}" width="${d}" height="${d}" rx="${r}"/>`);
+    }
+  }
+  return [...groups]
+    .sort(([a], [b]) => a - b)
+    .map(([grey, rects]) => `  <g fill="${hex(grey)}">${rects.join('')}</g>`)
+    .join('\n');
 }
 
+const hex = (grey) => `#${grey.toString(16).padStart(2, '0').repeat(3)}`;
+
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#111"/>
-  <g fill="#fff">${svgDots(1.9, 16, 16)}</g>
+  <clipPath id="c"><rect width="32" height="32" rx="7"/></clipPath>
+  <g clip-path="url(#c)">
+  <rect width="32" height="32" fill="${hex(BG)}"/>
+${svgDots(32, 1.9)}
+  </g>
 </svg>
 `;
 
+// [file, size, pitch in pixels]: about 5% of the size, chosen so the field's outermost dots are
+// cut by the edge. At 192 no whole pitch does that (10 leaves a clean 2 px margin), so it uses
+// the exact 9.6 with soft dot edges.
 const jobs = [
-  ['apple-touch-icon.png', 180, 0.05],
-  ['icon-192.png', 192, 0.05],
-  ['icon-512.png', 512, 0.05],
+  ['apple-touch-icon.png', 180, 9],
+  ['icon-192.png', 192, 9.6],
+  ['icon-512.png', 512, 26],
   // Maskable: keep the glyph inside the central 80% safe circle.
-  ['icon-maskable-512.png', 512, 0.045],
+  ['icon-maskable-512.png', 512, 23],
 ];
 
-for (const [name, size, ratio] of jobs) {
-  await writeFile(path.join(OUT, name), render(size, ratio));
+for (const [name, size, pitch] of jobs) {
+  await writeFile(path.join(OUT, name), render(size, pitch));
   console.log(`wrote src/icons/${name}`);
 }
 await writeFile(path.join(OUT, 'icon.svg'), SVG);

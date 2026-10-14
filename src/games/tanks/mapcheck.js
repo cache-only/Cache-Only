@@ -1,9 +1,10 @@
 // Checks for a Tanks mission map, beyond "does it parse". Errors are what the tests reject;
-// warnings are nudges. tests/tanks.test.mjs runs them over every mission, and the field
-// guide's map editor runs them live (scripts/guide.mjs bundles this file with the game's
-// rules.js, ai.js and engine.js). No DOM.
-import { parseLevel } from '../src/games/tanks/engine.js';
-import { COLS, CRATE, FLOOR, HIT_R, MUZZLE, ROWS, SHELL_R, TYPES, cellAt, muzzleBlocked, tracePath } from '../src/games/tanks/rules.js';
+// warnings are nudges. tests/tanks.test.mjs runs them over every mission, the game's own map
+// editor runs them on the maps you draw (maps.js), and the field guide's map editor runs them
+// live (scripts/guide.mjs bundles this file with the game's rules.js, ai.js and engine.js).
+// No DOM.
+import { parseLevel } from './engine.js';
+import { COLS, CRATE, FLOOR, HIT_R, MUZZLE, ROWS, SHELL_R, TYPES, cellAt, muzzleBlocked, tracePath } from './rules.js';
 
 export const MAX_ENEMIES = 8;
 export const OPEN_WARN = 0.75; // more open floor than this earns a nudge
@@ -66,7 +67,9 @@ export function startShot(lv, e) {
 /**
  * Checks a map (ROWS strings of COLS characters). `others` are other missions, as
  * { name, rows }, whose block layout it must not repeat. Returns { errors, warnings,
- * stats }, where each problem is { text, at } and at is [col, row] or null.
+ * stats }, where each problem is { code, text, at }: code names the check (parse, count,
+ * unreachable, startShot, repeat, open, mirrored), text says it in English, and at is
+ * [col, row] or null. unreachable and startShot also carry the enemy's kind.
  */
 export function checkMap(rows, { others = [] } = {}) {
   const errors = [];
@@ -75,10 +78,10 @@ export function checkMap(rows, { others = [] } = {}) {
   try {
     lv = parseLevel(rows);
   } catch (err) {
-    return { errors: [{ text: err.message, at: null }], warnings, stats: null };
+    return { errors: [{ code: 'parse', text: err.message, at: null }], warnings, stats: null };
   }
   const cellOf = (t) => [Math.floor(t.x), Math.floor(t.y)];
-  if (lv.enemies.length > MAX_ENEMIES) errors.push({ text: `${lv.enemies.length} enemies: at most ${MAX_ENEMIES}`, at: null });
+  if (lv.enemies.length > MAX_ENEMIES) errors.push({ code: 'count', text: `${lv.enemies.length} enemies: at most ${MAX_ENEMIES}`, at: null });
 
   // Every enemy can be reached: driven up to, or seen down a clear straight line from
   // somewhere you can drive (shells fly over holes, and crates can be mined away).
@@ -94,22 +97,22 @@ export function checkMap(rows, { others = [] } = {}) {
         const pts = tracePath(clearOfCrates, c + 0.5, r + 0.5, Math.atan2(e.y - r - 0.5, e.x - c - 0.5), 0);
         return Math.hypot(pts[2] - c - 0.5, pts[3] - r - 0.5) >= Math.hypot(e.x - c - 0.5, e.y - r - 0.5) - 0.5;
       });
-    if (!visible) errors.push({ text: `${e.type} at ${ec},${er} can't be reached or shot`, at: [ec, er] });
+    if (!visible) errors.push({ code: 'unreachable', kind: e.type, text: `${e.type} at ${ec},${er} can't be reached or shot`, at: [ec, er] });
   }
 
   // Nobody gets a free shot at you before you have moved.
   for (const e of lv.enemies) {
-    if (startShot(lv, e)) errors.push({ text: `${e.type} at ${cellOf(e).join(',')} has a clear shot at your start`, at: cellOf(e) });
+    if (startShot(lv, e)) errors.push({ code: 'startShot', kind: e.type, text: `${e.type} at ${cellOf(e).join(',')} has a clear shot at your start`, at: cellOf(e) });
   }
 
   const blocks = blocksOf(rows);
   for (const o of others) {
-    if (blocksOf(o.rows) === blocks) errors.push({ text: `same blocks as ${o.name}`, at: null });
+    if (blocksOf(o.rows) === blocks) errors.push({ code: 'repeat', text: `same blocks as ${o.name}`, at: null });
   }
 
   const open = openShare(rows);
   const mirrored = isMirrored(rows);
-  if (open > OPEN_WARN) warnings.push({ text: `${Math.round(open * 100)}% of the floor is open: more than ${Math.round(OPEN_WARN * 100)}% plays thin`, at: null });
-  if (mirrored) warnings.push({ text: 'mirrored top to bottom: both flanks play the same', at: null });
+  if (open > OPEN_WARN) warnings.push({ code: 'open', text: `${Math.round(open * 100)}% of the floor is open: more than ${Math.round(OPEN_WARN * 100)}% plays thin`, at: null });
+  if (mirrored) warnings.push({ code: 'mirrored', text: 'mirrored top to bottom: both flanks play the same', at: null });
   return { errors, warnings, stats: { enemies: lv.enemies.length, open, mirrored, start: cellOf(lv.player) } };
 }

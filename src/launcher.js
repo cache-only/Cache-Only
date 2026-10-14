@@ -1,6 +1,7 @@
 import { formatPercent, getLang, localize, pick, setLang, t } from './shared/i18n.js';
 import { gameArt } from './shared/game-art.js';
-import { createLogo, setLogoHaze, setLogoProgress } from './shared/logo.js';
+import { createLogo, setLogoProgress } from './shared/logo.js';
+import { createPixelField } from './shared/pixel-field.js';
 import { createStore, exportAll, importAll, isSaveFile } from './shared/storage.js';
 import {
   applyUpdate,
@@ -16,23 +17,23 @@ import {
   watchForUpdates,
   watchOfflineStatus,
 } from './shared/sw-client.js';
+import { setSoundOn, soundOn } from './shared/sound.js';
 import { blurLayers, confirmDialog, openSheet, setupSheet } from './shared/ui.js';
 
 const $ = (id) => document.getElementById(id);
 const HOST_POLL_MS = 15000;
+const SOON = 10; // filler tiles after the games, for the ones still to come
 const appStore = createStore('app');
 
 let registry = [];
 let reg = null;
 let offline = { state: 'checking' };
-let persisted;
 let manifest = null; // the active worker's packs
 let host = 'unknown'; // 'online' | 'offline' | 'unknown': does the host answer right now?
 const onDevice = new Set(); // games whose every file is cached
 const progress = new Map(); // id -> { done, total, started } while downloading or queued
 const failed = new Set(); // ids whose last download failed
 let batch = null; // ids of the downloads running now, for the overall percentage
-let bulk = false; // "Download all" is running
 let heroId = null;
 let updateWaiting = false; // a new worker is installed and waits for a reload
 
@@ -153,28 +154,55 @@ function renderTile(game) {
   return li;
 }
 
+/** A filler: an empty tile saying "Coming soon", with nothing to press and nothing to read out. */
+function renderSoon() {
+  const tile = el('div', 'game-tile is-soon');
+  tile.append(el('span', 'game-tile-soon eyebrow', t('launcher.soon')));
+  const li = el('li');
+  li.setAttribute('aria-hidden', 'true');
+  li.append(tile);
+  return li;
+}
+
+/**
+ * The suggested game. While nothing is on this device yet, the same panel offers every game
+ * instead, with no art and no eyebrow, and a download icon for its button.
+ */
 function renderSuggest(game) {
-  $('suggest').hidden = !game;
-  if (game !== null && heroId !== game?.id) {
+  const all = !game && !!manifest && missingGames().length > 0;
+  $('suggest').hidden = !game && !all;
+  $('suggest').classList.toggle('is-all', all);
+  if (game && heroId !== game.id) {
     heroId = game.id;
     $('hero').replaceChildren(gameArt(game.id, 'hero'));
   } else if (!game) {
     heroId = null;
     $('hero').replaceChildren();
   }
+  const play = $('suggestBtn');
+  const getAll = $('getAllBtn');
+  play.hidden = !game;
+  getAll.hidden = !all;
+  // One primary per screen: while an update waits, the white Update button is the one.
+  const primary = $('reloadBtn').hidden;
+  if (all) {
+    $('suggestName').textContent = t('launcher.downloadAll');
+    getAll.disabled = host !== 'online' || missingGames().every((g) => progress.has(g.id));
+    getAll.classList.toggle('btn-primary', primary);
+  }
   if (!game) return;
   $('suggestName').textContent = pick(game.name);
-  const btn = $('suggestBtn');
-  btn.href = game.path;
-  btn.dataset.play = game.id;
-  btn.textContent = t(hasSession(game.id) ? 'launcher.resume' : 'launcher.play');
-  // One primary per screen: while an update waits, the white Update pill is the one.
-  btn.classList.toggle('btn-primary', $('reloadBtn').hidden);
+  play.href = game.path;
+  play.dataset.play = game.id;
+  play.textContent = t(hasSession(game.id) ? 'launcher.resume' : 'launcher.play');
+  play.classList.toggle('btn-primary', primary);
 }
 
 function missingGames() {
   return manifest ? registry.filter((g) => manifest.games[g.id] && !onDevice.has(g.id)) : [];
 }
+
+$('getAllBtn').addEventListener('click', () => download(missingGames().map((g) => g.id)));
 
 function renderGames() {
   if (document.body.dataset.view !== 'home') return renderStatus();
@@ -183,9 +211,8 @@ function renderGames() {
   const rows = registry.filter((g) => g !== top).map((game, i) => ({ game, i, state: stateOf(game) }));
   // Out of reach of the host, the games on this device come first and the rest wait below.
   if (host === 'offline') rows.sort((a, b) => (a.state === 'unavailable') - (b.state === 'unavailable') || a.i - b.i);
-  $('games').replaceChildren(...rows.map((r) => renderTile(r.game)));
+  $('games').replaceChildren(...rows.map((r) => renderTile(r.game)), ...Array.from({ length: SOON }, renderSoon));
   $('gamesSection').hidden = !registry.length;
-  renderDownloadAll();
   renderNote();
   renderStatus();
 }
@@ -199,14 +226,6 @@ function renderProgress(id) {
     tile.setAttribute('aria-label', tileLabel(game, 'downloading'));
   }
   renderStatus();
-}
-
-function renderDownloadAll() {
-  const missing = missingGames();
-  const btn = $('downloadAllBtn');
-  btn.hidden = !isStandalone() || !manifest || !missing.length;
-  // Dimmed, not removed, while the host is out of reach or something is downloading.
-  btn.disabled = host !== 'online' || bulk || progress.size > 0;
 }
 
 function renderNote() {
@@ -233,22 +252,24 @@ async function loadRegistry() {
 /* ---------- Downloads ---------- */
 
 /** Checks every game's cache; a game counts only when every one of its files is there. */
-async function refreshPacks() {
-  if (!manifest) return;
+async function refreshPacks(packs = manifest) {
+  if (!packs) return;
   const checks = await Promise.all(
-    Object.entries(manifest.games).map(async ([id, pack]) => [id, (await countCached(pack)) === pack.files.length]),
+    Object.entries(packs.games).map(async ([id, pack]) => [id, (await countCached(pack)) === pack.files.length]),
   );
   onDevice.clear();
   for (const [id, complete] of checks) if (complete) onDevice.add(id);
 }
 
 async function loadPacks() {
+  let packs = null;
   try {
-    manifest = await getManifest();
-  } catch {
-    manifest = null;
-  }
-  await refreshPacks();
+    packs = await getManifest();
+  } catch {}
+  // The packs count only once their caches are checked, so a render in between never shows the
+  // games on this device as downloads.
+  await refreshPacks(packs);
+  manifest = packs;
   renderGames();
 }
 
@@ -299,31 +320,38 @@ async function download(ids) {
   if (ids.some((id) => failed.has(id))) checkHost();
 }
 
-async function downloadAll() {
-  const ids = missingGames().map((g) => g.id);
-  if (!ids.length || bulk) return;
-  bulk = true;
-  renderDownloadAll();
-  try {
-    await download(ids);
-  } finally {
-    bulk = false;
-    renderGames();
-  }
-}
-
 $('games').addEventListener('click', (event) => {
   const tile = event.target.closest('[data-download]');
   if (tile && tile.getAttribute('aria-disabled') !== 'true') download([tile.dataset.download]);
 });
+
+// Landscape: the body scrolls the games sideways, so a mouse wheel moves them too.
+document.body.addEventListener('wheel', (event) => {
+  const body = document.body;
+  if (event.ctrlKey || event.target.closest('dialog') || getComputedStyle(body).overflowX !== 'auto') return;
+  if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+  body.scrollLeft += event.deltaY;
+  event.preventDefault();
+}, { passive: false });
+
+// The left edge blur in landscape stays out of the way at rest, so the suggested game's art is seen
+// right up to the edge, and slides in with whatever scrolls under it. (The top one in portrait is
+// always there.)
+const startEdges = document.querySelectorAll('.edge-left');
+function trackScroll() {
+  const scrolled = `${Math.round(Math.max(window.scrollY, document.body.scrollLeft, 0))}px`;
+  for (const edge of startEdges) edge.style.setProperty('--scrolled', scrolled);
+}
+window.addEventListener('scroll', trackScroll, { passive: true });
+document.body.addEventListener('scroll', trackScroll, { passive: true });
+window.addEventListener('resize', trackScroll);
+trackScroll();
 
 // Opening a game from the launcher counts towards the suggestion.
 document.addEventListener('click', (event) => {
   const link = event.target.closest('a[data-play]');
   if (link) countPlay(link.dataset.play);
 });
-
-$('downloadAllBtn').addEventListener('click', downloadAll);
 
 /* ---------- Host ---------- */
 
@@ -343,8 +371,8 @@ async function checkHost() {
 
 /* ---------- Status: the header line, the logo, first launch ---------- */
 
-const barLogo = createLogo();
-$('barLogo').append(barLogo);
+const homeLogo = createLogo({ size: 'lg' });
+$('homeMark').append(createLogo({ size: 'lg', glow: true }), homeLogo);
 
 const prepareLogo = createLogo({ size: 'lg' });
 $('prepareMark').querySelector('.intro-logo').append(createLogo({ size: 'lg', glow: true }), prepareLogo);
@@ -367,9 +395,10 @@ function statusText() {
 function renderStatus() {
   const s = offline;
   $('statusLine').textContent = isStandalone() ? statusText() : '';
-  // The logo comes into focus as the app and its games download.
-  const shellDone = s.state === 'ready' || s.state === 'checking' || !reg;
-  setLogoProgress(barLogo, shellDone ? batchProgress() : (s.done ?? 0) / (s.total || 1));
+  // The logo is the status (there are no words on screen): out of focus until every app-shell
+  // file is confirmed in its cache, then it comes into focus as games download.
+  const shellDone = s.state === 'ready' || (!reg && s.state !== 'checking');
+  setLogoProgress(homeLogo, shellDone ? batchProgress() : (s.done ?? 0) / (s.total || 1));
 
   if (document.body.dataset.view === 'prepare') {
     const total = s.total || 0;
@@ -385,11 +414,8 @@ function renderStatus() {
     $('prepareText').textContent = failedNow ? t('status.failedHint') : t('status.downloadingHint');
   }
 
-  $('factVersion').textContent = s.version || '—';
-  $('factOffline').textContent = s.state === 'ready' ? t('settings.offlineReady') : statusText();
+  $('factVersion').textContent = s.release || '—';
   $('factGames').textContent = manifest ? `${onDevice.size} / ${registry.length}` : '—';
-  $('factPersisted').textContent =
-    persisted == null ? t('settings.unsupported') : persisted ? t('common.yes') : t('common.no');
 }
 
 function renderGhosts() {
@@ -407,20 +433,37 @@ function viewOf() {
 function renderInstall() {
   const ios = isIOS();
   const steps = ios
-    ? [['i-share', 'install.step.share'], ['i-add', 'install.step.add'], [null, 'install.step.open']]
-    : [['i-dots', 'install.step.menu'], ['i-add', 'install.step.install'], [null, 'install.step.open']];
+    ? [['i-share', 'install.step.share'], ['i-new', 'install.step.add'], ['i-app', 'install.step.open']]
+    : [['i-dots', 'install.step.menu'], ['i-new', 'install.step.install'], ['i-app', 'install.step.open']];
   $('installSteps').replaceChildren(
     ...steps.map(([icon, key], i) => {
       const li = el('li', 'glass-row');
-      li.append(el('span', 'eyebrow', String(i + 1)), icon ? svgIcon(icon) : createLogo({ size: 'xs' }), el('span', '', t(key)));
+      const tile = el('span', 'glass-row-icon');
+      tile.append(svgIcon(icon));
+      const text = el('span', 'glass-row-text');
+      text.append(el('span', 'eyebrow', t('install.stepN', { n: i + 1 })), el('span', '', t(key)));
+      li.append(tile, text);
       return li;
     }),
   );
+  drawFieldSoon();
 }
 
+// The logo only holds the place of the field's lit mark, which lines up with it.
 const installLogo = createLogo({ size: 'lg' });
-setLogoHaze(installLogo);
 $('installMark').querySelector('.intro-logo').append(createLogo({ size: 'lg', glow: true }), installLogo);
+const installField = createPixelField($('installField'), installLogo, {
+  dim: () => [...document.querySelectorAll('#install :is(.t-display, .t-title, .t-note)')],
+});
+let fieldFrame = 0;
+function drawFieldSoon() {
+  cancelAnimationFrame(fieldFrame);
+  fieldFrame = requestAnimationFrame(() => {
+    if (!$('install').hidden) installField.draw();
+  });
+}
+new ResizeObserver(drawFieldSoon).observe($('install'));
+window.addEventListener('resize', drawFieldSoon);
 
 function renderView() {
   const view = viewOf();
@@ -436,11 +479,17 @@ function renderView() {
     $('hero').replaceChildren();
     heroId = null;
   }
-  if (view === 'install') renderInstall();
+  $('installField').hidden = view !== 'install';
+  if (view === 'install') {
+    renderInstall();
+    installField.start();
+  } else {
+    installField.stop();
+  }
   if (changed && view === 'home') renderGames();
 }
 
-/* ---------- Language ---------- */
+/* ---------- Language and sound ---------- */
 
 function renderLang() {
   for (const b of document.querySelectorAll('[data-lang]')) {
@@ -448,9 +497,14 @@ function renderLang() {
   }
 }
 
+function renderSound() {
+  $('soundToggle').checked = soundOn();
+}
+
 function renderAll() {
   localize();
   renderLang();
+  renderSound();
   renderView();
   renderStatus();
   renderGames();
@@ -463,12 +517,14 @@ for (const b of document.querySelectorAll('[data-lang]')) {
   });
 }
 
+$('soundToggle').addEventListener('change', (event) => setSoundOn(event.target.checked));
+
 /* ---------- Settings ---------- */
 
 const settings = setupSheet($('settings'));
 $('openSettings').addEventListener('click', () => {
   $('savesMsg').textContent = '';
-  $('updateMsg').textContent = '';
+  setCheck(updateWaiting ? 'available' : 'idle');
   renderStatus();
   openSheet(settings);
 });
@@ -543,11 +599,11 @@ $('importFile').addEventListener('change', async (event) => {
   }
 });
 
-/** The settings button grows to the left into an Update pill while a new version waits. */
+/** While a new version waits, the settings button turns into a white Update button in its place. */
 function renderUpdate() {
   const show = updateWaiting && document.body.dataset.view === 'home';
   $('reloadBtn').hidden = !show;
-  $('barActions').classList.toggle('has-update', show);
+  $('openSettings').hidden = show;
 }
 
 function showUpdate() {
@@ -556,19 +612,31 @@ function showUpdate() {
   renderGames();
 }
 
-$('checkUpdateBtn').addEventListener('click', async () => {
-  const msg = $('updateMsg');
+// Settings' check button answers in its own label, with no message under it: "No updates", or it
+// turns white and says Update, and then a tap reloads into the new version.
+const CHECK_LABELS = {
+  idle: 'settings.check',
+  checking: 'settings.checking',
+  current: 'settings.noUpdates',
+  unreachable: 'settings.unreachable',
+  failed: 'settings.updateFailed',
+  available: 'update.action',
+};
+
+function setCheck(state) {
   const btn = $('checkUpdateBtn');
-  btn.disabled = true;
-  msg.textContent = t('settings.checking');
+  btn.dataset.state = state;
+  btn.dataset.i18n = CHECK_LABELS[state]; // so a language switch keeps the answer
+  btn.textContent = t(CHECK_LABELS[state]);
+  btn.disabled = state === 'checking';
+  btn.classList.toggle('btn-primary', state === 'available');
+}
+
+$('checkUpdateBtn').addEventListener('click', async () => {
+  if ($('checkUpdateBtn').dataset.state === 'available') return applyUpdate(reg);
+  setCheck('checking');
   const result = await checkForUpdate(reg);
-  btn.disabled = false;
-  msg.textContent = {
-    available: t('settings.updateReady'),
-    current: t('settings.upToDate'),
-    unreachable: t('settings.unreachable'),
-    failed: t('settings.updateFailed'),
-  }[result];
+  setCheck(result);
   if (result === 'available') showUpdate();
   checkHost();
 });
@@ -623,7 +691,8 @@ async function startApp() {
   // Quiet update check: fails silently while offline, which is a normal state.
   if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
 
-  persisted = await ensurePersisted();
+  // Asks the browser to keep the caches and saves; nothing shows the answer.
+  await ensurePersisted();
   renderView();
   renderStatus();
   renderGames();

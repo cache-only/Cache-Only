@@ -105,13 +105,35 @@ export function blurLayers(kind, className = '') {
   return el;
 }
 
+/** Blur out: el fades away as it goes soft, and can't be touched until it blurs back in. */
+export function blurOut(el) {
+  el.classList.remove('blur-in');
+  el.classList.add('blur-out');
+}
+
+/** Blur in: el fades back in as it comes into focus. */
+export function blurIn(el) {
+  el.classList.remove('blur-out');
+  el.classList.add('blur-in');
+  el.addEventListener('animationend', function done(event) {
+    if (event.target !== el || event.animationName !== 'blur-in') return;
+    el.classList.remove('blur-in');
+    el.removeEventListener('animationend', done);
+  });
+}
+
+const HOLD_MS = 500;
+
 /**
- * A game's side menu (.side-menu), opened and closed by the home button in its header. The
- * button keeps its home icon either way. Tapping beside the list closes it too. onOpen runs as
- * it opens, onClose as it closes.
+ * A game's side menu (.side-menu), opened by the home button in its header. As the menu opens the
+ * button blurs out, and it blurs back in as the menu closes (Resume, or a tap beside the list).
+ * Holding the button for HOLD_MS goes straight back to the games, without waiting for the finger
+ * to lift. onOpen runs as it opens, onClose as it closes.
  */
 export function setupSideMenu(menu, button, { onOpen, onClose } = {}) {
   let hiding = 0;
+  let holding = 0;
+  let left = false;
   const isOpen = () => menu.classList.contains('open');
   function open() {
     if (isOpen()) return;
@@ -120,18 +142,39 @@ export function setupSideMenu(menu, button, { onOpen, onClose } = {}) {
     void menu.offsetWidth; // start the transition from the closed look
     menu.classList.add('open');
     button.setAttribute('aria-expanded', 'true');
+    blurOut(button);
     onOpen?.();
   }
   function close() {
     if (!isOpen()) return;
     menu.classList.remove('open');
     button.setAttribute('aria-expanded', 'false');
-    hiding = setTimeout(() => (menu.hidden = true), 240);
+    blurIn(button);
+    hiding = setTimeout(() => (menu.hidden = true), 300);
     onClose?.();
   }
   button.setAttribute('aria-controls', menu.id);
   button.setAttribute('aria-expanded', 'false');
-  button.addEventListener('click', () => (isOpen() ? close() : open()));
+  // A thumb that drifts a little while holding must not turn into a pan, which cancels the hold.
+  button.style.touchAction = 'none';
+  button.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    clearTimeout(holding);
+    holding = setTimeout(() => {
+      left = true;
+      location.href = '/';
+    }, HOLD_MS);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+    button.addEventListener(type, () => clearTimeout(holding));
+  }
+  button.addEventListener('contextmenu', (event) => event.preventDefault());
+  window.addEventListener('pageshow', () => (left = false)); // back from the games, page kept
+  button.addEventListener('click', () => {
+    if (left) return; // the click that ends a hold
+    if (isOpen()) close();
+    else open();
+  });
   menu.addEventListener('click', (event) => {
     if (!event.target.closest('.side-menu-list')) close();
   });

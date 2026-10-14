@@ -7,11 +7,13 @@ import {
   drawBomb,
   drawGround,
   drawMine,
+  drawShadows,
   drawShot,
   drawTank,
-  drawTankShadow,
   drawTarget,
+  makeKit,
   makePalette,
+  roundRect,
 } from './art.js';
 import { BLAST_R, COLS, MINE_FUSE, MUZZLE, ROWS, TYPES, cellAt, muzzleBlocked, owned, tracePath } from './rules.js';
 
@@ -19,11 +21,14 @@ const FRAME = 0.3; // border around the arena, in cells
 const MAX_DPR = 2;
 const MARK_LIFE = 9; // seconds a tread mark takes to fade
 const MAX_FX = 700;
+const ROLL = 18; // radians per second a minigun's barrels turn at full speed (a quarter under reduced motion)
 
 export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
   const ctx = canvas.getContext('2d');
   const floor = document.createElement('canvas');
   const fctx = floor.getContext('2d');
+  // Spare canvases the art paints tanks and their shadows on, for the soft light.
+  const kit = makeKit(() => document.createElement('canvas'));
   const view = { unit: 20, rot: false, w: 0, h: 0, dpr: 1 };
   let pal = null;
   let floorKey = '';
@@ -120,14 +125,8 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     c.fillStyle = pal.frame;
     c.fillRect(0, 0, floor.width, floor.height);
     worldTransform(c);
-    drawGround(c, pal, {
-      cols: COLS,
-      rows: ROWS,
-      kindAt: (col, row) => cellAt(s.grid, col, row),
-      // Screen-relative light: up on screen is lit, down on screen is in shade.
-      up: vecToWorld(0, -1),
-      px: 1 / (view.unit * view.dpr),
-    });
+    // The light is the screen's (art.js LIGHT), so it stays at the top left however the arena turns.
+    drawGround(c, pal, { cols: COLS, rows: ROWS, kindAt: (col, row) => cellAt(s.grid, col, row) });
     for (const m of scorches) drawScorch(c, m);
     floorKey = keyFor(s);
   }
@@ -178,6 +177,16 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     for (const e of list) {
       switch (e.type) {
         case 'shot':
+          if (e.weapon === 'minigun') {
+            // A small flash for each round, and a spent casing flicked out to the side.
+            flash(e.x, e.y, 0.06, 0.18, 0.05, pal.flash);
+            if (!calm) {
+              const a = e.angle + (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.6);
+              const v = 1.6 + Math.random();
+              add({ kind: 'chip', x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.35, max: 0.35, size: 0.05, color: pal.flash, drag: 5, spin: Math.random() * 6 });
+            }
+            break;
+          }
           flash(e.x, e.y, 0.12, 0.3, 0.09, pal.flash);
           smoke(e.x, e.y, calm ? 1 : 2, 0.1, 0.12, 0.5);
           break;
@@ -212,7 +221,7 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
         }
         case 'crate':
           burst(e.c + 0.5, e.r + 0.5, calm ? 4 : 10, { speed: 2.6, life: 0.6, size: 0.14, color: pal.crate, kind: 'chip' });
-          burst(e.c + 0.5, e.r + 0.5, calm ? 2 : 5, { speed: 2.2, life: 0.6, size: 0.12, color: pal.stripe, kind: 'chip' });
+          burst(e.c + 0.5, e.r + 0.5, calm ? 2 : 5, { speed: 2.2, life: 0.6, size: 0.12, color: pal.crateDark, kind: 'chip' });
           break;
         case 'destroyed': {
           const tone = pal.tanks[e.tank] || pal.tanks.player;
@@ -255,25 +264,31 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     fx = fx.filter((p) => p.life > 0);
 
     if (!s) return;
-    // Every shot leaves smoke: rockets and missiles a thick trail, shells a faint one.
+    // Every shot leaves smoke: rockets and missiles a thick trail, shells a faint one, minigun
+    // rounds a fainter, shorter one. A minigun keeps ten in the air, so their smoke is the first
+    // thing dropped on a busy screen, leaving room for explosions.
     smokeTimer -= dt;
     if (smokeTimer <= 0) {
       smokeTimer = reduceMotion() ? 0.08 : 0.03;
       for (const b of s.bullets) {
         const sp = Math.hypot(b.vx, b.vy) || 1;
-        if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
+        if (b.weapon === 'minigun') {
+          if (fx.length < MAX_FX - 200) smoke(b.x - (b.vx / sp) * 0.12, b.y - (b.vy / sp) * 0.12, 1, 0.02, 0.04, 0.22);
+        } else if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
         else if (b.weapon === 'missile') smoke(b.x - (b.vx / sp) * 0.25, b.y - (b.vy / sp) * 0.25, 1, 0.03, 0.08, 0.8);
         else smoke(b.x - (b.vx / sp) * 0.16, b.y - (b.vy / sp) * 0.16, 1, 0.02, 0.05, 0.3);
       }
     }
-    // Tread marks every few centimetres of travel.
+    // Tread marks every few centimetres of travel, and a minigun's barrels turning.
+    const roll = ROLL * (reduceMotion() ? 0.25 : 1);
     for (const t of s.tanks) {
       if (!t.alive) continue;
       const o = odometer.get(t.id);
       if (!o) {
-        odometer.set(t.id, { x: t.x, y: t.y, d: 0, total: 0 });
+        odometer.set(t.id, { x: t.x, y: t.y, d: 0, total: 0, roll: 0 });
         continue;
       }
+      if (t.spin) o.roll = (o.roll + t.spin * roll * dt) % (Math.PI * 2);
       const moved = Math.hypot(t.x - o.x, t.y - o.y);
       o.d += moved;
       o.total += moved;
@@ -388,6 +403,23 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     ctx.globalAlpha = 1;
   }
 
+  /**
+   * The map editor's rings round whole cells: 'error' (what stops a map being played),
+   * 'note' (worth knowing) and 'cursor' (the cell under the mouse).
+   */
+  function drawCells(list) {
+    const STYLE = { error: [pal.alarm, 1], note: [pal.aim, 0.85], cursor: [pal.aim, 0.45] };
+    ctx.lineWidth = 0.08;
+    for (const m of list) {
+      const [color, alpha] = STYLE[m.kind] || STYLE.note;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      roundRect(ctx, m.c + 0.06, m.r + 0.06, 0.88, 0.88, 0.18);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Smoke underneath, then flashes and rings, then debris on top.
   const LAYER = { smoke: 0, flash: 1, ring: 2 };
   const layerOf = (p) => LAYER[p.kind] ?? 3;
@@ -438,9 +470,10 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
 
   /**
    * Draws a frame. opts: aim (angle or null) shows the aiming guide, reticle ({ x, y }
-   * or null) marks where the player points, beacon (0-1) rings the player's tank.
+   * or null) marks where the player points, beacon (0-1) rings the player's tank, and cells
+   * ([{ c, r, kind }]) rings cells for the map editor.
    */
-  function draw(s, { aim = null, reticle = null, beacon = 0 } = {}) {
+  function draw(s, { aim = null, reticle = null, beacon = 0, cells = null } = {}) {
     if (!s || !view.w) return;
     if (!pal) readPalette();
     if (floorKey !== keyFor(s)) buildFloor(s);
@@ -458,20 +491,12 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     drawMarks();
     // Where bombs will land, on the floor under everything else.
     for (const b of s.bombs) drawTarget(ctx, pal, b, { calm });
-    const mineShadow = vecToWorld(0.04, 0.06);
-    for (const m of s.mines) {
-      const owner = s.tanks.find((t) => t.id === m.owner);
-      drawMine(ctx, pal, m, owner ? owner.type : 'player', mineLight(m), mineShadow);
-    }
+    const kindOf = (id) => s.tanks.find((t) => t.id === id)?.type || 'player';
+    for (const m of s.mines) drawMine(ctx, pal, m, kindOf(m.owner), mineLight(m));
 
     const hidden = (t) => (TYPES[t.type].invisible ? Math.max(0, 1 - s.time / 1.2) : 1);
-    // Shadows first, so no tank's shadow falls on another tank.
-    const sh = vecToWorld(0.07, 0.1);
-    for (const t of s.tanks) {
-      if (!t.alive) continue;
-      const a = hidden(t);
-      if (a > 0) drawTankShadow(ctx, pal, t, sh, a);
-    }
+    // Shadows first, all at once, so no tank's shadow falls on another tank.
+    drawShadows(ctx, pal, s.tanks.filter((t) => t.alive && hidden(t) > 0).map((t) => ({ t, alpha: hidden(t) })), { kit });
     for (const t of s.tanks) {
       if (!t.alive) continue;
       const a = hidden(t);
@@ -482,7 +507,9 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
         phase: o ? o.total : 0,
         mines: T.mines - owned(s.mines, t),
         lit: T.weapon === 'missile' && owned(s.bullets, t) > 0,
+        roll: o ? o.roll : 0,
         alpha: a,
+        kit,
       });
     }
 
@@ -501,11 +528,16 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     drawAim(s, aim);
     // A missile's light blinks; under reduced motion it stays on.
     const blink = calm || Math.floor(clock * 8) % 2 === 0;
-    for (const b of s.bullets) drawShot(ctx, pal, b, { flame: calm ? 0.5 : Math.random(), blink });
+    for (const b of s.bullets) {
+      // Only a missile wears its owner's colour.
+      const tone = b.weapon === 'missile' ? pal.tanks[kindOf(b.owner)] : null;
+      drawShot(ctx, pal, b, { flame: calm ? 0.5 : Math.random(), blink, tone });
+    }
     const up = vecToWorld(0, -1);
-    for (const b of s.bombs) drawBomb(ctx, pal, b, up);
+    for (const b of s.bombs) drawBomb(ctx, pal, b, { up });
     drawFx();
     if (reticle) drawReticle(reticle);
+    if (cells) drawCells(cells);
     ctx.restore();
   }
 

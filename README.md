@@ -12,9 +12,10 @@ No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used fo
 ## Commands
 
 ```bash
-npm run build     # src/ -> dist/, splits it into packs, writes dist/sw.js (VERSION + PACKS) and dist/version.json
+npm run build     # src/ -> dist/, splits it into packs, writes dist/sw.js (VERSION + RELEASE + PACKS) and dist/version.json
 npm run serve     # serve dist/ on http://127.0.0.1:8080 (local testing)
 npm run lan       # build + serve over HTTPS to phones on the same Wi-Fi (setup page: http://<mac>.local:8081/)
+npm run lan --stop  # stop that server, from any terminal
 npm test          # Sudoku uniqueness, 2048 merge rules, Tanks engine + AI, build + server checks, service-worker downloads
 npm run playtest  # Tanks: a scripted bot plays the missions (winnable? how hard?); --map draft.txt for a draft
 npm run icons     # re-render src/icons/*.png (only needed if the icon design changes)
@@ -29,20 +30,21 @@ every push to `main` (repo Settings → Pages → Source: GitHub Actions).
    tap Share, then **Add to Home Screen**.
 2. The friend opens the app **from the home-screen icon** while still online. Home-screen
    apps have their own storage, separate from Safari.
-3. Wait for "Ready offline" under the logo (in Catalan: "Llest sense connexió"), then tap
-   **Download all** ("Baixa-ho tot"), or tap the tiles of just the games they want. A game is
-   ready when its tile is sharp.
+3. Wait for the big logo to come into focus (sharp white: the app is ready offline), then
+   tap the tile of each game they want. A game is ready when its tile is sharp.
 4. Turn on airplane mode, force-quit the app, reopen it and play a game. If that works,
    they're done for good. Games they skipped keep a dimmed download icon until they're back
    online.
 
 ## Releasing an update
 
-1. Change files under `src/`, then `npm test`.
+1. Change files under `src/`, then `npm test`. When you want a new version number in Settings,
+   bump `version` in `package.json` (`x.y.z`, now 0.1.0). It's only a label: phones get every push
+   either way.
 2. Commit and push to `main`. The Actions run tests, builds and deploys; a failing test stops it.
    The version hash changes automatically with any file change.
 3. Within about 10 minutes (GitHub's CDN cache), friends who open the installed app online get it. It downloads the new version of the games
-   they already have (only the ones that changed) and the settings button grows into an "Update" pill.
+   they already have (only the ones that changed) and the settings button turns into a white "Update" button.
    Tapping Update switches to the new version; downloaded games and saves are kept. Nothing ever
    reloads mid-game. New games appear with a Download button; nothing downloads until they ask.
 4. Friends who never come online keep the old version, which keeps working.
@@ -74,17 +76,17 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
 - Network tab: no request goes to any origin other than `cache-only.github.io`.
 - `curl -I https://cache-only.github.io/games/sudoku/` returns 200. (The slashless form is a 301 on
   Pages; nothing in the app requests it.)
-- Real iPhone: install, Download all, airplane mode, force-quit, relaunch, make a move in each game.
+- Real iPhone: install, download every game, airplane mode, force-quit, relaunch, make a move in each game.
   Kill the app mid-game and confirm it resumes. In airplane mode, games you didn't download keep a
   dimmed download icon. The status bar is solid black, not blurred.
-- Update path: change a file, push, wait for the deploy plus ~10 minutes, open the installed app online, confirm the "Update" pill appears,
+- Update path: change a file, push, wait for the deploy plus ~10 minutes, open the installed app online, confirm the white "Update" button appears,
   reload, check the new version in Settings and that every downloaded game still plays offline.
 
 ## How it fits together
 
 - `scripts/build.mjs` copies `src/` to `dist/` and splits it into packs: the app shell (everything
-  outside `games/`) and one pack per game folder, each with its own content hash. It inlines the packs
-  and an overall `VERSION` into `dist/sw.js`.
+  outside `games/`) and one pack per game folder, each with its own content hash. It inlines the packs,
+  an overall `VERSION` and `RELEASE` (package.json's version, shown in Settings) into `dist/sw.js`.
 - `src/sw.template.js` caches the app shell at install, downloads a game's pack when the launcher asks,
   and serves each URL from its pack's cache. Every file is fetched as `?v=<hash>` and checked against
   that hash, so a stale copy from GitHub's CDN right after a push never gets cached. Runtime responses are never cached. An update re-downloads
@@ -97,7 +99,7 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
   it), so installing always starts from the latest release. In the installed app it shows the most
   played game as "Suggested" (plays are counted in `gh:app:plays`), then a tile per game: sharp to
   play, blurred with a download icon to download, unblurring while it downloads, dimmed while
-  offline; plus "Download all" until everything is downloaded. The pixel logo in the header
+  offline. The pixel logo in the header
   comes into focus as the app and its games download.
 - Every page sets the status-bar style to `default` and `theme-color` to the header's black, with no
   strip of its own at the top. iOS reads the style only when the app is added to the Home Screen.
