@@ -1825,6 +1825,11 @@ dialog.sheet[open] {
   text-align: center;
 }
 
+.intro-side > .install-version {
+  padding-top: 8px;
+  text-align: center;
+}
+
 .intro-side {
   display: flex;
   flex-direction: column;

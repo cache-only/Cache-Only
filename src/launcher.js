@@ -446,6 +446,24 @@ function renderInstall() {
       return li;
     }),
   );
+  renderInstallVersion();
+  drawFieldSoon();
+}
+
+// The release this tab serves (a tab keeps no offline copy, so it is always the host's current one).
+let installRelease = null;
+let releaseAsked = false;
+async function renderInstallVersion() {
+  if (!releaseAsked) {
+    releaseAsked = true;
+    try {
+      const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) installRelease = (await res.json()).release ?? null;
+    } catch {}
+  }
+  const line = $('installVersion');
+  line.textContent = installRelease ? `${t('settings.version')} ${installRelease}` : '';
+  line.hidden = !installRelease;
   drawFieldSoon();
 }
 
@@ -453,7 +471,7 @@ function renderInstall() {
 const installLogo = createLogo({ size: 'lg' });
 $('installMark').querySelector('.intro-logo').append(createLogo({ size: 'lg', glow: true }), installLogo);
 const installField = createPixelField($('installField'), installLogo, {
-  dim: () => [...document.querySelectorAll('#install :is(.t-display, .t-title, .t-note)')],
+  dim: () => [...document.querySelectorAll('#install :is(.t-display, .t-title, .install-version)')],
 });
 let fieldFrame = 0;
 function drawFieldSoon() {

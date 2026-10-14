@@ -60,7 +60,6 @@ const STRINGS = {
     'install.step.menu': 'Open the browser menu',
     'install.step.install': 'Install the app or add it to the Home Screen',
     'install.step.open': 'Open it from the new icon',
-    'install.note': 'Games are downloaded inside the installed app, where you choose the ones you want.',
 
     'update.text': 'Update available. Tap to reload and update.',
     'update.action': 'Update',
@@ -328,7 +327,6 @@ const STRINGS = {
     'install.step.menu': 'Obre el menú del navegador',
     'install.step.install': "Instal·la l'app o afegeix-la a la pantalla d'inici",
     'install.step.open': "Obre-la des de la icona nova",
-    'install.note': "Els jocs es baixen dins l'app instal·lada, on tries els que vulguis.",
 
     'update.text': 'Hi ha una actualització. Toca per recarregar i actualitzar.',
     'update.action': 'Actualitza',

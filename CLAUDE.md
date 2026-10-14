@@ -186,6 +186,8 @@ service worker with scope `/` covers everything.
   from the new icon; browser-menu steps off iOS). Each step is a `.glass-row`: its icon in a 44 glass tile (the last step's is `app`, a tile with
   a C cut out of it), a
   "Step n" eyebrow over the line, on a panel that blurs like a sheet (`--sheet`, `--blur-sheet`).
+  Under the steps (no note), a centred eyebrow gives the release ("Version 0.1.1", `release` from
+  `/version.json`; hidden if that request fails).
   Landscape puts the lockup on the left and the steps in the wider right column. No game list and
   nothing to download.
   A tab also keeps no offline copy: `registerSW()` does nothing outside the installed app, and
