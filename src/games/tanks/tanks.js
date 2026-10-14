@@ -1457,15 +1457,22 @@ window.addEventListener('blur', () => {
   if (phase === 'play') menu.open();
 });
 
-// Sizing: the arena as big as the play area allows, under the header, turned upright on a
-// tall screen. The touch controls float over it, so they take no room.
+// Sizing: the arena's canvas covers the screen, and the field goes as big as the play area
+// allows, turned upright on a tall screen. The touch controls float over it, so they take no room.
 function fit() {
   if (!wrap.clientWidth || !wrap.clientHeight) return;
-  renderer.layout(wrap.clientWidth, wrap.clientHeight);
+  const screen = document.body.getBoundingClientRect();
+  const box = wrap.getBoundingClientRect();
+  const arena = renderer.layout(screen.width, screen.height, { x: box.left - screen.left, y: box.top - screen.top, w: box.width, h: box.height });
+  // Where the two cells of wall round the field start and end, for the blurred edges past them.
+  const edges = { top: arena.top, bottom: screen.height - arena.bottom, left: arena.left, right: screen.width - arena.right };
+  for (const [side, px] of Object.entries(edges)) document.body.style.setProperty(`--wall-${side}`, `${Math.max(0, px)}px`);
   draw();
 }
 
-new ResizeObserver(fit).observe(wrap);
+const sizer = new ResizeObserver(fit);
+sizer.observe(wrap);
+sizer.observe(document.body);
 
 /* ---------- Boot ---------- */
 

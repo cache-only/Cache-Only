@@ -1,7 +1,8 @@
 // Tanks renderer: draws the world on a canvas and owns the purely visual extras
 // (tread marks, scorch marks, explosions). It reads the world and never changes it.
 // On a tall screen the whole arena is turned 90 degrees, so the player's side (the
-// left of every map) sits at the bottom, next to the thumbs. The art itself (ground,
+// left of every map) sits at the bottom, next to the thumbs. The canvas covers the
+// screen, and everything on it round the field is wall. The art itself (ground,
 // tanks, shots, bombs) is in art.js, which the field guide draws with too.
 import {
   drawBomb,
@@ -17,7 +18,8 @@ import {
 } from './art.js';
 import { BLAST_R, COLS, MINE_FUSE, MUZZLE, ROWS, TYPES, cellAt, muzzleBlocked, owned, tracePath } from './rules.js';
 
-const FRAME = 0.3; // border around the arena, in cells
+const RING = 2; // cells of wall kept round the field, on the sides that have the room
+const SKIRT = 0.5; // cells of wall kept between the field and a screen edge it runs to
 const MAX_DPR = 2;
 const MARK_LIFE = 9; // seconds a tread mark takes to fade
 const MAX_FX = 700;
@@ -29,9 +31,11 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
   const fctx = floor.getContext('2d');
   // Spare canvases the art paints tanks and their shadows on, for the soft light.
   const kit = makeKit(() => document.createElement('canvas'));
-  const view = { unit: 20, rot: false, w: 0, h: 0, dpr: 1 };
+  // unit: CSS px a cell; w x h: the canvas (the screen); x, y: the field's top left on it.
+  const view = { unit: 20, rot: false, w: 0, h: 0, dpr: 1, x: 0, y: 0 };
   let pal = null;
   let floorKey = '';
+  let rimKey = ''; // the layout the floor canvas holds everything past the field for
   let marks = [];
   let scorches = [];
   let fx = [];
@@ -42,39 +46,55 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
 
   /* ---------- Layout and coordinates ---------- */
 
-  /** Fits the arena in availW x availH CSS pixels; returns its size and orientation. */
-  function layout(availW, availH) {
-    const wide = COLS + FRAME * 2;
-    const tall = ROWS + FRAME * 2;
-    const flat = Math.min(availW / wide, availH / tall);
-    const upright = Math.min(availW / tall, availH / wide);
+  /**
+   * Sizes the canvas to the screen (screenW x screenH CSS px) and fits the field in box ({ x, y,
+   * w, h }, the room the page leaves it, on the screen). Upright, the field spans the width but
+   * for a skirt of wall each side, two cells of wall over it from the box's top; flat, it spans
+   * the height but for a skirt of wall top and bottom, centred, with two cells of wall at least
+   * left and right. Returns the orientation, and where those two cells of wall start and end on
+   * the screen: top and bottom (y), left and right (x).
+   */
+  function layout(screenW, screenH, box) {
+    // Upright: the field and its skirts across, its walls and the field down. Flat: the field and
+    // its walls across, the field and its skirts down.
+    const flat = Math.min(box.w / (COLS + RING * 2), box.h / (ROWS + SKIRT * 2));
+    const upright = Math.min(box.w / (ROWS + SKIRT * 2), box.h / (COLS + RING * 2));
     view.rot = upright > flat * 1.04;
-    view.unit = Math.max(4, Math.floor((view.rot ? upright : flat) * 4) / 4);
-    view.w = Math.floor(view.unit * (view.rot ? tall : wide));
-    view.h = Math.floor(view.unit * (view.rot ? wide : tall));
+    const u = Math.max(4, Math.floor((view.rot ? upright : flat) * 4) / 4);
+    view.unit = u;
+    view.w = Math.round(screenW);
+    view.h = Math.round(screenH);
     view.dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
+    const snap = (v) => Math.round(v * view.dpr) / view.dpr;
+    view.x = snap(box.x + (box.w - u * (view.rot ? ROWS : COLS)) / 2);
+    view.y = snap(view.rot ? box.y + RING * u : box.y + (box.h - u * ROWS) / 2);
     for (const c of [canvas, floor]) {
       c.width = Math.round(view.w * view.dpr);
       c.height = Math.round(view.h * view.dpr);
     }
     canvas.style.width = `${view.w}px`;
     canvas.style.height = `${view.h}px`;
-    floorKey = '';
-    return { width: view.w, height: view.h, rotated: view.rot };
+    floorKey = rimKey = '';
+    const fw = u * (view.rot ? ROWS : COLS);
+    const fh = u * (view.rot ? COLS : ROWS);
+    const wall = RING * u;
+    return { rotated: view.rot, top: view.y - wall, bottom: view.y + fh + wall, left: view.x - wall, right: view.x + fw + wall };
   }
 
   /** World -> canvas pixel transform for a 2D context. */
   function worldTransform(c, ox = 0, oy = 0) {
     const s = view.unit * view.dpr;
-    if (view.rot) c.setTransform(0, -s, s, 0, (FRAME + ox) * s, (COLS + FRAME + oy) * s);
-    else c.setTransform(s, 0, 0, s, (FRAME + ox) * s, (FRAME + oy) * s);
+    const x = view.x * view.dpr + ox * s;
+    const y = view.y * view.dpr + oy * s;
+    if (view.rot) c.setTransform(0, -s, s, 0, x, y + COLS * s);
+    else c.setTransform(s, 0, 0, s, x, y);
   }
 
   /** A point in canvas CSS pixels -> world coordinates. */
   function toWorld(px, py) {
-    const u = px / view.unit;
-    const v = py / view.unit;
-    return view.rot ? { x: COLS + FRAME - v, y: u - FRAME } : { x: u - FRAME, y: v - FRAME };
+    const u = (px - view.x) / view.unit;
+    const v = (py - view.y) / view.unit;
+    return view.rot ? { x: COLS - v, y: u } : { x: u, y: v };
   }
 
   /** A direction on screen -> the same direction in the world. */
@@ -92,7 +112,7 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
   function readPalette() {
     const cs = getComputedStyle(canvas);
     pal = makePalette((name) => cs.getPropertyValue(name).trim());
-    floorKey = '';
+    floorKey = rimKey = '';
   }
 
   /** The palette the art is drawn with, for badges outside the arena. */
@@ -121,17 +141,41 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
 
   function buildFloor(s) {
     const c = fctx;
+    // Past the field it is all wall (rules.js cellAt), and nothing past the wall's first cell
+    // hangs on the map. So once the floor canvas holds all of it for this layout, a new map, a
+    // crate blown away or a stroke in the editor only draws the field and that cell again (with
+    // the cell past it, whose edges and shadows reach in).
+    const whole = rimKey !== rimFor();
+    let area = [-RING, -RING, COLS + RING * 2, ROWS + RING * 2];
+    c.save();
+    if (whole) {
+      // Every cell on the screen.
+      const a = toWorld(0, 0);
+      const b = toWorld(view.w, view.h);
+      const x0 = Math.floor(Math.min(a.x, b.x));
+      const y0 = Math.floor(Math.min(a.y, b.y));
+      area = [x0, y0, Math.ceil(Math.max(a.x, b.x)) - x0, Math.ceil(Math.max(a.y, b.y)) - y0];
+    } else {
+      worldTransform(c);
+      c.beginPath();
+      c.rect(-1, -1, COLS + 2, ROWS + 2);
+      c.clip();
+    }
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = pal.frame;
     c.fillRect(0, 0, floor.width, floor.height);
     worldTransform(c);
     // The light is the screen's (art.js LIGHT), so it stays at the top left however the arena turns.
-    drawGround(c, pal, { cols: COLS, rows: ROWS, kindAt: (col, row) => cellAt(s.grid, col, row) });
+    drawGround(c, pal, { cols: COLS, rows: ROWS, kindAt: (col, row) => cellAt(s.grid, col, row), area });
+    c.restore();
+    worldTransform(c);
     for (const m of scorches) drawScorch(c, m);
+    rimKey = rimFor();
     floorKey = keyFor(s);
   }
 
-  const keyFor = (s) => `${s.gridVer}:${view.w}x${view.h}:${view.rot}:${view.dpr}:${pal && pal.floor}`;
+  const rimFor = () => `${view.w}x${view.h}:${view.x},${view.y}@${view.unit}:${view.rot}:${view.dpr}:${pal && pal.floor}`;
+  const keyFor = (s) => `${s.gridVer}:${rimFor()}`;
 
   /* ---------- Effects ---------- */
 
@@ -484,9 +528,6 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     const jitter = shake > 0 ? shake * 0.12 : 0;
     worldTransform(ctx, jitter ? (Math.random() - 0.5) * jitter : 0, jitter ? (Math.random() - 0.5) * jitter : 0);
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(-FRAME, -FRAME, COLS + FRAME * 2, ROWS + FRAME * 2);
-    ctx.clip();
 
     drawMarks();
     // Where bombs will land, on the floor under everything else.

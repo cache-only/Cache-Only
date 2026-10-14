@@ -9,28 +9,28 @@ const SAMPLE_SUDOKU = '530070000600195000098000060800060003400803001700020006060
 const SAMPLE_SUDOKU_GRID = '534070000670195000098000060800760003400853001700020106060000280000419005000080079';
 const SAMPLE_2048 = [2, 0, 0, 2, 4, 8, 0, 0, 16, 32, 4, 2, 128, 64, 8, 4];
 const SAMPLE_ARENA = [
-  '####################',
-  '#..................#',
-  '#..##....##........#',
-  '#..#.....##.....#..#',
-  '#...............#..#',
-  '#..................#',
-  '#..........##......#',
-  '#..........##......#',
-  '#..................#',
-  '#......##..........#',
-  '#..##..##..........#',
-  '#...#..............#',
-  '#..........##......#',
-  '#..................#',
-  '####################',
+  '###############',
+  '#.............#',
+  '#..##.....#...#',
+  '#..#......#...#',
+  '#.............#',
+  '#.............#',
+  '#......##.....#',
+  '#......##.....#',
+  '#...........#.#',
+  '#...........#.#',
+  '#..##.........#',
+  '#...#.........#',
+  '#.......##....#',
+  '#.............#',
+  '###############',
 ];
 // The tanks on it, in cells: centre, the way the hull faces (degrees, 0 = right) and the tank
 // the turret aims at. They are drawn larger than in the game, so the shape reads on a tile.
 const SAMPLE_TANKS = [
-  { x: 4, y: 6, body: -8, aim: 1, you: true },
-  { x: 14.5, y: 4, body: 195, aim: 0 },
-  { x: 15, y: 11, body: -105, aim: 0 },
+  { x: 3.5, y: 7, body: -8, aim: 1, you: true },
+  { x: 12.5, y: 4.5, body: 195, aim: 0 },
+  { x: 11.5, y: 11.5, body: -105, aim: 0 },
 ];
 const TANK_SCALE = 2.6;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -98,7 +98,7 @@ function tanksArt() {
   const art = span('art art-tanks');
   const arena = span('art-arena');
   for (const row of SAMPLE_ARENA) for (const ch of row) arena.append(span(ch === '#' ? 'is-wall' : ''));
-  const tanks = svg('svg', { class: 'art-tanks-layer', viewBox: '0 0 20 15' });
+  const tanks = svg('svg', { class: 'art-tanks-layer', viewBox: '0 0 15 15' });
   for (const t of SAMPLE_TANKS) tanks.append(tankShape(t, SAMPLE_TANKS[t.aim]));
   arena.append(tanks);
   art.append(arena);
