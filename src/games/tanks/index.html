@@ -18,16 +18,6 @@
   <script type="module" src="/games/tanks/tanks.js"></script>
 </head>
 <body class="game-page page-tanks">
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5"/></symbol>
-    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
-    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4M6 4.5h11l-2.5 4 2.5 4H6"/></symbol>
-    <symbol id="i-games" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
-    <symbol id="i-shell" viewBox="0 0 24 24"><path d="M7.7 13.3V20a2 2 0 0 0 2 2h4.6a2 2 0 0 0 2-2v-6.7Q16.3 7.3 12 2 7.7 7.3 7.7 13.3z"/></symbol>
-    <symbol id="i-mine" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5.3 5.3l2.4 2.4M16.3 16.3l2.4 2.4M18.7 5.3l-2.4 2.4M7.7 16.3l-2.4 2.4"/></symbol>
-  </svg>
-
   <div class="shell">
     <header class="bar">
       <button type="button" class="icon-btn" id="homeBtn" data-i18n-label="common.menu">
@@ -41,6 +31,10 @@
         <div class="stat">
           <span class="stat-label" data-i18n="tanks.lives"></span>
           <span class="stat-value" id="livesStat">-</span>
+        </div>
+        <div class="stat-meters" id="ammo" role="img">
+          <span class="meter" id="shellMeter"></span>
+          <span class="meter" id="mineMeter"></span>
         </div>
       </div>
     </header>
@@ -60,10 +54,9 @@
 
       <div class="pads" id="pads" role="application" data-i18n-label="tanks.pads">
         <div class="stick stick-move" id="moveStick" aria-hidden="true"><span class="knob"></span></div>
-        <div class="stick stick-aim" id="aimStick" aria-hidden="true"><span class="knob"><svg class="icon"><use href="#i-shell"/></svg></span></div>
+        <div class="stick stick-aim" id="aimStick" aria-hidden="true"><span class="knob"><svg class="icon slot"><use class="full" href="#i-shell"/><use class="empty" href="#i-shell-empty"/></svg></span></div>
         <button type="button" class="mine-btn" id="mineBtn" data-i18n-label="tanks.mine">
-          <svg class="icon"><use href="#i-mine"/></svg>
-          <span class="pips" id="minePips" aria-hidden="true"><i></i><i></i></span>
+          <svg class="icon slot"><use class="full" href="#i-mine"/><use class="empty" href="#i-mine-empty"/></svg>
         </button>
       </div>
     </main>
@@ -72,16 +65,11 @@
   <div class="side-menu" id="sideMenu" hidden>
     <div class="side-menu-blur pblur pblur-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
     <nav class="side-menu-list" data-i18n-label="common.menu">
-      <p class="side-menu-title eyebrow" id="menuTitle"></p>
       <button type="button" class="side-item" id="resumeBtn">
         <svg class="icon"><use href="#i-play"/></svg><span data-i18n="tanks.resume"></span>
       </button>
-      <label class="side-item">
-        <svg class="icon"><use href="#i-sound"/></svg><span data-i18n="tanks.sound"></span>
-        <input type="checkbox" class="switch" id="soundToggle" role="switch">
-      </label>
       <button type="button" class="side-item" id="quitBtn">
-        <svg class="icon"><use href="#i-flag"/></svg><span data-i18n="tanks.quit"></span>
+        <svg class="icon"><use href="#i-flag"/></svg><span data-i18n="tanks.quit" id="quitLabel"></span>
       </button>
       <a class="side-item is-exit" href="/">
         <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
@@ -95,11 +83,37 @@
       <p class="t-body" data-i18n="tanks.intro"></p>
       <p class="eyebrow" id="record"></p>
       <div class="sheet-actions">
+        <button type="button" class="btn" id="testBtn" data-i18n="tanks.test"></button>
         <button type="button" class="btn" id="newBtn" data-i18n="tanks.newCampaign"></button>
-        <button type="button" class="btn btn-primary" id="startBtn"></button>
       </div>
+      <button type="button" class="btn btn-primary" id="startBtn"></button>
       <section class="sheet-section" id="menuCheckpoints"></section>
       <p class="t-note" id="help"></p>
+    </form>
+  </dialog>
+
+  <dialog class="sheet" id="testSheet" aria-labelledby="testTitle">
+    <form method="dialog" class="sheet-inner">
+      <div class="sheet-head">
+        <h2 class="t-title" id="testTitle" data-i18n="tanks.testTitle"></h2>
+        <button type="button" class="icon-btn" id="testClose" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sheet-cols">
+        <div class="sheet-col">
+          <section class="sheet-section">
+            <h3 class="eyebrow" id="testKindLabel"></h3>
+            <div class="segmented is-grid" role="group" id="testKinds" data-i18n-label="tanks.testEnemy"></div>
+          </section>
+        </div>
+        <div class="sheet-col">
+          <section class="sheet-section">
+            <h3 class="eyebrow" data-i18n="tanks.testCount"></h3>
+            <div class="segmented" role="group" id="testCount" data-i18n-label="tanks.testCount"></div>
+            <p class="t-note" data-i18n="tanks.testIntro"></p>
+          </section>
+          <button type="button" class="btn btn-primary" id="testStart" data-i18n="tanks.testStart"></button>
+        </div>
+      </div>
     </form>
   </dialog>
 

@@ -28,24 +28,35 @@ export const BOMB_FLIGHT = 1.5; // seconds from launch to landing, whatever the 
 export const BOMB_R = 1; // blast radius of a landing bomb
 export const BOMB_MIN = 3; // a mortar can't aim closer than this...
 export const BOMB_MAX = 12; // ...or further than this
+export const SPIN_UP = 1.2; // seconds a minigun's barrels take to come up to speed from rest
+export const SPIN_DOWN = 2.5; // seconds they take to run down from full speed
+export const SPRAY_TURN = 0.5; // radians per second its turret turns with the barrels at full speed
+export const SPRAY_R = 0.6; // a minigun fires while its line passes this close to your centre
 export const VEL_SMOOTH = 0.12; // seconds: how quickly the AI's read of your velocity follows you
 
 const SHELL = 4.6; // units per second
 const ROCKET = 8.4;
 const MISSILE = 3.2;
+const ROUND = 6.4;
 
-/** What a tank fires. Shells and rockets fly straight, missiles steer, bombs are lobbed. */
-export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb'];
+/**
+ * What a tank fires. Shells and rockets fly straight, missiles steer, bombs are lobbed, and a
+ * minigun sprays rounds once its barrels are spinning.
+ */
+export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb', 'minigun'];
 
 /**
  * Every tank kind. speed 0 = stationary. turn and turret are radians per second.
  * weapon: see WEAPONS, shot: shell speed (bombs have a fixed flight time instead),
  * bounces: ricochets before the shell dies, bullets: shells (or bombs) in flight at once,
  * mines: mines on the ground at once, reload: seconds between shots.
- * AI only: aim ('sweep' | 'direct' | 'bank' | 'guided' | 'lob'), think (seconds between
+ * AI only: aim ('sweep' | 'direct' | 'bank' | 'guided' | 'lob' | 'spray'), think (seconds between
  * decisions), react (delay before a new shot), spread (radians of inaccuracy), scatter
  * (cells a bomb may land from its aim point), dodge (0-1), range (preferred path distance
- * to the player, in cells), layRate, lead (0-1: how much of your motion it aims ahead for).
+ * to the player, in cells), layRate (the chance a minelayer drops a mine when it thinks about
+ * it), trap (lays mines by plan rather than by chance: on your way to it, then watches them),
+ * detonate (shoots one of the mines on the ground when its blast would catch you), lead (0-1:
+ * how much of your motion it aims ahead for). Yellow and Hornet are the enemies that lay mines.
  */
 export const TYPES = {
   player: { speed: 1.9, turn: 7, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 2, reload: 0.12 },
@@ -62,7 +73,7 @@ export const TYPES = {
     aim: 'direct', think: 0.25, react: 0.4, spread: 0.035, dodge: 0.3, range: [7, 12], lead: 0.5,
   },
   yellow: {
-    speed: 1.8, turn: 5, turret: 2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 4, reload: 2.6,
+    speed: 1.8, turn: 5, turret: 2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 2, reload: 2.6,
     aim: 'direct', think: 0.2, react: 0.45, spread: 0.07, dodge: 0.35, range: [3, 7], layRate: 0.45,
   },
   pink: {
@@ -74,31 +85,41 @@ export const TYPES = {
     aim: 'bank', think: 0.25, react: 0.35, spread: 0.02, dodge: 0,
   },
   violet: {
-    speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 2, reload: 0.6,
-    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], layRate: 0.15, lead: 0.3,
+    speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
+    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], lead: 0.3,
   },
   red: {
     speed: 1.0, turn: 4, turret: 2.0, weapon: 'missile', shot: MISSILE, bounces: 0, bullets: 1, mines: 0, reload: 3,
     aim: 'guided', think: 0.2, react: 0.45, spread: 0.03, dodge: 0.3, range: [5, 10],
   },
   white: {
-    speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 2, reload: 0.6,
-    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.5, range: [3, 8], layRate: 0.15, lead: 0.3,
+    speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
+    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.5, range: [3, 8], lead: 0.3,
     invisible: true,
   },
   black: {
-    speed: 2.4, turn: 8, turret: 3.2, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 3, mines: 2, reload: 0.8,
-    aim: 'direct', think: 0.12, react: 0.25, spread: 0.03, dodge: 0.85, range: [2, 6], layRate: 0.1,
-    lead: 0.6,
+    speed: 2.4, turn: 8, turret: 3.2, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 3, mines: 0, reload: 0.8,
+    aim: 'direct', think: 0.12, react: 0.25, spread: 0.03, dodge: 0.85, range: [2, 6], lead: 0.6,
   },
   olive: {
     speed: 0, turn: 0, turret: 1.4, weapon: 'bomb', bounces: 0, bullets: 1, mines: 0, reload: 3.5,
     aim: 'lob', think: 0.3, react: 0.6, scatter: 0.45, dodge: 0, lead: 0.8,
   },
+  lime: {
+    speed: 1.2, turn: 4, turret: 1.5, weapon: 'minigun', shot: ROUND, bounces: 0, bullets: 10, mines: 0, reload: 0.1,
+    aim: 'spray', think: 0.2, react: 0.4, spread: 0.1, dodge: 0.15, range: [4, 8],
+  },
+  hornet: {
+    speed: 1.8, turn: 6, turret: 2.2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 4, reload: 2.4,
+    aim: 'direct', think: 0.15, react: 0.35, spread: 0.06, dodge: 0.45, range: [4, 8], trap: true, detonate: true,
+  },
 };
 
-/** Enemy kinds in the order they first appear, for results screens. */
-export const ENEMY_KINDS = ['brown', 'ash', 'marine', 'yellow', 'pink', 'green', 'violet', 'red', 'white', 'black', 'olive'];
+/**
+ * Enemy kinds in the order they first appear, for results screens. Lime and Hornet are in no
+ * mission yet: the test range only.
+ */
+export const ENEMY_KINDS = ['brown', 'ash', 'marine', 'yellow', 'pink', 'green', 'violet', 'red', 'white', 'black', 'olive', 'lime', 'hornet'];
 
 /** Map letters for enemy spawns. "@" is the player, "#" wall, "x" crate, "o" hole. */
 export const SPAWN_CODES = {
@@ -113,6 +134,8 @@ export const SPAWN_CODES = {
   w: 'white',
   k: 'black',
   d: 'olive',
+  l: 'lime',
+  h: 'hornet',
 };
 
 const EPS = 1e-9;

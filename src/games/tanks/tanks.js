@@ -1,12 +1,13 @@
 import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
+import { setSoundOn, watchSound } from '../../shared/sound.js';
 import { closeSheet, confirmDialog, modalOpen, openSheet, setupSideMenu } from '../../shared/ui.js';
 import { tapTarget } from './ai.js';
 import { drawBadge } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
-import { BONUS_AFTER, CHECKPOINTS, MISSIONS } from './missions.js';
+import { BONUS_AFTER, CHECKPOINTS, MISSIONS, TEST_MAX, testMap } from './missions.js';
 import { createRenderer } from './render.js';
 import { ENEMY_KINDS, STEP, TYPES, owned } from './rules.js';
 
@@ -33,15 +34,28 @@ const audio = createAudio();
 
 /* ---------- Saved data ---------- */
 
-const prefs = { sound: true, ...(store.load('prefs', 1) || {}) };
+// test: what the test range was last set to.
+const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, ...(store.load('prefs', 1) || {}) };
+if (!ENEMY_KINDS.includes(prefs.test?.kind) || !(prefs.test.count >= 1 && prefs.test.count <= TEST_MAX)) {
+  prefs.test = { kind: ENEMY_KINDS.at(-1), count: 1 };
+}
 const stats = { best: 0, kills: 0, wins: 0, checkpoint: 1, ...(store.load('stats', 1) || {}) };
 const savePrefs = () => store.save('prefs', 1, prefs);
 const saveStats = () => store.save('stats', 1, stats);
-audio.setMuted(!prefs.sound);
+// Sound used to be switched in this game's menu; a mute set there carries over to Settings once.
+if ('sound' in prefs) {
+  if (prefs.sound === false) setSoundOn(false);
+  delete prefs.sound;
+  savePrefs();
+}
+watchSound((on) => audio.setMuted(!on));
 
 // The run in progress: { mission (0-based), lives, kills: { kind: n }, alive: enemy slots or null }.
 let campaign = null;
-let world = null; // the mission being played
+// A test range run in progress, { kind, count }. It leaves the campaign alone: nothing in it
+// counts, and it is never saved.
+let test = null;
+let world = null; // the mission (or test) being played
 let backdrop = null; // a world drawn, frozen, behind the menu and results
 let phase = 'menu'; // menu | brief | play | paused | ending | over
 let phaseT = 0;
@@ -53,7 +67,7 @@ const saver = createSaver(store, 'session', SCHEMA, () =>
     ? {
         campaign,
         // Mid-mission the whole world is saved, so a killed app resumes exactly here.
-        world: phase === 'play' || phase === 'paused' ? world : null,
+        world: !test && (phase === 'play' || phase === 'paused') ? world : null,
         summary: { mission: campaign.mission + 1 },
       }
     : null,
@@ -492,16 +506,60 @@ document.addEventListener('keyup', (event) => {
 /* ---------- HUD, banners, overlays ---------- */
 
 function renderHud() {
-  if (campaign) {
+  const lives = $('livesStat');
+  // A test has no lives: the stat goes, and the mission reads "Test".
+  lives.parentElement.hidden = !!test;
+  if (test) {
+    $('missionStat').textContent = t('tanks.test');
+  } else if (campaign) {
     $('missionStat').textContent = String(campaign.mission + 1);
-    $('livesStat').textContent = String(campaign.lives);
+    lives.textContent = String(campaign.lives);
+  } else {
+    $('missionStat').textContent = '--';
+    lives.textContent = '-';
   }
-  renderPips();
+  renderAmmo();
 }
 
-function renderPips() {
-  const used = world ? owned(world.mines, world.tanks[0]) : 0;
-  [...$('minePips').children].forEach((el, i) => el.classList.toggle('used', i >= TYPES.player.mines - used));
+/** One icon per shell and per mine you hold, under the stats: filled while ready, hollow while out. */
+function makeMeter(el, n, full, empty) {
+  const slots = Array.from({ length: n }, () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'icon slot');
+    for (const [cls, id] of [['full', full], ['empty', empty]]) {
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('class', cls);
+      use.setAttribute('href', `#${id}`);
+      svg.append(use);
+    }
+    return svg;
+  });
+  el.replaceChildren(...slots);
+  return slots;
+}
+
+const meters = {
+  shells: makeMeter($('shellMeter'), TYPES.player.bullets, 'i-shell', 'i-shell-empty'),
+  mines: makeMeter($('mineMeter'), TYPES.player.mines, 'i-mine', 'i-mine-empty'),
+};
+const mineIcon = mineBtn.querySelector('.slot');
+let ammoShown = '';
+
+/** Shows how many shells and mines are ready; cheap when nothing changed, so it runs every frame. */
+function renderAmmo() {
+  const p = world?.tanks[0];
+  const shells = p ? TYPES.player.bullets - owned(world.bullets, p) : TYPES.player.bullets;
+  const mines = p ? TYPES.player.mines - owned(world.mines, p) : TYPES.player.mines;
+  const key = `${shells}/${mines}`;
+  if (key === ammoShown) return;
+  ammoShown = key;
+  meters.shells.forEach((el, i) => el.classList.toggle('is-used', i >= shells));
+  meters.mines.forEach((el, i) => el.classList.toggle('is-used', i >= mines));
+  mineIcon.classList.toggle('is-used', mines <= 0);
+  $('ammo').setAttribute(
+    'aria-label',
+    t('tanks.ammo', { shells, maxShells: TYPES.player.bullets, mines, maxMines: TYPES.player.mines }),
+  );
 }
 
 const BADGE_W = 34;
@@ -527,7 +585,13 @@ function paintBadge(el) {
 }
 
 // Kinds whose arrival the mission banner warns about.
-const NOTES = { red: 'tanks.note.red', white: 'tanks.note.white', olive: 'tanks.note.olive' };
+const NOTES = {
+  hornet: 'tanks.note.hornet',
+  red: 'tanks.note.red',
+  white: 'tanks.note.white',
+  olive: 'tanks.note.olive',
+  lime: 'tanks.note.lime',
+};
 
 function showBanner({ title, name = '', sub = '', kinds = [], note = '' }) {
   const banner = $('banner');
@@ -546,8 +610,9 @@ function hideBanner() {
   $('banner').hidden = true;
 }
 
-// The campaign menu and the results are docked sheets: the header and its side menu still work.
-const sheets = { menu: $('startSheet'), over: $('overSheet') };
+// The campaign menu, the test range and the results are docked sheets: the header and its side
+// menu still work.
+const sheets = { menu: $('startSheet'), test: $('testSheet'), over: $('overSheet') };
 
 function showOverlay(name) {
   for (const [key, el] of Object.entries(sheets)) {
@@ -646,6 +711,7 @@ function frame(now) {
 
 function draw() {
   showTapAim();
+  renderAmmo();
   const s = world || backdrop;
   if (!s) return;
   const playing = phase === 'play';
@@ -662,8 +728,11 @@ function onEvents(events) {
     switch (e.type) {
       case 'shot':
         if (e.player) input.shots = Math.max(0, input.shots - 1);
-        if (e.weapon === 'rocket' || e.weapon === 'missile') audio.play(e.weapon);
+        if (e.weapon === 'rocket' || e.weapon === 'missile' || e.weapon === 'minigun') audio.play(e.weapon);
         else audio.play(e.player ? 'shot' : 'enemyShot');
+        break;
+      case 'spin':
+        audio.play('spin', e.dur);
         break;
       case 'lob':
         audio.play('lob', e.flight);
@@ -675,11 +744,9 @@ function onEvents(events) {
       case 'mine':
         if (e.player) input.mine = false;
         audio.play('mine');
-        renderPips();
         break;
       case 'blast':
         audio.play(e.cause === 'bomb' ? 'impact' : 'blast');
-        renderPips();
         break;
       case 'bounce':
       case 'pop':
@@ -696,28 +763,43 @@ function onEvents(events) {
 
 /* ---------- Campaign flow ---------- */
 
-function beginMission() {
-  const level = parseLevel(MISSIONS[campaign.mission]);
-  world = createWorld(level, { seed: (Math.random() * 2 ** 31) | 0, alive: campaign.alive });
+/**
+ * Puts a fresh world for `level` in play behind its banner: a campaign mission or a test run.
+ * banner: title, name, sub (put before the enemy count) and note (before the warnings).
+ */
+function launch(level, { alive = null, title, name, sub = '', note = '' }) {
+  world = createWorld(level, { seed: (Math.random() * 2 ** 31) | 0, alive });
   backdrop = null;
   renderer.reset();
   releaseInput();
   resetAim();
+  showOverlay(null);
+  setPhase('brief');
+  const kinds = world.tanks.filter((tk) => tk.slot >= 0).map((tk) => tk.type);
+  // The note (a mission's one-line briefing), then a warning for each kind that needs one.
+  const notes = [note, ...Object.keys(NOTES).filter((kind) => kinds.includes(kind)).map((kind) => t(NOTES[kind]))];
+  const text = notes.filter(Boolean).join(' ');
+  briefS = Math.min(BRIEF_MAX, BRIEF_S + text.length * BRIEF_READ);
+  const subs = [sub, t('tanks.enemies', { n: kinds.length })].filter(Boolean);
+  showBanner({ title, name, sub: subs.join(' · '), kinds, note: text });
+  renderHud();
+  audio.play('start');
+}
+
+function beginMission() {
+  test = null;
   const n = campaign.mission + 1;
   stats.best = Math.max(stats.best, n);
   for (const cp of CHECKPOINTS) if (n >= cp) stats.checkpoint = Math.max(stats.checkpoint, cp);
   saveStats();
-  showOverlay(null);
-  setPhase('brief');
-  const kinds = world.tanks.filter((tk) => tk.slot >= 0).map((tk) => tk.type);
-  const sub = [n === MISSIONS.length ? t('tanks.final') : '', t('tanks.enemies', { n: kinds.length })].filter(Boolean);
-  // The mission's one-line briefing, then a warning for each kind that needs one.
-  const note = [t(`tanks.brief.${n}`), ...Object.keys(NOTES).filter((kind) => kinds.includes(kind)).map((kind) => t(NOTES[kind]))].join(' ');
-  briefS = Math.min(BRIEF_MAX, BRIEF_S + note.length * BRIEF_READ);
-  showBanner({ title: t('tanks.missionN', { n }), name: t(`tanks.name.${n}`), sub: sub.join(' · '), kinds, note });
-  renderHud();
+  launch(parseLevel(MISSIONS[campaign.mission]), {
+    alive: campaign.alive,
+    title: t('tanks.missionN', { n }),
+    name: t(`tanks.name.${n}`),
+    sub: n === MISSIONS.length ? t('tanks.final') : '',
+    note: t(`tanks.brief.${n}`),
+  });
   saver.flush();
-  audio.play('start');
 }
 
 function startPlay() {
@@ -744,6 +826,13 @@ function closeCampaign(victory, reached) {
 
 function missionOver() {
   const won = world.phase === 'won';
+  if (test) {
+    // A test only says how it went, then goes back to the test range.
+    ending = { won, test: true, shown: false };
+    releaseInput();
+    setPhase('ending');
+    return;
+  }
   addKills(campaign.kills, world.kills);
   const n = campaign.mission + 1;
   ending = { won, bonus: false, result: null, shown: false, chimed: false };
@@ -772,7 +861,10 @@ function missionOver() {
 function tickEnding() {
   if (!ending.shown && phaseT >= BANNER_AT) {
     ending.shown = true;
-    if (ending.won) {
+    if (ending.test) {
+      showBanner({ title: t(ending.won ? 'tanks.testCleared' : 'tanks.destroyed') });
+      audio.play(ending.won ? 'clear' : 'lost');
+    } else if (ending.won) {
       showBanner({ title: t(ending.result ? 'tanks.victoryShort' : 'tanks.cleared'), sub: ending.bonus ? t('tanks.bonus') : '' });
       audio.play(ending.result ? 'victory' : 'clear');
     } else {
@@ -798,7 +890,8 @@ function finishEnding() {
   const done = ending;
   ending = null;
   hideBanner();
-  if (done.result) showResults(done.result);
+  if (done.test) showTest();
+  else if (done.result) showResults(done.result);
   else beginMission();
 }
 
@@ -829,12 +922,62 @@ function showMenu() {
   }
   $('record').textContent = record;
   $('help').textContent = t(touchUI ? 'tanks.helpTouch' : 'tanks.helpKeys');
+  test = null;
   world = null;
   backdrop = createWorld(parseLevel(MISSIONS[campaign ? campaign.mission : 0]), { alive: campaign ? campaign.alive : null });
   renderer.reset();
-  if (campaign) renderHud();
+  renderHud();
   showOverlay('menu');
   setPhase('menu');
+}
+
+/* ---------- Test range: any one kind, 1 to TEST_MAX of them, on a four-wall map ---------- */
+
+const testKinds = $('testKinds');
+const testCount = $('testCount');
+
+function choice(attrs, ...content) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
+  b.append(...content);
+  return b;
+}
+
+/** Marks the picked enemy and count, and draws the range with them behind the sheet. */
+function renderTest() {
+  const { kind, count } = prefs.test;
+  if (!testKinds.children.length) {
+    testKinds.append(...ENEMY_KINDS.map((k) => choice({ 'data-kind': k, 'aria-label': t(`tanks.type.${k}`) }, badge(k))));
+    for (let n = 1; n <= TEST_MAX; n++) testCount.append(choice({ 'data-count': n }, String(n)));
+  }
+  for (const b of testKinds.children) b.setAttribute('aria-pressed', String(b.dataset.kind === kind));
+  for (const b of testCount.children) b.setAttribute('aria-pressed', String(Number(b.dataset.count) === count));
+  $('testKindLabel').textContent = `${t('tanks.testEnemy')} · ${t(`tanks.type.${kind}`)}`;
+  backdrop = createWorld(parseLevel(testMap(kind, count)));
+  renderer.reset();
+  draw();
+}
+
+function showTest() {
+  test = null;
+  world = null;
+  renderTest();
+  renderHud();
+  showOverlay('test');
+  setPhase('menu');
+}
+
+function pickTest(change) {
+  Object.assign(prefs.test, change);
+  savePrefs();
+  renderTest();
+}
+
+function beginTest() {
+  const { kind, count } = prefs.test;
+  test = { kind, count };
+  launch(parseLevel(testMap(kind, count)), { title: t('tanks.test'), name: t(`tanks.type.${kind}`) });
 }
 
 async function chooseStart(index) {
@@ -856,12 +999,8 @@ function hold() {
   } else {
     stopLoop();
   }
-  const held = ['paused', 'brief', 'ending'].includes(phase);
-  $('menuTitle').textContent =
-    held && campaign ? `${t('tanks.paused')} · ${t('tanks.missionN', { n: campaign.mission + 1 })}` : t('common.menu');
-  $('resumeBtn').hidden = !held;
   $('quitBtn').hidden = phase !== 'paused' && phase !== 'brief';
-  $('soundToggle').checked = prefs.sound;
+  $('quitLabel').textContent = t(test ? 'tanks.testEnd' : 'tanks.quit');
 }
 
 function release() {
@@ -871,6 +1010,12 @@ function release() {
 }
 
 async function quit() {
+  if (test) {
+    // Nothing to lose in a test: straight back to the range.
+    showTest();
+    menu.close();
+    return;
+  }
   if (!(await confirmDialog(t('tanks.confirmQuit'), { ok: t('tanks.quit') }))) return;
   if (world) addKills(campaign.kills, world.kills);
   closeCampaign(false, campaign.mission + 1);
@@ -884,15 +1029,20 @@ $('startBtn').addEventListener('click', () => {
   else chooseStart(0);
 });
 $('newBtn').addEventListener('click', () => chooseStart(0));
+$('testBtn').addEventListener('click', showTest);
+$('testClose').addEventListener('click', showMenu);
+$('testStart').addEventListener('click', beginTest);
+testKinds.addEventListener('click', (event) => {
+  const b = event.target.closest('button');
+  if (b) pickTest({ kind: b.dataset.kind });
+});
+testCount.addEventListener('click', (event) => {
+  const b = event.target.closest('button');
+  if (b) pickTest({ count: Number(b.dataset.count) });
+});
 $('againBtn').addEventListener('click', () => chooseStart(0));
 $('resumeBtn').addEventListener('click', () => menu.close());
 $('quitBtn').addEventListener('click', quit);
-$('soundToggle').addEventListener('change', (event) => {
-  prefs.sound = event.target.checked;
-  audio.setMuted(!prefs.sound);
-  savePrefs();
-  if (prefs.sound) audio.unlock();
-});
 
 /* ---------- Page life ---------- */
 

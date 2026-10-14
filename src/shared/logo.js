@@ -1,22 +1,24 @@
-// The Cache Only mark: 10 x 13 rounded-square pixels, drawn as a grid of spans so each pixel can
-// come into focus on its own. Progress anywhere in the app is this logo going from blurred grey
-// to sharp white, pixel by pixel, in a fixed pseudo-random order. Styles: .logo in styles.css.
-
+// The Cache Only mark: a cent sign 11 x 13 rounded-square pixels big, drawn as a grid of spans so
+// each pixel can come into focus on its own. Progress anywhere in the app is this logo going from
+// blurred grey to sharp white, pixel by pixel, in a fixed pseudo-random order. Styles: .logo in
+// styles.css. scripts/make-icons.mjs draws the app icons from the same grid.
 export const MARK = [
-  '.....##...',
-  '...######.',
-  '..########',
-  '.###.##.##',
-  '###..##...',
-  '##...##...',
-  '##...##...',
-  '##...##...',
-  '###..##...',
-  '.###.##.##',
-  '..########',
-  '...######.',
-  '.....##...',
+  '.....##....',
+  '..########.',
+  '.##########',
+  '###..##..##',
+  '##...##....',
+  '##...##....',
+  '##...##....',
+  '##...##....',
+  '##...##....',
+  '###..##..##',
+  '.##########',
+  '..########.',
+  '.....##....',
 ];
+
+export const COLS = MARK[0].length;
 
 const FLAT = MARK.join('').split('');
 const LIT = FLAT.map((ch, i) => (ch === '#' ? i : -1)).filter((i) => i >= 0);
@@ -55,8 +57,8 @@ export function setLogoProgress(logo, p) {
 export function setLogoHaze(logo, haze = 3) {
   logo.querySelectorAll('i').forEach((px, i) => {
     if (!px.classList.contains('lit')) return;
-    const x = i % 10;
-    const y = Math.floor(i / 10);
+    const x = i % COLS;
+    const y = Math.floor(i / COLS);
     const step = (x * 7 + y * 13) % 5;
     px.style.filter = step ? `blur(${(step * haze) / 4}px)` : '';
     px.style.background = step > 2 ? '#8a8a8a' : '';

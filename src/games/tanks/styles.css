@@ -30,9 +30,10 @@
 
   /* Tank colours only say which kind a tank is; its shape says what it can do (art.js).
      Off limits for a new kind: the player's blue family, fire orange (explosions, rocket
-     flames) and crate grey (a tank must never pass for a crate). Still free: sand,
-     maroon, navy (kept clearly apart from the player) and lime. Past about 12 kinds, reuse
-     a colour with a pattern for a variant instead of finding another hue. Every kind needs
+     flames) and crate grey (a tank must never pass for a crate). Still free: sand, maroon
+     and navy (kept clearly apart from the player). Past about 12 kinds, reuse
+     a colour with a pattern for a variant instead of finding another hue (VARIANTS in art.js:
+     Hornet wears Yellow's colour with hazard stripes). Every kind needs
      a colour here whose chip text reaches 4.5:1; tests/tanks.test.mjs checks the plan. */
   --tk-player: #2e8ccc;
   --tk-brown: #96673a;
@@ -46,8 +47,11 @@
   --tk-white: #f7f5ef;
   --tk-black: #3a3e46;
   --tk-olive: #566426;
+  --tk-lime: #9cc93a;
+  --tk-hornet: #f2b705; /* Yellow's colour: a variant, told apart by its hazard stripes (VARIANTS in art.js) */
 
   --stick: 112px;
+  --mine-btn: 68px;
   --pad-edge: 22px; /* where the sticks rest, from the bottom corners */
   --pad-alpha: 0.2;
 }
@@ -162,15 +166,16 @@
   display: block;
   width: 100%;
   height: 100%;
-  fill: currentColor;
-  stroke: none;
   transform: rotate(var(--ka, 0rad));
 }
 
-/* Dragged back to the middle after aiming: letting go now fires nothing. */
-.stick-aim.cancel .knob .icon {
-  fill: none;
-  stroke: currentColor;
+/* Dragged back to the middle after aiming: letting go now fires nothing (a hollow shell). */
+.stick-aim.cancel .knob .full {
+  display: none;
+}
+
+.stick-aim.cancel .knob .empty {
+  display: inline;
 }
 
 /* A tap would fire at an enemy in sight (tanks.js sets .ready until a thumb drags the stick):
@@ -211,21 +216,21 @@
   }
 }
 
-/* Landscape: on the right edge, halfway down, in line with the aim stick's resting place. */
+/* The mine button has the sticks' rim and fill but a button's corners, with a solid mine in the
+   middle that turns hollow while both your mines are down (tanks.js sets .is-used on the icon).
+   Landscape: on the right edge, halfway down, in line with the aim stick's resting place. */
 .mine-btn {
   position: absolute;
   left: calc(100% - var(--safe-r) - var(--pad-edge) - var(--stick) / 2);
   top: calc(50% - var(--safe-b) / 2);
   display: grid;
   place-items: center;
-  align-content: center;
-  gap: 4px;
-  width: 64px;
-  height: 64px;
+  width: var(--mine-btn);
+  height: var(--mine-btn);
   padding: 0;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  background: var(--card);
+  border: 3px solid var(--ink);
+  border-radius: var(--r-btn);
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
   color: var(--ink);
   transform: translate(-50%, -50%);
   opacity: var(--pad-alpha);
@@ -243,30 +248,16 @@
   }
 }
 
+/* The mine is 3/4 of its icon box, so it spans about 60% of the button. */
 .mine-btn .icon {
-  width: 26px;
-  height: 26px;
+  width: 80%;
+  height: 80%;
 }
 
 .mine-btn.pressed {
   background: var(--ink);
   color: var(--on-ink);
-}
-
-.pips {
-  display: flex;
-  gap: 4px;
-}
-
-.pips i {
-  width: 6px;
-  height: 6px;
-  border-radius: 22%;
-  background: currentColor;
-}
-
-.pips i.used {
-  opacity: 0.2;
+  transform: translate(-50%, -50%) scale(0.94);
 }
 
 /* ---------- Mission banners (a shared .notice laid over the arena) ---------- */
@@ -332,6 +323,7 @@
 @media (max-width: 380px) {
   .page-tanks {
     --stick: 100px;
+    --mine-btn: 64px;
   }
 }
 

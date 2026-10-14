@@ -65,7 +65,7 @@ One rule per part of the tank, so the patterns are learnable:
 **Shipped:** the parts are drawn by a new `art.js`, which the game and the field guide both use,
 so the guide no longer keeps its own copy of `drawTank`.
 
-- **Barrel:** thin for shells; thick with a fire-orange band for rockets; twin launch pods and a
+- **Barrel:** thin for shells; thick with a fire-orange band for rockets (now a muzzle brake, R5); twin launch pods and a
   light, lit while a missile flies, for missiles; a wide round tube for mortars.
 - **Treads or a pad:** stationary tanks sit on a bolted concrete pad (`--tk-plate`). A dark plate
   with bolts read like treads at phone size, worst in dark mode, so the pad is a lighter
@@ -117,6 +117,15 @@ not to each cell, so they run on unbroken across a group, rising to the right on
 way the arena is turned. Crate grey replaces crate yellow as an off-limits colour, and Yellow no
 longer needs its exemption. The field guide's map legend, source grid and editor brushes show the
 stripes too.
+
+### R5. A rocket barrel without the orange tip
+**Status:** done 2026-10-14 · **Size:** S
+
+The rocket barrel was a thick barrel with a fire-orange band at the muzzle: a colour cue, when the
+plan is that shape says what a tank does. It is now a heavy barrel ending in a **muzzle brake**,
+two wide baffles across the tip, so it reads as a hammerhead where a shell barrel stays thin. It
+still reads at phone size (checked at an iPhone SE's 23 points a cell). Rocket flames keep their
+orange; only the barrel changed. Teal, Green and Black carry it.
 
 ---
 
@@ -200,6 +209,81 @@ above (1.5 s flight, blast 1.0, range 3–12, lead 0.8, scatter 0.45, reload 3.5
 - **To tune:** in bot playtests, mortars almost never land a kill. 1.5 s of warning is enough
   to drive out of a 1-cell blast, so they work as area denial that pushes you out of cover into
   other guns. If that feels toothless in real play, shorten `BOMB_FLIGHT` first.
+
+### W3. Minigun tank
+**Status:** done 2026-10-14 · **Size:** M
+
+A machine-gun tank that sprays rounds non-stop, with a spin-up as its warning.
+
+- **Spin-up:** six barrels take `SPIN_UP` (1.2 s) to come up to speed from rest, whining as they
+  go. It starts them only once it has a straight line on you (and the mission's opening hold is
+  over), and fires only at full speed. With no line on you they run down over `SPIN_DOWN` (2.5 s),
+  so a short break in cover doesn't reset it.
+- **Spray:** at full speed it fires a round every 0.1 s, up to 10 in the air, each within ±5.7° of
+  its aim, for as long as its line passes within `SPRAY_R` (0.6 cells) of you (`aim: 'spray'`).
+  No react pause on a new angle: the spin-up is its reaction time.
+- **Rounds:** 6.4 cells a second, no ricochet. Like any shot they cancel out with whatever they
+  meet (shells, missiles, other rounds), so a shell fired back down the stream rarely gets through:
+  hit it while it spins up, or from the side. They set off mines. (It shipped with rounds that
+  passed through other shots; changed the same day, so they collide like everything else.)
+- **Counter:** its turret drags as the barrels speed up, from 86° a second down to `SPRAY_TURN`
+  (29°) at full speed, so up close you can circle it faster than it turns.
+- **Moves:** 1.2 cells a second, keeps 4–8 cells away, dodges 15%.
+- **Look and sound:** lime (`--tk-lime`, `#9cc93a`; 12.3 from Yellow, 17.6 from Green). Its gun
+  is a motor housing bolted over the turret with six barrels bound by a clamp; seen from above,
+  the barrels slide across each other as they spin (`roll`, kept by the renderer; a quarter speed
+  under reduced motion). Tracer rounds with a short streak and a faint smoke trail (fainter and
+  shorter than a shell's, and the first effect dropped on a busy screen), a small flash and an
+  ejected casing per round, a rising whine on spin-up and a dry crack per round.
+- **World data:** minigun tanks carry `spin` (0–1) and `rev` (driving the barrels). No world saved
+  before them has one, so `WORLD_VERSION` stays 2.
+- **Campaign:** letter `l`, Lime / Llima, banner note. **In no mission yet:** it plays on the test
+  range (C7). Playtest on the range, 16 seeds, expert / casual bot wins: 1 lime 15 / 10, 3 limes
+  14 / 0, 6 limes 15 / 0 (3 Greys: 16 / 13; 3 Blacks: 15 / 1). With colliding rounds the casual
+  bot loses its return fire, so 3 limes play harder than 3 Blacks. **To tune** before it goes in
+  a mission (M6): fewer rounds in the air, a slower fire rate or a wider spread.
+
+---
+
+### W4. Hornet: a trap layer
+**Status:** done 2026-10-14 · **Size:** L
+
+Yellow with a plan: it mines your way to it, watches each mine, and sets it off as you pass.
+
+- **Look:** Yellow's colour with black hazard stripes across the front of the hull (the rear deck
+  stays plain so its 4 mine discs read). It is the first kind to reuse a colour: `VARIANTS` in
+  `art.js` names it a variant of Yellow, and the colour test lets a variant wear exactly its base
+  kind's colour. Kind `hornet`, map letter `h`, Hornet / Vespa.
+- **Stats:** like Yellow, sharper: speed 1.8, turret 2.2 rad/s, thinks every 0.15 s, reacts in
+  0.35 s, ±3.4°, dodges 45%, keeps 4–8 cells away, 4 mines.
+- **The plan** (`planTrap` in `ai.js`, state in `ai.plan`, `pc`, `wc`, `planT`, `since`):
+  1. **Pick a spot** (`trapSpot`): a cell on your shortest way to it that it reaches at least two
+     steps before you, within 8 of its steps, clear of other mines (1.7), of allies and of the spots
+     other Hornets mean to use; best in a narrow way, against cover, and 4–8 steps ahead of you.
+     While you are still far off, only a narrow way nearer you than it is will do, so it mines its
+     way toward you instead of backing into a corner.
+  2. **Lay it,** then drive to a **lookout** (`watchSpot`): no nearer you than the mine, 2.5 to 6.5
+     cells from it with a straight line to it, clear of other mines, best at its fighting distance
+     and with room round it.
+  3. **Watch** for about a second, or up to 4 s while you are near one of its mines, and shoot the
+     mine when you pass (`detonation`, unchanged from the smart Yellow).
+  4. **Close in:** within 3 steps of you it drops one where it stands, but only with a lookout to
+     get clear to.
+- **Its own side's mines:** a quiet mine laid by an enemy (not within 4 s of going off, you not near
+  it, no shot close by) only goes off when driven onto, and no enemy shoots a mine beside a friend,
+  so it keeps just clear of setting those off (`mineReach`); yours, and any about to blow, it keeps
+  out of their blast. Its routes go round the cells it must keep off (`trapField`).
+- **Getting clear:** inside the blast of a mine about to go off, it drives to the nearest free cell
+  out of reach (`clearCell`), along a way that never gets nearer that mine, and stays out until it
+  has gone off. This replaced fleeing step by step, which left it boxed in corners.
+- **Banner note:** "Hornets here mine the way to them, then shoot a mine the moment you pass it.
+  Give every mine a wide berth." (`tanks.note.hornet`; Yellow's note is gone).
+- **Measured** on the test range against the casual bot holding fire: 3 Hornets lay about 2.2 times
+  as many mines as 3 Yellows, one Hornet 1.7 times one Yellow. Over 16 seeds of 45 s, no Hornet blew
+  itself up in the four Yellow missions with Yellows swapped for Hornets, nor 3 on the range; 6
+  crammed on the range still lose one now and then, boxed into a corner.
+- **In no mission yet:** the test range only. Playtest bots keep 2 cells from every mine, so none
+  shows how often a person gets caught by the mine shot: try it on a phone first (M7).
 
 ---
 
@@ -298,6 +382,25 @@ ideas moved to A3.
 
 Moved here from A2's later ideas: aim at choke points you have to pass; hide behind cover after
 firing; flank; avoid every tank firing at the same moment. Tune together with Red and Olive.
+
+### A4. Two minelayers, and no shots through mines
+**Status:** done 2026-10-14 · **Size:** M
+
+Violet, White and Black carried 2 mines each, and Yellow laid its 4 only now and then, at random.
+
+- **Who lays mines:** only Yellow (2) and Hornet (4, see W4). Violet, White and Black carry none.
+- **Yellow stays simple:** it drops one now and then where it stands, when 2 to 9 steps from you
+  with no ally or other mine close by (`wantsMine` in `ai.js`). For part of the day it carried 6 and
+  laid them by worth, backing off from each and shooting them as you passed; it still got trapped
+  between its own mines and showed no plan, so the smart version became a kind of its own, Hornet.
+- **No shot through a mine:** every enemy's shot check (`shotTarget`) counts a mine on the line as
+  where the shot ends. It fires only if that blast would catch you and spare every enemy (a mine
+  beside you on its line is as good as a hit). Enemies used to blow up mines beside their friends,
+  and Hornets their own fresh mines, by firing back at you across them.
+- **Mines in the way of moving:** cells near a mine score worse the nearer they are (`mineCost`),
+  so a tank inside a blast always has a better way out; it never waits in such a cell; and fleeing a
+  mine or dodging a shell never runs it onto another mine (`clearMove`).
+- **Mine discs:** Yellow's rear deck holds 2, Hornet's 4, in one row as before.
 
 ## M. Maps and missions
 
@@ -401,6 +504,20 @@ map being edited with keyboard controls. The playtest bot (`scripts/playtest.mjs
 a draft from the command line (`npm run playtest -- --map draft.txt`); bundled into the page
 too, it could show a win rate per map while editing.
 
+### M6. Put Lime in the campaign
+**Status:** idea · **Size:** M · **Needs:** W3
+
+Lime only plays on the test range so far. Give it a mission with its one idea (cover you can
+break line of sight behind, room to circle it), or add it to a late mission, then run
+`npm run playtest` and keep the expert bot at 6 wins in 8.
+
+### M7. Put Hornet in the campaign
+**Status:** idea · **Size:** M · **Needs:** W4
+
+Hornet plays on the test range only. Try it on a phone first, then give it a mission whose idea is
+mines (a long approach with choke points, or Switchbacks-style corridors), or swap it in for a
+Yellow in a late mission, and keep the expert bot at 6 wins in 8.
+
 ## C. Controls and screen
 
 ### C1. A 4:3 arena that fills the screen
@@ -452,8 +569,10 @@ button opens a side menu: the options run down the left edge over a progressive 
 that edge and sharp again toward the right. Opening it pauses the battle (or holds a banner),
 and closing it plays on: Resume, tapping beside the list, the home button again, Escape or P.
 The home button keeps its icon while the menu is open: Resume already says how to get back, so
-a close icon only repeated it (dropped 2026-10-14). The list holds Resume, Sound, Quit campaign and Back to games; Resume and Quit only
-while a mission is on. Leaving the app opens it, so a killed app reopens with it open. The menu
+a close icon only repeated it (dropped 2026-10-14). The list holds Resume, Quit campaign and Back to games; Quit only
+while a mission is on. Since 2026-10-14 Resume is always there, the list has no title, the arena
+fades out and blurs behind it instead of a blur from the left edge, holding the home button goes
+straight back to the games, and Sound is one switch for the whole app in Settings. Leaving the app opens it, so a killed app reopens with it open. The menu
 is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku and 2048
 can switch to it too.
 
@@ -477,6 +596,31 @@ tap will go. As soon as a thumb drags the stick it aims by hand and the stick lo
 thumb that started the mission (which can't fire) doesn't make it shine either. Under reduced
 motion the ring doesn't spread; the rest still shows. `showTapAim` in `tanks.js`, `.stick-aim.ready`
 in `tanks/styles.css`.
+
+### C7. Test range
+**Status:** done 2026-10-14 · **Size:** S
+
+A **Test** button on the start sheet opens a docked "Test range" sheet: pick one enemy kind (a
+grid of the game's own badges, `.segmented.is-grid`) and how many, 1 to 6, and the range is drawn
+behind the sheet as you choose. The map (`testMap` in `missions.js`) is four short walls, columns
+2, 6, 13 and 17 down rows 4 to 10, so side on your half reads `_|__|__` and theirs `__|__|_`. You
+start at the far left; the enemies take fixed spots on the right. A test leaves the campaign
+alone: it is never saved, nothing counts toward the record, the header shows Mission "Test" with
+no lives, and the side menu's Quit becomes **End test**. When it ends (cleared or destroyed) the
+banner shows and you are back on the range sheet. The last pick is kept in `prefs.test`.
+
+### C8. Ammo in the header, and a cleaner mine button
+**Status:** done 2026-10-14 · **Size:** S
+
+- **Meters:** under Mission and Lives, one small icon per shell (5) and per mine (2) you hold,
+  filled while ready and hollow while out: a row in portrait, columns down the right edge in
+  landscape. They are a shared header part (`.stat-meters`, `.meter` and the two-state `.slot` icon
+  in `styles.css`); `renderAmmo` in `tanks.js` updates them only when a count changes, and the group
+  reads "Shells ready: 4 of 5. Mines ready: 1 of 2." to a screen reader (`tanks.ammo`).
+- **Mine button:** the two dots under its icon are gone (the meters count instead). It has the
+  sticks' 3 px rim and fill with a button's 8 px corners, 68 px (64 on narrow phones), its mine turns
+  hollow while both of yours are down, and it shrinks a little while pressed. The pixel mine icon
+  comes from `shared/icons.js` (`i-mine`, `i-mine-empty`).
 
 ## Suggested order
 

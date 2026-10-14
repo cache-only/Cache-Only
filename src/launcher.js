@@ -16,6 +16,7 @@ import {
   watchForUpdates,
   watchOfflineStatus,
 } from './shared/sw-client.js';
+import { setSoundOn, soundOn } from './shared/sound.js';
 import { blurLayers, confirmDialog, openSheet, setupSheet } from './shared/ui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,14 +26,12 @@ const appStore = createStore('app');
 let registry = [];
 let reg = null;
 let offline = { state: 'checking' };
-let persisted;
 let manifest = null; // the active worker's packs
 let host = 'unknown'; // 'online' | 'offline' | 'unknown': does the host answer right now?
 const onDevice = new Set(); // games whose every file is cached
 const progress = new Map(); // id -> { done, total, started } while downloading or queued
 const failed = new Set(); // ids whose last download failed
 let batch = null; // ids of the downloads running now, for the overall percentage
-let bulk = false; // "Download all" is running
 let heroId = null;
 let updateWaiting = false; // a new worker is installed and waits for a reload
 
@@ -185,7 +184,6 @@ function renderGames() {
   if (host === 'offline') rows.sort((a, b) => (a.state === 'unavailable') - (b.state === 'unavailable') || a.i - b.i);
   $('games').replaceChildren(...rows.map((r) => renderTile(r.game)));
   $('gamesSection').hidden = !registry.length;
-  renderDownloadAll();
   renderNote();
   renderStatus();
 }
@@ -199,14 +197,6 @@ function renderProgress(id) {
     tile.setAttribute('aria-label', tileLabel(game, 'downloading'));
   }
   renderStatus();
-}
-
-function renderDownloadAll() {
-  const missing = missingGames();
-  const btn = $('downloadAllBtn');
-  btn.hidden = !isStandalone() || !manifest || !missing.length;
-  // Dimmed, not removed, while the host is out of reach or something is downloading.
-  btn.disabled = host !== 'online' || bulk || progress.size > 0;
 }
 
 function renderNote() {
@@ -299,19 +289,6 @@ async function download(ids) {
   if (ids.some((id) => failed.has(id))) checkHost();
 }
 
-async function downloadAll() {
-  const ids = missingGames().map((g) => g.id);
-  if (!ids.length || bulk) return;
-  bulk = true;
-  renderDownloadAll();
-  try {
-    await download(ids);
-  } finally {
-    bulk = false;
-    renderGames();
-  }
-}
-
 $('games').addEventListener('click', (event) => {
   const tile = event.target.closest('[data-download]');
   if (tile && tile.getAttribute('aria-disabled') !== 'true') download([tile.dataset.download]);
@@ -322,8 +299,6 @@ document.addEventListener('click', (event) => {
   const link = event.target.closest('a[data-play]');
   if (link) countPlay(link.dataset.play);
 });
-
-$('downloadAllBtn').addEventListener('click', downloadAll);
 
 /* ---------- Host ---------- */
 
@@ -385,11 +360,8 @@ function renderStatus() {
     $('prepareText').textContent = failedNow ? t('status.failedHint') : t('status.downloadingHint');
   }
 
-  $('factVersion').textContent = s.version || '—';
-  $('factOffline').textContent = s.state === 'ready' ? t('settings.offlineReady') : statusText();
+  $('factVersion').textContent = s.release || '—';
   $('factGames').textContent = manifest ? `${onDevice.size} / ${registry.length}` : '—';
-  $('factPersisted').textContent =
-    persisted == null ? t('settings.unsupported') : persisted ? t('common.yes') : t('common.no');
 }
 
 function renderGhosts() {
@@ -440,7 +412,7 @@ function renderView() {
   if (changed && view === 'home') renderGames();
 }
 
-/* ---------- Language ---------- */
+/* ---------- Language and sound ---------- */
 
 function renderLang() {
   for (const b of document.querySelectorAll('[data-lang]')) {
@@ -448,9 +420,14 @@ function renderLang() {
   }
 }
 
+function renderSound() {
+  $('soundToggle').checked = soundOn();
+}
+
 function renderAll() {
   localize();
   renderLang();
+  renderSound();
   renderView();
   renderStatus();
   renderGames();
@@ -463,12 +440,14 @@ for (const b of document.querySelectorAll('[data-lang]')) {
   });
 }
 
+$('soundToggle').addEventListener('change', (event) => setSoundOn(event.target.checked));
+
 /* ---------- Settings ---------- */
 
 const settings = setupSheet($('settings'));
 $('openSettings').addEventListener('click', () => {
   $('savesMsg').textContent = '';
-  $('updateMsg').textContent = '';
+  setCheck(updateWaiting ? 'available' : 'idle');
   renderStatus();
   openSheet(settings);
 });
@@ -543,11 +522,11 @@ $('importFile').addEventListener('change', async (event) => {
   }
 });
 
-/** The settings button grows to the left into an Update pill while a new version waits. */
+/** While a new version waits, the settings button turns into a white Update button in its place. */
 function renderUpdate() {
   const show = updateWaiting && document.body.dataset.view === 'home';
   $('reloadBtn').hidden = !show;
-  $('barActions').classList.toggle('has-update', show);
+  $('openSettings').hidden = show;
 }
 
 function showUpdate() {
@@ -556,19 +535,31 @@ function showUpdate() {
   renderGames();
 }
 
-$('checkUpdateBtn').addEventListener('click', async () => {
-  const msg = $('updateMsg');
+// Settings' check button answers in its own label, with no message under it: "No updates", or it
+// turns white and says Update, and then a tap reloads into the new version.
+const CHECK_LABELS = {
+  idle: 'settings.check',
+  checking: 'settings.checking',
+  current: 'settings.noUpdates',
+  unreachable: 'settings.unreachable',
+  failed: 'settings.updateFailed',
+  available: 'update.action',
+};
+
+function setCheck(state) {
   const btn = $('checkUpdateBtn');
-  btn.disabled = true;
-  msg.textContent = t('settings.checking');
+  btn.dataset.state = state;
+  btn.dataset.i18n = CHECK_LABELS[state]; // so a language switch keeps the answer
+  btn.textContent = t(CHECK_LABELS[state]);
+  btn.disabled = state === 'checking';
+  btn.classList.toggle('btn-primary', state === 'available');
+}
+
+$('checkUpdateBtn').addEventListener('click', async () => {
+  if ($('checkUpdateBtn').dataset.state === 'available') return applyUpdate(reg);
+  setCheck('checking');
   const result = await checkForUpdate(reg);
-  btn.disabled = false;
-  msg.textContent = {
-    available: t('settings.updateReady'),
-    current: t('settings.upToDate'),
-    unreachable: t('settings.unreachable'),
-    failed: t('settings.updateFailed'),
-  }[result];
+  setCheck(result);
   if (result === 'available') showUpdate();
   checkHost();
 });
@@ -623,7 +614,8 @@ async function startApp() {
   // Quiet update check: fails silently while offline, which is a normal state.
   if (reg && navigator.serviceWorker.controller) reg.update().catch(() => {});
 
-  persisted = await ensurePersisted();
+  // Asks the browser to keep the caches and saves; nothing shows the answer.
+  await ensurePersisted();
   renderView();
   renderStatus();
   renderGames();

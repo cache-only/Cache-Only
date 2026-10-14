@@ -6,12 +6,16 @@
    draws its board or arena.
 
    Corner radii are concentric: an outer radius is the inner radius plus the inset between them.
-     24  pills, rows, text cards, the segmented control (20 segment + 4 padding)
-     38  a panel or sheet holding a control at its edge (24 + 14)
-     48  a card holding a panel (38 + 10)
+   Nothing is a pill or a circle: every button starts from the icon button's 8.
+      8  every button and control: icon buttons (their 9 x 9 pixel icon fills them, its corner
+         pixels dark), buttons, small buttons, number keys, side-menu rows, the segmented
+         control, the switch track, fields; and the rows and cards that sit beside them
+      4  a chip inset 4 inside a control: the selected segment (8 - 4)
+      5  the switch knob, inset 3 (8 - 3)
+     24  a sheet, holding its close button and buttons inset 16 (8 + 16)
+     18  a launcher game tile (8 art + 10), and the suggested game's panel (8 button + 10)
      26  a game board (16 tile + 10)
-     18  a launcher game tile (8 art + 10)
-     16  switch track, with its 13 knob inset 3; number keys */
+   Pixels (the logo's and the icons') are rounded squares of their own: 34% of a pixel. */
 
 :root {
   color-scheme: dark;
@@ -31,21 +35,19 @@
   --glass-line-strong: rgba(255, 255, 255, 0.22);
   --hairline: rgba(255, 255, 255, 0.08);
   --panel: rgba(24, 24, 24, 0.55); /* glass panel over art */
-  --sheet: rgba(21, 21, 21, 0.82);
+  --sheet: rgba(21, 21, 21, 0.4); /* a sheet is glass: it blurs what's behind, barely tinted */
   --blur: 20px;
   --blur-panel: 24px;
-  --blur-sheet: 30px;
+  --blur-sheet: 40px;
 
-  --r-pill: 24px;
-  --r-segment: 20px;
-  --r-panel: 38px;
-  --r-card: 48px;
+  --r-btn: 8px;
+  --r-chip: 4px;
+  --r-sheet: 24px;
   --r-board: 26px;
   --r-board-tile: 16px;
   --r-game-tile: 18px;
   --r-game-art: 8px;
-  --r-key: 16px;
-  --r-pixel: 22%;
+  --r-pixel: 34%;
 
   /* The 2048 scale (also drawn by the launcher's tile art): grey steps from the board up to
      white, then rings, then inverted. */
@@ -81,6 +83,8 @@
   --bar-total: calc(var(--bar-top) + 44px);
   --rail-w: 0px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-blur: 0.24s; /* blur in and blur out (Motion, below) */
+  --blur-fade: 8px;
 }
 
 /* In landscape the launcher's header becomes a rail down the right edge. Game pages have no rail
@@ -182,15 +186,13 @@ button {
   white-space: nowrap;
 }
 
+/* A pixel icon from shared/icons.js: <svg class="icon"><use href="#i-name"/></svg>. */
 .icon {
   width: 20px;
   height: 20px;
   flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
+  stroke: none;
 }
 
 /* ---------- Type ---------- */
@@ -247,7 +249,7 @@ button {
   min-width: 48px;
   padding: 0 22px;
   border: 1px solid var(--glass-line-strong);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--glass);
   -webkit-backdrop-filter: blur(var(--blur));
   backdrop-filter: blur(var(--blur));
@@ -304,7 +306,7 @@ button {
   background: var(--ink);
 }
 
-/* Small: a 32 pill in a section header, next to a 12px label. Its tap area stays 44 tall. */
+/* Small: a 32 tall button in a section header, next to a 12px label. Its tap area stays 44 tall. */
 .btn-small {
   display: inline-flex;
   align-items: center;
@@ -321,7 +323,7 @@ button {
   gap: 6px;
   height: 32px;
   padding: 0 14px;
-  border-radius: 16px;
+  border-radius: var(--r-btn);
   background: var(--ink);
   color: var(--on-ink);
   font: 650 13px/1 var(--font-sans);
@@ -331,10 +333,11 @@ button {
 .btn-small .icon {
   width: 14px;
   height: 14px;
-  stroke-width: 2.2;
 }
 
-/* Icon: a 44 glass circle. Home, settings, close, and the moves under a board. */
+/* Icon: a 44 glass rounded square. Home, settings, close, and the moves under a board. Its 9 x 9
+   pixel icon fills it to one pixel gap from the edge, so the icon's corner pixels (always dark)
+   would fall outside the corners. */
 .icon-btn {
   display: inline-grid;
   place-items: center;
@@ -343,13 +346,18 @@ button {
   height: var(--tap);
   padding: 0;
   border: 1px solid var(--glass-line);
-  border-radius: 22px;
+  border-radius: var(--r-btn);
   background: var(--glass);
   -webkit-backdrop-filter: blur(var(--blur));
   backdrop-filter: blur(var(--blur));
   color: var(--ink);
   text-decoration: none;
   cursor: pointer;
+}
+
+.icon-btn .icon {
+  width: 40px;
+  height: 40px;
 }
 
 .icon-btn:active,
@@ -391,7 +399,7 @@ button {
   justify-items: center;
 }
 
-/* Number keys: flat cards, radius 16. */
+/* Number keys: flat cards, radius 8 like every button. */
 .keypad {
   flex: none;
   display: grid;
@@ -403,7 +411,7 @@ button {
   height: 56px;
   padding: 0;
   border: 0;
-  border-radius: var(--r-key);
+  border-radius: var(--r-btn);
   background: var(--card);
   color: var(--ink);
   font: 650 24px/1 var(--font-sans);
@@ -442,7 +450,7 @@ button {
   grid-auto-columns: minmax(0, 1fr);
   gap: 4px;
   padding: 4px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--card);
 }
 
@@ -451,7 +459,7 @@ button {
   height: 40px;
   padding: 0 8px;
   border: 0;
-  border-radius: var(--r-segment);
+  border-radius: var(--r-chip);
   background: none;
   color: var(--muted);
   font: 600 14px/1 var(--font-sans);
@@ -472,7 +480,14 @@ button {
   font-weight: 650;
 }
 
-/* Switch: track 16, knob 13 inset 3. */
+/* More choices than fit in a row (Tanks' test range picks one of a dozen enemy kinds): the same
+   control in rows of six. Its corners stay 8 = 4 segment + 4 padding. */
+.segmented.is-grid {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+/* Switch: track 8, knob 5 inset 3. */
 .switch {
   appearance: none;
   -webkit-appearance: none;
@@ -482,7 +497,7 @@ button {
   height: 32px;
   margin: 0;
   border: 0;
-  border-radius: 16px;
+  border-radius: var(--r-btn);
   background: var(--quiet);
   cursor: pointer;
 }
@@ -494,7 +509,7 @@ button {
   left: 3px;
   width: 26px;
   height: 26px;
-  border-radius: 13px;
+  border-radius: calc(var(--r-btn) - 3px);
   background: var(--ink);
   transition: transform 0.15s var(--ease);
 }
@@ -508,12 +523,28 @@ button {
   transform: translateX(20px);
 }
 
+/* Toggle row: a setting's name on the left and its switch on the right, in the segmented
+   control's box (48 tall, radius 8), the switch inset 8 like a side-menu row's. The row is the
+   switch's label, so a tap anywhere on it flips it. */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 8px 0 18px;
+  border-radius: var(--r-btn);
+  background: var(--card);
+  font-size: 15px;
+  cursor: pointer;
+}
+
 .field {
   width: 100%;
   min-height: 7.5em;
   padding: 14px 18px;
   border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--card);
   color: var(--ink);
   font: 500 16px/1.5 var(--font-mono);
@@ -534,7 +565,7 @@ button {
 
 /* Card: flat. Lists, facts, rows. */
 .card {
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--card);
 }
 
@@ -546,16 +577,16 @@ button {
   backdrop-filter: blur(var(--blur));
 }
 
-/* Panel: glass over art, holding a control at its edge: 38 = 24 + 14. */
+/* Panel: glass over art, shaped like a game tile (18 = 8 + 10): its button sits inset 10 with the
+   tile art's radius 8, and its text starts where a tile's title does. */
 .panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 78px;
-  padding: 14px 14px 14px 24px;
+  padding: 10px 10px 10px 18px;
   border: 1px solid var(--glass-line);
-  border-radius: var(--r-panel);
+  border-radius: var(--r-game-tile);
   background: var(--panel);
   -webkit-backdrop-filter: blur(var(--blur-panel));
   backdrop-filter: blur(var(--blur-panel));
@@ -563,6 +594,10 @@ button {
 
 .panel-text {
   min-width: 0;
+}
+
+.panel .btn {
+  border-radius: var(--r-game-art);
 }
 
 /* A glass row in a list (install steps). */
@@ -573,7 +608,7 @@ button {
   min-height: 60px;
   padding: 10px 18px;
   border: 1px solid var(--glass-line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--glass);
   -webkit-backdrop-filter: blur(var(--blur));
   backdrop-filter: blur(var(--blur));
@@ -598,7 +633,7 @@ button {
   gap: 6px;
   padding: 18px 20px;
   border: 1px solid var(--glass-line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--panel);
   -webkit-backdrop-filter: blur(var(--blur-panel));
   backdrop-filter: blur(var(--blur-panel));
@@ -614,7 +649,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   margin: 0;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-btn);
   background: var(--card);
   font-size: 15px;
 }
@@ -716,14 +751,15 @@ button {
 
 /* ---------- The logo, pixel by pixel ---------- */
 
-/* The 10 x 13 mark as a grid of rounded squares (shared/logo.js), so each pixel can come into
-   focus on its own: progress is pixels going from a blurred grey to sharp white. */
+/* The 11 x 13 mark as a grid of rounded squares (shared/logo.js), so each pixel can come into
+   focus on its own: progress is pixels going from a blurred grey to sharp white. A pixel is 3/4
+   of the pitch and the gap 1/4, so 11 pixels and 10 gaps are 43 gaps wide. */
 .logo {
   --logo-w: 22px;
   --logo-haze: 1.5px;
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: calc(var(--logo-w) / 40);
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: calc(var(--logo-w) / 43);
   width: var(--logo-w);
   flex: none;
 }
@@ -743,15 +779,14 @@ button {
   filter: blur(var(--logo-haze));
 }
 
-.logo-md { --logo-w: 24px; --logo-haze: 1.5px; gap: 0.7px; }
-.logo-lg { --logo-w: 150px; --logo-haze: 3px; gap: 3px; }
-.logo-xs { --logo-w: 14px; gap: 0.4px; }
+.logo-md { --logo-w: 24px; --logo-haze: 1.5px; }
+.logo-lg { --logo-w: 150px; --logo-haze: 3px; }
+.logo-xs { --logo-w: 14px; }
 
 /* The same mark, all white and blurred hard: a soft glow behind a big logo. */
 .logo-glow {
   position: absolute;
   z-index: 0;
-  gap: 5px;
   filter: blur(46px);
   opacity: 0.4;
   pointer-events: none;
@@ -808,7 +843,9 @@ button {
 
 .bar-stats {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 16px;
   margin-left: auto;
 }
 
@@ -832,6 +869,44 @@ button {
   font: 750 17px/1.1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Meters right under the stats: one small icon per thing you hold (a game's shells, its mines),
+   filled while it's ready and hollow while it's in use. A row in portrait; in a landscape game
+   header each meter runs down the right edge. */
+.stat-meters {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.meter {
+  display: flex;
+  gap: 1px;
+}
+
+.meter .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* An icon with two states: .full (a solid shape) and .empty (its outline, a pixel icon of its
+   own such as #i-shell-empty). Put .is-used on the svg to show the outline. */
+.slot .empty {
+  display: none;
+}
+
+.slot.is-used .full {
+  display: none;
+}
+
+.slot.is-used .empty {
+  display: inline;
+}
+
+.meter .slot.is-used {
+  color: var(--muted);
 }
 
 @media (orientation: landscape) {
@@ -887,8 +962,16 @@ button {
   }
   .game-page .bar-stats {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: flex-end;
     gap: 14px;
+  }
+  .game-page .stat-meters {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .game-page .meter {
+    flex-direction: column;
   }
 }
 
@@ -1014,14 +1097,13 @@ button {
 /* ---------- Side menu (a game's home button) ---------- */
 
 /* A list of choices down the left edge, over the page blurred hardest at that edge and sharp
-   again toward the right. The header stays on top, so the home button that opened it (which
-   keeps its icon) closes it again. Opening it pauses the game. shared/ui.js runs it. */
+   again toward the right. As it opens, the home button that opened it blurs out, and it blurs
+   back in as the menu closes (Resume, or a tap beside the list). The blur covers the whole
+   screen, the header's strip too, so it never stops short under the home button; the list starts
+   under the header. Opening it pauses the game. shared/ui.js runs it. */
 .side-menu {
   position: fixed;
-  top: var(--bar-total);
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 9;
   color: var(--ink);
 }
@@ -1048,7 +1130,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 14px 0 calc(var(--safe-b) + 16px) calc(var(--safe-l) + 6px);
+  padding: calc(var(--bar-total) + 14px) 0 calc(var(--safe-b) + 16px) calc(var(--safe-l) + 6px);
   opacity: 0;
   transform: translateX(-18px);
   transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
@@ -1061,10 +1143,6 @@ button {
   transform: none;
 }
 
-.side-menu-title {
-  padding: 0 12px 8px;
-}
-
 .side-item {
   display: flex;
   align-items: center;
@@ -1072,7 +1150,7 @@ button {
   min-height: 52px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--r-key);
+  border-radius: var(--r-btn);
   background: none;
   color: var(--ink);
   font: 700 19px/1.15 var(--font-display);
@@ -1100,12 +1178,8 @@ button {
   margin-top: 10px;
 }
 
-/* Landscape: the blur covers the whole screen and the list starts under the home button in the
-   top-left corner (which stays on top, so it still closes the menu). */
+/* Landscape: the list starts under the home button's spot in the top-left corner. */
 @media (orientation: landscape) {
-  .side-menu {
-    top: 0;
-  }
   .side-menu-list {
     padding: calc(max(var(--safe-t), 16px) + 56px) 0 calc(var(--safe-b) + 16px) calc(var(--safe-l) + 6px);
   }
@@ -1113,8 +1187,8 @@ button {
 
 /* ---------- Sheets ---------- */
 
-/* Content (settings, confirmations, results): glass from the bottom, top corners 38, padding 16,
-   a 44 close button at the top right (22 + 16 = 38). A sheet that belongs to the game state
+/* Content (settings, confirmations, results): glass from the bottom, top corners 24, padding 16,
+   a 44 close button at the top right (8 + 16 = 24). A sheet that belongs to the game state
    (a start screen or a result) is "docked": opened with show() instead of showModal(), so the
    header and its side menu still work around it. */
 dialog.sheet {
@@ -1129,7 +1203,7 @@ dialog.sheet {
   padding: 16px calc(var(--safe-r) + 16px) calc(var(--safe-b) + 21px) calc(var(--safe-l) + 16px);
   border: 0;
   border-top: 1px solid var(--glass-line);
-  border-radius: var(--r-panel) var(--r-panel) 0 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   background: var(--sheet);
   -webkit-backdrop-filter: blur(var(--blur-sheet));
   backdrop-filter: blur(var(--blur-sheet));
@@ -1139,7 +1213,12 @@ dialog.sheet {
 }
 
 dialog.sheet::backdrop {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* On a glass sheet, flat surfaces turn to glass too, so nothing on it reads as a solid block. */
+dialog.sheet :is(.segmented, .toggle-row, .card, .facts, .field) {
+  background: var(--glass);
 }
 
 dialog.sheet[open] {
@@ -1274,84 +1353,64 @@ dialog.sheet[open] {
   margin-right: -2px;
 }
 
-/* Settings, and an update waiting for a reload. The settings circle grows to the left into a
-   44 glass pill that holds a white Update pill: 36 tall, inset 4, so radius 18 + 4 = 22. */
+/* Settings, and an update waiting for a reload. While one waits, the settings button turns white
+   in place: the update icon takes the settings icon's spot (40 in a 44 square) and "Update" grows
+   out to its left. It's the screen's one primary. */
 .bar-actions {
   flex: none;
   display: flex;
   align-items: center;
-  border-radius: 22px;
-}
-
-.bar-actions.has-update {
-  border: 1px solid var(--glass-line);
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--blur));
-  backdrop-filter: blur(var(--blur));
-}
-
-.bar-actions.has-update .icon-btn {
-  width: 42px;
-  height: 42px;
-  border: 0;
-  background: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.bar-actions.has-update .icon-btn:active {
-  background: var(--glass-press);
 }
 
 .bar-update {
   display: inline-flex;
   align-items: center;
-  height: 42px;
-  overflow: hidden;
-  padding: 0 0 0 3px;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  animation: bar-grow 240ms ease-out;
-}
-
-.bar-update > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 14px 0 11px;
-  border-radius: 18px;
+  flex: none;
+  height: var(--tap);
+  padding: 0 1px;
+  border: 1px solid var(--ink);
+  border-radius: var(--r-btn);
   background: var(--ink);
   color: var(--on-ink);
-  font: 650 13px/1 var(--font-sans);
+  font: 650 16px/1 var(--font-sans);
   white-space: nowrap;
+  cursor: pointer;
+  animation: bar-tint 240ms ease-out;
 }
 
-.bar-update:active > span {
+.bar-update:active {
+  border-color: #d6d6d6;
   background: #d6d6d6;
 }
 
-.bar-update .icon {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2.2;
+/* The same room on both sides of the label: the update glyph starts about 5 inside its icon box. */
+.bar-update-label {
+  overflow: hidden;
+  padding-left: 8px;
+  margin-right: 5px;
+  animation: bar-grow 240ms ease-out;
 }
 
-@keyframes bar-grow-down {
+.bar-update .icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+/* From the settings button's glass to white. */
+@keyframes bar-tint {
   from {
-    max-height: 0;
-    opacity: 0;
-  }
-  to {
-    max-height: 60px;
-    opacity: 1;
+    border-color: var(--glass-line);
+    background: var(--glass);
+    color: var(--ink);
   }
 }
 
 @keyframes bar-grow {
   from {
     max-width: 0;
+    padding-left: 0;
+    margin-right: 0;
     opacity: 0;
   }
   to {
@@ -1367,7 +1426,7 @@ dialog.sheet[open] {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px; /* the suggested game sits as far above the grid as the tiles sit apart */
   padding: calc(var(--bar-total) + 22px) calc(var(--safe-r) + 16px) calc(var(--safe-b) + 72px) calc(var(--safe-l) + 16px);
 }
 
@@ -1411,15 +1470,6 @@ dialog.sheet[open] {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: var(--tap);
-  padding-left: 4px;
 }
 
 .games {
@@ -1592,7 +1642,6 @@ dialog.sheet[open] {
 }
 
 .intro-mark .logo-glow {
-  width: 240px;
   --logo-w: 240px;
 }
 
@@ -1646,21 +1695,8 @@ dialog.sheet[open] {
   }
   .launcher .bar .bar-actions {
     order: -1;
-    flex-direction: column-reverse;
   }
-  /* The rail is narrow, so there the pill grows down instead, with the icon only. */
-  .bar-update {
-    width: 42px;
-    height: auto;
-    padding: 0 0 3px;
-    justify-content: center;
-    animation-name: bar-grow-down;
-  }
-  .bar-update > span {
-    width: 36px;
-    padding: 0;
-    justify-content: center;
-  }
+  /* The rail is narrow: there the white button keeps the settings button's square, icon only. */
   .bar-update-label {
     display: none;
   }
@@ -1672,7 +1708,6 @@ dialog.sheet[open] {
   }
   .bar-logo .logo {
     --logo-w: 24px;
-    gap: 0.7px;
   }
   .home {
     max-width: none;
@@ -1841,6 +1876,7 @@ dialog.sheet[open] {
 }
 
 .art-arena {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(20, minmax(0, 1fr));
   gap: max(1px, 0.5cqi);
@@ -1853,8 +1889,32 @@ dialog.sheet[open] {
 }
 
 .art-arena > .is-wall { background: #5a5a5a; }
-.art-arena > .is-you { background: var(--ink); }
-.art-arena > .is-enemy { background: #9a9a9a; }
+
+/* The tanks, drawn over the arena in cells (one SVG unit each). */
+.art-tanks-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.art-tank {
+  --tank-tread: #4a4a4a;
+  --tank-hull: #8f8f8f;
+  --tank-top: #b5b5b5;
+}
+
+.art-tank.is-you {
+  --tank-tread: #7a7a7a;
+  --tank-hull: #cfcfcf;
+  --tank-top: var(--ink);
+}
+
+.art-tread { fill: var(--tank-tread); }
+.art-hull { fill: var(--tank-hull); }
+.art-barrel,
+.art-turret { fill: var(--tank-top); }
 
 .art-pixels {
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1883,6 +1943,28 @@ dialog.sheet[open] {
 }
 
 /* ---------- Motion ---------- */
+
+/* Blur out and blur in: the one way something steps away and comes back in place. Blur out fades
+   it while it goes soft, and leaves it untouchable; blur in brings it back sharp. blurOut() and
+   blurIn() in shared/ui.js swap the classes. */
+@keyframes blur-out {
+  from { opacity: 1; filter: blur(0); }
+  to { opacity: 0; filter: blur(var(--blur-fade)); }
+}
+
+@keyframes blur-in {
+  from { opacity: 0; filter: blur(var(--blur-fade)); }
+  to { opacity: 1; filter: blur(0); }
+}
+
+.blur-out {
+  animation: blur-out var(--t-blur) var(--ease) both;
+  pointer-events: none;
+}
+
+.blur-in {
+  animation: blur-in var(--t-blur) var(--ease) both;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

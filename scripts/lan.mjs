@@ -12,6 +12,7 @@
 //
 //   npm run lan                # build, then serve
 //   npm run lan -- --no-build  # serve the current dist/
+//   npm run lan --stop         # stop a running server, from any terminal
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
@@ -163,12 +164,45 @@ function setupServer(appUrl) {
 function listen(server, port, label) {
   return new Promise((resolve) => {
     server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') console.error(`Port ${port} (${label}) is already in use. Is another server running?`);
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${port} (${label}) is already in use. Is another server running? \`npm run lan --stop\` stops an earlier one.`);
+      }
       else console.error(err);
       process.exit(1);
     });
     server.listen(port, '0.0.0.0', resolve);
   });
+}
+
+const alive = (pid) => {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+};
+
+// Stops whatever this script left listening on its ports, even from another terminal. A process
+// on those ports that isn't this script is left alone.
+async function stopServer() {
+  const pids = new Set();
+  for (const port of [PORT, SETUP_PORT]) {
+    const r = spawnSync('lsof', ['-t', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+    for (const pid of (r.stdout || '').split('\n').filter(Boolean)) pids.add(Number(pid));
+  }
+  if (!pids.size) return console.log('No LAN server is running.');
+  for (const pid of pids) {
+    const command = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim();
+    if (!command?.includes('scripts/lan.mjs')) {
+      console.log(`Left pid ${pid} alone: it isn't the LAN server (${command || 'unknown'}).`);
+      continue;
+    }
+    process.kill(pid, 'SIGTERM');
+    for (let i = 0; i < 30 && alive(pid); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    console.log(alive(pid) ? `The LAN server (pid ${pid}) didn't stop. Try \`kill -9 ${pid}\`.` : `Stopped the LAN server (pid ${pid}).`);
+  }
+}
+
+// npm keeps `npm run lan --stop` for itself and hands it over as npm_config_stop.
+if (process.argv.includes('--stop') || process.env.npm_config_stop === 'true') {
+  await stopServer();
+  process.exit(0);
 }
 
 if (!process.argv.includes('--no-build')) {

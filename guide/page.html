@@ -163,7 +163,7 @@
   .part-row p { font-size: 13.5px; color: var(--muted); max-width: 60ch; }
   .tiles { display: flex; flex-wrap: wrap; gap: 10px; }
   .tile { display: grid; gap: 4px; justify-items: start; width: min-content; }
-  .tile canvas { display: block; border: 2px solid var(--tk-frame); border-radius: 2px; background: var(--tk-floor); max-width: 100%; }
+  .tile canvas { display: block; border: 2px solid var(--tk-frame); border-radius: 2px; background: var(--tk-floor); }
   .tile span { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
   .tile span b { color: var(--text); font-weight: 600; }
   .actual { display: grid; gap: 8px; align-content: start; }
@@ -207,6 +207,7 @@
   .tag { display: inline-block; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 4px; margin-right: 5px; border-radius: 2px; background: var(--tk-fire); color: var(--chip-dark); vertical-align: 1px; }
   .tag.missile { background: var(--tk-alarm); color: var(--chip-light); }
   .tag.bomb { background: var(--tk-olive); color: var(--chip-light); }
+  .tag.minigun { background: var(--tk-lime); color: var(--chip-dark); }
   tr.you th, tr.you td { background: var(--you); }
   tr.you .stick { background: linear-gradient(var(--you), var(--you)), var(--surface); }
   tbody tr:not(.you):hover td, tbody tr:not(.you):hover th { background: var(--surface-2); }
@@ -391,7 +392,7 @@
 <main class="wrap">
   <section id="enemies">
     <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · in order of appearance</span></header>
-    <p class="intro">Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up.</p>
+    <p class="intro">Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up; a kind in no mission yet says Test, and you can try it on the test range (the Test button on the game's start sheet).</p>
     <div class="roster" id="roster"></div>
   </section>
 
@@ -669,17 +670,18 @@ function dotted(ctx, P, pts, alpha = 0.5) {
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 }
-/** A shot drawn along `a`, with its smoke behind it on `path`: thick for rockets and missiles, faint for shells. */
+/** A shot drawn along `a`, with its smoke behind it on `path`: thick for rockets and missiles, faint for shells, fainter for minigun rounds. */
 function shotAt(ctx, P, weapon, path, d) {
   const p = pointAt(path, d);
   const heavy = weapon === 'rocket' || weapon === 'missile';
-  for (const k of heavy ? [0.34, 0.58, 0.86, 1.18] : [0.22, 0.4, 0.6]) {
+  const round = weapon === 'minigun';
+  for (const k of heavy ? [0.34, 0.58, 0.86, 1.18] : round ? [0.18, 0.32] : [0.22, 0.4, 0.6]) {
     if (d - k < 0) continue;
     const q = pointAt(path, d - k);
-    ctx.globalAlpha = heavy ? 0.5 * (1 - k / 1.45) : 0.32 * (1 - k / 0.8);
+    ctx.globalAlpha = heavy ? 0.5 * (1 - k / 1.45) : round ? 0.26 * (1 - k / 0.5) : 0.32 * (1 - k / 0.8);
     ctx.fillStyle = P.smoke;
     ctx.beginPath();
-    ctx.arc(q.x, q.y, heavy ? (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07 : 0.035 + k * 0.05, 0, PI * 2);
+    ctx.arc(q.x, q.y, heavy ? (weapon === 'missile' ? 0.04 : 0.05) + k * 0.07 : round ? 0.03 + k * 0.04 : 0.035 + k * 0.05, 0, PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -698,7 +700,7 @@ function shotPath(sc, x, y, a) {
     let t = Infinity;
     if (vy < 0 && sc.top != null) t = (sc.top - y) / vy;
     if (vy > 0 && sc.bottom != null) t = (sc.bottom - y) / vy;
-    const tx = vx > 0 ? (SW + 0.6 - x) / vx : Infinity;
+    const tx = vx > 0 ? (SW + 0.6 - x) / vx : vx < 0 ? (-0.6 - x) / vx : Infinity;
     if (tx <= t) { pts.push([x + vx * tx, y + vy * tx]); break; }
     x += vx * t; y += vy * t;
     pts.push([x, y]);
@@ -779,6 +781,22 @@ function drawScene(canvas, kind) {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
+  if (sc.blast) {
+    // How far a mine's blast reaches.
+    ctx.fillStyle = P.aim;
+    ctx.globalAlpha = 0.07;
+    ctx.beginPath();
+    ctx.arc(sc.blast[0], sc.blast[1], DATA.blastR, 0, 2 * PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = P.aim;
+    ctx.lineWidth = 0.05;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.02, 0.2]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
   if (t.mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, { x: mx, y: my }, kind, 'on', MINE_SHADOW);
 
   const ox = x + Math.cos(sc.turret) * MUZZLE;
@@ -793,6 +811,7 @@ function drawScene(canvas, kind) {
   } else if (sc.bank) {
     dotted(ctx, P, path);
   }
+  if (!target && sc.you) target = { type: 'player', x: sc.you[0], y: sc.you[1], body: 0, turret: -0.4 };
   let bomb = null;
   if (sc.lob) {
     bomb = { x0: x, y0: y, tx: sc.lob.to[0], ty: sc.lob.to[1], t: sc.lob.k * DATA.bombFlight, flight: DATA.bombFlight };
@@ -812,8 +831,13 @@ function drawScene(canvas, kind) {
     drawTank(ctx, P, target, {});
   }
   drawTankShadow(ctx, P, tank, SHADOW, alpha);
-  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, alpha });
+  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, roll: sc.roll || 0, alpha });
   for (const d of sc.shots) shotAt(ctx, P, t.weapon, path, d);
+  // A minigun's stream: each round on its own line, a little either side of the turret's.
+  for (const [d, off] of sc.spray || []) {
+    const a = sc.turret + off;
+    shotAt(ctx, P, t.weapon, [[ox, oy], [ox + Math.cos(a) * SW, oy + Math.sin(a) * SW]], d);
+  }
   if (bomb) drawBomb(ctx, P, bomb, UP);
 }
 /**
@@ -848,13 +872,13 @@ function drawMap(canvas, rows, { hover = null, marks = [] } = {}) {
   }
 }
 /** One tank on a small patch of floor, cols x rows cells, cell px CSS pixels per cell. */
-function drawTile(canvas, kind, { cols = 2, rows = 1.6, cell = 46, turret = -0.5, body = 0, mines, lit = false } = {}) {
+function drawTile(canvas, kind, { cols = 2, rows = 1.6, cell = 46, turret = -0.5, body = 0, mines, lit = false, roll = 0 } = {}) {
   const { ctx, px } = fixed(canvas, cols * cell, rows * cell, cols);
   const P = palette();
   drawGround(ctx, P, { cols: Math.ceil(cols), rows: Math.ceil(rows), kindAt: () => FLOOR, px });
   const t = { type: kind, x: cols / 2 - 0.04, y: rows / 2, body, turret };
   drawTankShadow(ctx, P, t, SHADOW);
-  drawTank(ctx, P, t, { mines: mines ?? T[kind].mines, lit });
+  drawTank(ctx, P, t, { mines: mines ?? T[kind].mines, lit, roll });
 }
 
 /* ---------- Canvas registry: redraw on resize and theme change ---------- */
@@ -897,7 +921,7 @@ document.getElementById('yours').append(
 );
 
 /* ---------- Roster ---------- */
-const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb' };
+const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb', minigun: 'Minigun' };
 const roster = document.getElementById('roster');
 for (const k of KINDS) {
   const t = T[k];
@@ -908,7 +932,9 @@ for (const k of KINDS) {
     h('header', { class: 'card-head' },
       chip(k, 'lg'),
       h('div', { class: 'card-title' }, h('h3', {}, info.name), h('p', { class: 'role' }, info.role)),
-      h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}: ${DATA.names[FIRST[k] - 1]}` }, `M${pad(FIRST[k])}`),
+      FIRST[k]
+        ? h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}: ${DATA.names[FIRST[k] - 1]}` }, `M${pad(FIRST[k])}`)
+        : h('span', { class: 'gate', title: 'In no mission yet: try it on the test range' }, 'Test'),
     ),
     h('div', { class: 'scene' }, canvas),
     h('div', { class: 'card-body' },
@@ -932,8 +958,8 @@ const kindName = (k) => (k === 'player' ? 'You' : INFO[k].name);
 const PARTS = [
   {
     title: 'Barrel: what it fires',
-    text: 'A thin barrel fires shells. A thick one with a fire-orange band fires rockets, which are fast and leave smoke. Twin launch pods fire guided missiles, and their light is lit while one is in the air. A wide round tube with no barrel lobs mortar bombs over walls.',
-    tiles: [['ash', 'Shell'], ['marine', 'Rocket'], ['red', 'Missile', { lit: true }], ['olive', 'Mortar']],
+    text: 'A thin barrel fires shells. A barrel that ends in a muzzle brake, a wide double block across its tip, fires rockets, which are fast and leave smoke. Twin launch pods fire guided missiles, and their light is lit while one is in the air. A wide round tube with no barrel lobs mortar bombs over walls. A bundle of six barrels on a motor housing is a minigun: the barrels spin up before it fires, so watch them start to turn.',
+    tiles: [['ash', 'Shell'], ['marine', 'Rocket'], ['red', 'Missile', { lit: true }], ['olive', 'Mortar'], ['lime', 'Minigun', { roll: 0.45 }]],
   },
   {
     title: 'Treads or a pad: whether it moves',
@@ -942,8 +968,8 @@ const PARTS = [
   },
   {
     title: 'Rear deck: mines',
-    text: 'One disc for each mine it can have on the ground. A disc empties while its mine is down, so you can count what it has left.',
-    tiles: [['pink', 'No mines'], ['violet', '2 mines'], ['yellow', '4 mines'], ['yellow', '2 of 4 laid', { mines: 2 }]],
+    text: 'One disc for each mine it can have on the ground. A disc empties while its mine is down, so you can count what it has left. Only Yellow, Hornet and your own tank carry mines.',
+    tiles: [['pink', 'No mines'], ['yellow', `${T.yellow.mines} mines`], ['hornet', `${T.hornet.mines} mines`], ['hornet', `1 of ${T.hornet.mines} laid`, { mines: T.hornet.mines - 1 }]],
   },
 ];
 document.getElementById('parts').append(...PARTS.map((part) => {
@@ -962,21 +988,22 @@ document.getElementById('actual').append(...['player', ...KINDS].map((kind) => {
 document.getElementById('swatches').append(
   ...['player', ...KINDS].map((kind) => {
     const c = DATA.colours[kind];
-    return h('div', { class: 'swatch' }, chip(kind), h('span', {}, kindName(kind)),
+    const base = DATA.variants[kind];
+    return h('div', { class: 'swatch' }, chip(kind), h('span', {}, base ? `${kindName(kind)} · ${kindName(base)}’s colour, with stripes` : kindName(kind)),
       h('code', {}, c.dark !== c.light ? `${c.light} · dark ${c.dark}` : c.light));
   }),
   ...[['player', 'Your blue family'], ['fire', 'Fire orange: explosions and flames'], ['crate', 'Crate grey: a tank must never pass for a crate']].map(([key, label]) =>
     h('div', { class: 'swatch' }, h('span', { class: 'off', style: `--c: ${DATA.offLimits[key]}`, 'aria-hidden': 'true' }), h('span', {}, `Off limits · ${label}`), h('code', {}, DATA.offLimits[key]))),
 );
 document.getElementById('plan').append(
-  h('p', {}, h('b', {}, 'Still free: '), 'sand, maroon, navy (kept clearly apart from your blue) and lime.'),
-  h('p', {}, h('b', {}, 'Past about 12 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue.'),
-  h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind and from the off-limits colours, and chip text that reads at 4.5:1 or better. The game is dark only, so each kind has one colour.'),
+  h('p', {}, h('b', {}, 'Still free: '), 'sand, maroon and navy (kept clearly apart from your blue).'),
+  h('p', {}, h('b', {}, 'Past about 12 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue. Hornet is the first: Yellow’s colour with hazard stripes.'),
+  h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind (a variant wears exactly its base kind’s colour instead) and from the off-limits colours, and chip text that reads at 4.5:1 or better. The game is dark only, so each kind has one colour.'),
 );
 
 /* ---------- Comparison board ---------- */
-const AIM_RANK = { sweep: 0, direct: 1, lob: 1.2, guided: 1.6, bank: 2 };
-const AIM_NAME = { sweep: 'Sweep', direct: 'Direct', bank: 'Bank', guided: 'Guided', lob: 'Lob' };
+const AIM_RANK = { sweep: 0, direct: 1, lob: 1.2, spray: 1.4, guided: 1.6, bank: 2 };
+const AIM_NAME = { sweep: 'Sweep', direct: 'Direct', bank: 'Bank', guided: 'Guided', lob: 'Lob', spray: 'Spray' };
 const aimText = (t) => {
   if (!t.aim) return 'You';
   let s = AIM_NAME[t.aim];
@@ -998,7 +1025,7 @@ const COLUMNS = [
   { key: 'react', group: 'Intelligence', label: 'Reacts', unit: 'in s', val: (t) => t.react ?? null, show: (v) => fmt(v, 2), bar: 'low' },
   { key: 'dodge', group: 'Intelligence', label: 'Dodges', unit: '% of shells', val: (t) => (t.dodge != null ? t.dodge * 100 : null), show: (v) => (v ? `${Math.round(v)}%` : 'Never'), bar: 'high' },
   { key: 'range', group: 'Intelligence', label: 'Keeps', unit: 'cells away', val: (t) => (t.range ? t.range[0] : null), low: true, text: (t) => (t.range ? `${t.range[0]}–${t.range[1]}` : t.aim ? 'Fixed' : '—') },
-  { key: 'first', group: 'Campaign', label: 'First', unit: 'mission', val: (t, k) => FIRST[k] ?? null, low: true, text: (t, k) => (FIRST[k] ? `M${pad(FIRST[k])}` : '—') },
+  { key: 'first', group: 'Campaign', label: 'First', unit: 'mission', val: (t, k) => FIRST[k] ?? null, low: true, text: (t, k) => (FIRST[k] ? `M${pad(FIRST[k])}` : k === 'player' ? '—' : 'Test') },
   { key: 'total', group: 'Campaign', label: 'Tanks', unit: 'in campaign', val: (t, k) => TOTAL[k] ?? null, show: String },
 ];
 for (const c of COLUMNS) {
@@ -1011,6 +1038,8 @@ const barFrac = (c, v) => {
   if (v == null || !c.bar || v <= 0) return 0;
   return Math.min(1, c.bar === 'high' ? v / c.max : c.min / v);
 };
+// Kinds in no mission yet (test range only) sort after the rest.
+const firstOf = (k) => FIRST[k] ?? MISSIONS.length + 1;
 let sortKey = 'first';
 let sortFlip = 1;
 const board = document.getElementById('board');
@@ -1026,10 +1055,10 @@ function renderBoard() {
   const order = KINDS.slice().sort((a, b) => {
     const va = sortCol.val(T[a], a);
     const vb = sortCol.val(T[b], b);
-    if (va == null && vb == null) return FIRST[a] - FIRST[b];
+    if (va == null && vb == null) return firstOf(a) - firstOf(b);
     if (va == null) return 1;
     if (vb == null) return -1;
-    return dangerFirst(va, vb) * sortFlip || FIRST[a] - FIRST[b];
+    return dangerFirst(va, vb) * sortFlip || firstOf(a) - firstOf(b);
   });
   const ascending = (sortCol.low || sortCol.bar === 'low') === (sortFlip === 1);
 
@@ -1080,15 +1109,16 @@ renderBoard();
 /* ---------- Shared rules ---------- */
 const RULES = [
   ['Holds fire at the start.', ` No enemy shoots during the first ${DATA.opening} s of a mission, and each adds its own reaction time on top.`],
-  ['Never wastes a shot.', ' It traces the shot’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre. For a missile that is the straight line it leaves on.'],
-  ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself, and a mortar never aims at a spot near another enemy. A missile’s curve isn’t predicted, so one can still hit an ally.'],
-  ['Pauses on a new angle.', ' When it finds a new line of fire it waits its reaction time before shooting.'],
-  ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one.`],
+  ['Never wastes a shot.', ` It traces the shot’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre. For a missile that is the straight line it leaves on. A minigun is looser: it fires while its line passes within ${fmt(DATA.sprayR)} cells of you, and its rounds spread round that line.`],
+  ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself, or crosses a mine whose blast would reach one of them, and a mortar never aims at a spot near another enemy. A missile’s curve and a minigun’s spread aren’t predicted, so either can still hit an ally.'],
+  ['Pauses on a new angle.', ' When it finds a new line of fire it waits its reaction time before shooting. A minigun’s spin-up takes the place of that pause.'],
+  ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one, the nearer the more, and never runs or dodges onto another mine. Hornet keeps that distance only from your mines and from any about to go off; from its side’s other mines it keeps just clear of setting them off, and when one is about to blow it drives to the nearest cell out of reach.`],
   ['Keeps its distance.', ' Each mover has a preferred distance from you along the route. It closes in or backs off to stay there, and sometimes stops for a moment to size things up.'],
   ['Takes turns on the road.', ' Each mover claims the cell it is driving to, and no tank picks a cell another one stands in or has claimed. When two need the same way, the one with somewhere to be goes first (between equals, the one listed first in the map); the other steps out of its line, or backs ahead of it, and waits until it has passed.'],
   ['Never stays stuck.', ' A tank that keeps pushing for 0.4 s without covering 0.1 cells gives up on that cell for 2 s, backs off and chooses again. Before driving into a one-wide gap it lines up with the gap’s centre instead of clipping the corner.'],
-  ['Lays mines carefully.', ` Minelayers drop a mine only when 2 to 9 cells from you, never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine.`],
-  ['Dies to one hit,', ` like you. Shells that meet cancel out, missiles included. A mine blast (${fmt(DATA.blastR)} cells) or a landing bomb (${fmt(DATA.bombR)} cell) destroys every tank in reach, enemies included, and clears striped crates.`],
+  ['Lays mines, two ways.', ` Yellow drops one now and then, when 2 to 9 steps from you and never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine. Hornet lays them by plan on your way to it, never within ${fmt(DATA.blastR + 0.5)} cells of another enemy, 1.7 cells of another mine or a spot another Hornet means to use, and watches each from a lookout.`],
+  ['Shoots the mine, not you.', ' When you are beside a mine Hornet can see (yours included), it fires into the mine if the blast would still catch you when its shell gets there and would spare every enemy, mines that go off with it included. It aims that shot with a quarter of its usual spread.'],
+  ['Dies to one hit,', ` like you. Shells that meet cancel out, missiles and minigun rounds included. A mine blast (${fmt(DATA.blastR)} cells) or a landing bomb (${fmt(DATA.bombR)} cell) destroys every tank in reach, enemies included, and clears striped crates.`],
   ['Dodging is per shell.', ' The dodge figure is the share of shells a tank notices. The choice is fixed for each shell, so a shell it missed stays missed. Stationary tanks never dodge or flee.'],
   ['Reads your speed, not your stick.', ` Tanks that lead take your velocity averaged over the last moment (it settles in about ${fmt(DATA.velSmooth * 2, 2)} s), so twitching the stick doesn’t fool them but changing direction does. They know you can’t drive through walls.`],
 ];
@@ -1102,6 +1132,7 @@ const AIMS = [
   ['Bank', who('bank'), `Also looks for one-bounce shots by mirroring your position in every wall face, and picks the shot that needs the least turret turning.${doubleBank.length ? ` ${doubleBank.join(' and ')}, with more than one ricochet, also ${doubleBank.length > 1 ? 'try' : 'tries'} 160 directions for a two-bounce shot when nothing simpler works.` : ''}`],
   ['Guided', who('guided'), `Fires down a clear straight line, like Direct. The missile then steers itself: up to ${Math.round(deg(DATA.missileTurn))}° a second toward you for ${fmt(DATA.missileFuel, 0)} s, and only while you are within ${Math.round(deg(DATA.lock))}° of its nose.`],
   ['Lob', who('lob'), `Needs no line at all. It picks where you will be when the bomb lands ${fmt(DATA.bombFlight)} s later, adds a little scatter, and skips any spot closer than ${DATA.bombMin} cells, beyond ${DATA.bombMax}, or near another enemy.`],
+  ['Spray', who('spray'), `Turns straight at you and spins its barrels up (${fmt(DATA.spinUp)} s from rest) while it has a straight line on you. At full speed it fires every reload while its line passes within ${fmt(DATA.sprayR)} cells of you, each round a little off the line. Its turret slows as the barrels speed up, down to ${Math.round(deg(DATA.sprayTurn))}° a second, and once it loses you they take ${fmt(DATA.spinDown)} s to run down.`],
   ['Lead', leaders, leaders.length ? `Aims part of the way to where you will be when the shot arrives (${leaders.map((k) => `${INFO[k].name} ${Math.round(T[k].lead * 100)}%`).join(', ')}). It solves exactly when a shot would meet a target moving like you, and stops the forecast where you would hit a wall. Driving in a straight line is dangerous; turning late makes it miss.` : ''],
 ].filter(([, kinds]) => kinds.length);
 document.getElementById('aims').append(...AIMS.map(([name, kinds, text]) => h('div', {},
@@ -1118,6 +1149,7 @@ document.getElementById('campaign-facts').append(
   h('span', {}, 'bonus tank after ', h('b', {}, DATA.bonusAfter.join(', '))),
   h('span', {}, 'checkpoints at ', h('b', {}, DATA.checkpoints.join(', '))),
   h('span', {}, 'a retry keeps destroyed enemies destroyed'),
+  h('span', {}, 'a test range: any one kind, ', h('b', {}, '1 to 6'), ' of them, behind four walls'),
 );
 const matrix = document.getElementById('matrix');
 const cpClass = (n) => (n > 1 && isCheckpoint(n) ? 'cp' : null);
@@ -1140,7 +1172,7 @@ matrix.append(
     MISSIONS.map((m) => h('td', { class: cpClass(m.n) }, m.counts[k]
       ? h('span', { class: 'mx', 'data-ink': INK[k], style: `--c: var(--tk-${k})`, title: `${m.counts[k]} ${INFO[k].name} in mission ${m.n}, ${m.name}` }, String(m.counts[k]))
       : h('span', { class: 'dot', 'aria-hidden': 'true' }))),
-    h('td', { class: 'total' }, String(TOTAL[k])),
+    h('td', { class: 'total' }, String(TOTAL[k] ?? 0)),
   ))),
   h('tfoot', {}, h('tr', {},
     h('th', { class: 'stick', scope: 'row' }, 'Enemies'),

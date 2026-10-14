@@ -81,6 +81,7 @@ const CHIP_LIGHT = '#faf8f2';
 export async function buildGuide() {
   const R = await load(path.join(TANKS, 'rules.js'));
   const M = await load(path.join(TANKS, 'missions.js'));
+  const A = await load(path.join(TANKS, 'art.js'));
   const { enemyText, SCENES } = await load(path.join(GUIDE, 'enemies.mjs'));
   const i18n = await readFile(path.join(ROOT, 'src/shared/i18n.js'), 'utf8');
   const tanksJs = await readFile(path.join(TANKS, 'tanks.js'), 'utf8');
@@ -113,6 +114,10 @@ export async function buildGuide() {
     bombR: R.BOMB_R,
     bombMin: R.BOMB_MIN,
     bombMax: R.BOMB_MAX,
+    spinUp: R.SPIN_UP,
+    spinDown: R.SPIN_DOWN,
+    sprayTurn: R.SPRAY_TURN,
+    sprayR: R.SPRAY_R,
     velSmooth: R.VEL_SMOOTH,
   };
   const text = enemyText({ T: R.TYPES, kinds, R: consts, name: (k) => english(`tanks.type.${k}`), note: english });
@@ -157,6 +162,7 @@ export async function buildGuide() {
     ink,
     colours,
     offLimits,
+    variants: A.VARIANTS,
   };
   const cps = M.CHECKPOINTS.map(String);
   const fill = {

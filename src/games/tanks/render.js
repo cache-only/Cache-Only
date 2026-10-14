@@ -19,6 +19,7 @@ const FRAME = 0.3; // border around the arena, in cells
 const MAX_DPR = 2;
 const MARK_LIFE = 9; // seconds a tread mark takes to fade
 const MAX_FX = 700;
+const ROLL = 18; // radians per second a minigun's barrels turn at full speed (a quarter under reduced motion)
 
 export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
   const ctx = canvas.getContext('2d');
@@ -178,6 +179,16 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     for (const e of list) {
       switch (e.type) {
         case 'shot':
+          if (e.weapon === 'minigun') {
+            // A small flash for each round, and a spent casing flicked out to the side.
+            flash(e.x, e.y, 0.06, 0.18, 0.05, pal.flash);
+            if (!calm) {
+              const a = e.angle + (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.6);
+              const v = 1.6 + Math.random();
+              add({ kind: 'chip', x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.35, max: 0.35, size: 0.05, color: pal.flash, drag: 5, spin: Math.random() * 6 });
+            }
+            break;
+          }
           flash(e.x, e.y, 0.12, 0.3, 0.09, pal.flash);
           smoke(e.x, e.y, calm ? 1 : 2, 0.1, 0.12, 0.5);
           break;
@@ -255,25 +266,31 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
     fx = fx.filter((p) => p.life > 0);
 
     if (!s) return;
-    // Every shot leaves smoke: rockets and missiles a thick trail, shells a faint one.
+    // Every shot leaves smoke: rockets and missiles a thick trail, shells a faint one, minigun
+    // rounds a fainter, shorter one. A minigun keeps ten in the air, so their smoke is the first
+    // thing dropped on a busy screen, leaving room for explosions.
     smokeTimer -= dt;
     if (smokeTimer <= 0) {
       smokeTimer = reduceMotion() ? 0.08 : 0.03;
       for (const b of s.bullets) {
         const sp = Math.hypot(b.vx, b.vy) || 1;
-        if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
+        if (b.weapon === 'minigun') {
+          if (fx.length < MAX_FX - 200) smoke(b.x - (b.vx / sp) * 0.12, b.y - (b.vy / sp) * 0.12, 1, 0.02, 0.04, 0.22);
+        } else if (b.weapon === 'rocket') smoke(b.x - (b.vx / sp) * 0.2, b.y - (b.vy / sp) * 0.2, 1, 0.04, 0.1, 0.5);
         else if (b.weapon === 'missile') smoke(b.x - (b.vx / sp) * 0.25, b.y - (b.vy / sp) * 0.25, 1, 0.03, 0.08, 0.8);
         else smoke(b.x - (b.vx / sp) * 0.16, b.y - (b.vy / sp) * 0.16, 1, 0.02, 0.05, 0.3);
       }
     }
-    // Tread marks every few centimetres of travel.
+    // Tread marks every few centimetres of travel, and a minigun's barrels turning.
+    const roll = ROLL * (reduceMotion() ? 0.25 : 1);
     for (const t of s.tanks) {
       if (!t.alive) continue;
       const o = odometer.get(t.id);
       if (!o) {
-        odometer.set(t.id, { x: t.x, y: t.y, d: 0, total: 0 });
+        odometer.set(t.id, { x: t.x, y: t.y, d: 0, total: 0, roll: 0 });
         continue;
       }
+      if (t.spin) o.roll = (o.roll + t.spin * roll * dt) % (Math.PI * 2);
       const moved = Math.hypot(t.x - o.x, t.y - o.y);
       o.d += moved;
       o.total += moved;
@@ -482,6 +499,7 @@ export function createRenderer(canvas, { reduceMotion = () => false } = {}) {
         phase: o ? o.total : 0,
         mines: T.mines - owned(s.mines, t),
         lit: T.weapon === 'missile' && owned(s.bullets, t) > 0,
+        roll: o ? o.roll : 0,
         alpha: a,
       });
     }

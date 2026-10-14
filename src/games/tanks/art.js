@@ -3,15 +3,22 @@
 // No DOM: the context, the palette and the state to draw are all passed in.
 //
 // A tank's shape tells you what it can do; its colour only tells you which kind it is:
-//   barrel    the weapon: thin for shells, thick with a fire-orange band for rockets, twin
-//             launch pods and a red light for missiles, a wide round tube for mortar bombs
+//   barrel    the weapon: thin for shells, a muzzle brake (a wide double block across the
+//             tip) for rockets, twin launch pods and a red light for missiles, a wide round
+//             tube for mortar bombs, and a bundle of six barrels on a motor housing, which
+//             spins up before it fires, for a minigun
 //   treads    it moves; a bolted concrete pad instead means it never moves
 //   rear deck one disc per mine it can lay, gone while that mine is on the ground
-import { BOMB_R, CRATE, HOLE, MUZZLE, TYPES, WALL } from './rules.js';
+// Past about a dozen colours, a kind can reuse another's colour with a pattern on its hull
+// (VARIANTS): Hornet is Yellow's colour with black hazard stripes.
+import { BOMB_R, CRATE, HOLE, MUZZLE, TAU, TYPES, WALL } from './rules.js';
 
 export const ART = 1.1; // tanks are drawn a little larger than their hit circle, like toys
 const STRIPE_GAP = 0.27; // cells between a crate's stripes, across them
 const STRIPE_W = 0.11;
+
+/** Kinds that wear another kind's colour, told apart by stripes on the hull: kind -> base kind. */
+export const VARIANTS = { hornet: 'yellow' };
 
 /** The CSS custom properties the art is painted with, by palette key. */
 export const TOKENS = {
@@ -240,11 +247,53 @@ function discSpots(n) {
 }
 
 /**
+ * A minigun's six barrels along +x in turret space, bound by a clamp. roll turns the bundle
+ * on its axis: seen from above, the barrels slide across each other as it spins, the nearest
+ * drawn last and lightest. Its motor housing sits on top of the turret (minigunHousing).
+ */
+function minigunBarrels(c, tone, roll) {
+  const ring = 0.075;
+  const half = 0.03;
+  const from = 0.2;
+  const barrels = Array.from({ length: 6 }, (_, i) => roll + (i * TAU) / 6)
+    .map((a) => ({ y: ring * Math.sin(a), near: Math.cos(a) }))
+    .sort((a, b) => a.near - b.near);
+  c.lineWidth = 0.02;
+  for (const b of barrels) {
+    c.fillStyle = b.near > 0.5 ? tone.base : b.near > -0.5 ? tone.dark : tone.deep;
+    c.beginPath();
+    c.rect(from, b.y - half, MUZZLE - from, half * 2);
+    c.fill();
+    c.stroke();
+  }
+  c.lineWidth = 0.04;
+  c.fillStyle = tone.dark;
+  c.beginPath();
+  c.rect(0.42, -0.125, 0.045, 0.25);
+  c.fill();
+  c.stroke();
+}
+
+/** The minigun's motor: a box bolted over the turret, where other tanks show a hatch. */
+function minigunHousing(c, pal, tone) {
+  c.fillStyle = tone.dark;
+  roundRect(c, -0.08, -0.14, 0.36, 0.28, 0.06);
+  c.fill();
+  c.stroke();
+  c.fillStyle = pal.ink;
+  for (const y of [-0.075, 0.075]) {
+    disc(c, -0.01, y, 0.03);
+    c.fill();
+  }
+}
+
+/**
  * A tank at (t.x, t.y), hull turned to t.body, turret to t.turret. opts: phase (how far its
  * tread cleats have rolled), mines (discs still on the rear deck; the rest are laid), lit
- * (a missile tank's light: one of its missiles is in the air), alpha.
+ * (a missile tank's light: one of its missiles is in the air), roll (how far a minigun's
+ * barrels have turned on their axis), alpha.
  */
-export function drawTank(c, pal, t, { phase = 0, mines = TYPES[t.type].mines, lit = false, alpha = 1 } = {}) {
+export function drawTank(c, pal, t, { phase = 0, mines = TYPES[t.type].mines, lit = false, roll = 0, alpha = 1 } = {}) {
   const T = TYPES[t.type];
   const tone = pal.tanks[t.type];
   c.globalAlpha = alpha;
@@ -287,6 +336,25 @@ export function drawTank(c, pal, t, { phase = 0, mines = TYPES[t.type].mines, li
   c.fillStyle = tone.base;
   roundRect(c, -0.37, -0.26, 0.74, 0.52, 0.09);
   c.fill();
+  if (VARIANTS[t.type]) {
+    // Hazard stripes across the hull, slanting back from the nose. The rear deck stays plain,
+    // so its mine discs still read.
+    c.save();
+    c.clip();
+    c.beginPath();
+    c.rect(-0.21, -0.3, 0.6, 0.6);
+    c.clip();
+    c.strokeStyle = pal.ink;
+    c.lineWidth = 0.075;
+    c.beginPath();
+    for (let x = -0.62; x < 0.5; x += 0.19) {
+      c.moveTo(x, -0.3);
+      c.lineTo(x + 0.3, 0.3);
+    }
+    c.stroke();
+    c.restore();
+    roundRect(c, -0.37, -0.26, 0.74, 0.52, 0.09);
+  }
   c.strokeStyle = pal.ink;
   c.lineWidth = 0.045;
   c.stroke();
@@ -326,15 +394,20 @@ export function drawTank(c, pal, t, { phase = 0, mines = TYPES[t.type].mines, li
     c.fill();
     c.stroke();
   } else if (T.weapon === 'rocket') {
+    // A heavy barrel ending in a muzzle brake: two wide baffles across the tip, so the gun
+    // reads as a hammerhead, wide at the end where a shell barrel stays thin.
     c.beginPath();
-    c.rect(0.08, -0.095, MUZZLE - 0.08, 0.19);
+    c.rect(0.08, -0.075, MUZZLE - 0.08, 0.15);
     c.fill();
     c.stroke();
-    c.fillStyle = pal.fire;
-    c.beginPath();
-    c.rect(MUZZLE - 0.12, -0.095, 0.12, 0.19);
-    c.fill();
-    c.stroke();
+    for (const x of [MUZZLE - 0.15, MUZZLE - 0.065]) {
+      c.beginPath();
+      c.rect(x, -0.14, 0.065, 0.28);
+      c.fill();
+      c.stroke();
+    }
+  } else if (T.weapon === 'minigun') {
+    minigunBarrels(c, tone, roll);
   } else if (T.weapon === 'missile') {
     for (const side of [-1, 1]) {
       c.fillStyle = tone.dark;
@@ -360,6 +433,8 @@ export function drawTank(c, pal, t, { phase = 0, mines = TYPES[t.type].mines, li
     c.fillStyle = pal.ink;
     disc(c, 0.045, 0, 0.095);
     c.fill();
+  } else if (T.weapon === 'minigun') {
+    minigunHousing(c, pal, tone);
   } else if (T.weapon === 'missile') {
     // Its light is lit while one of its missiles is in the air.
     c.fillStyle = lit ? pal.flash : tone.deep;
@@ -417,7 +492,7 @@ export function drawMine(c, pal, m, kind, light, shadowOff) {
 }
 
 /**
- * A shell, rocket or missile, pointing along its velocity. flame (0-1) flickers a rocket's
+ * A shell, rocket, missile or minigun round, pointing along its velocity. flame (0-1) flickers a rocket's
  * flame; blink says whether a missile's light is on this frame.
  */
 export function drawShot(c, pal, b, { flame = 0.5, blink = true } = {}) {
@@ -433,7 +508,21 @@ export function drawShot(c, pal, b, { flame = 0.5, blink = true } = {}) {
     c.fill();
   }
   c.fillStyle = pal.shell;
-  if (b.weapon === 'missile') {
+  if (b.weapon === 'minigun') {
+    // A tracer round: a small slug with a fading streak behind it.
+    c.globalAlpha *= 0.4;
+    c.fillStyle = pal.flash;
+    c.beginPath();
+    c.moveTo(-0.32, 0);
+    c.lineTo(-0.05, -0.03);
+    c.lineTo(-0.05, 0.03);
+    c.closePath();
+    c.fill();
+    c.globalAlpha /= 0.4;
+    c.fillStyle = pal.shell;
+    roundRect(c, -0.07, -0.035, 0.16, 0.07, 0.035);
+    c.fill();
+  } else if (b.weapon === 'missile') {
     c.fillStyle = pal.fire;
     c.beginPath();
     c.moveTo(-0.16, -0.035);

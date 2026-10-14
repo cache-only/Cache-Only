@@ -148,6 +148,7 @@ test('the launcher reads the shell and every game from the manifest', async () =
   assert.equal(manifest.core.cache, packs.core.cache);
   assert.deepEqual(Object.keys(manifest.games).sort(), Object.keys(packs.games).sort());
   assert.ok(manifest.games.tanks.bytes > 0);
+  assert.match(manifest.release, /^\d+\.\d+\.\d+$/, 'Settings shows the release number');
 });
 
 test('a game downloads on request with progress, then plays with the host gone', async () => {
