@@ -30,8 +30,8 @@ every push to `main` (repo Settings → Pages → Source: GitHub Actions).
    tap Share, then **Add to Home Screen**.
 2. The friend opens the app **from the home-screen icon** while still online. Home-screen
    apps have their own storage, separate from Safari.
-3. Wait for "Ready offline" under the logo (in Catalan: "Llest sense connexió"), then tap the
-   tile of each game they want. A game is ready when its tile is sharp.
+3. Wait for the big logo to come into focus (sharp white: the app is ready offline), then
+   tap the tile of each game they want. A game is ready when its tile is sharp.
 4. Turn on airplane mode, force-quit the app, reopen it and play a game. If that works,
    they're done for good. Games they skipped keep a dimmed download icon until they're back
    online.

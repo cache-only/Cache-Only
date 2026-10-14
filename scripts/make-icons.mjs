@@ -1,89 +1,26 @@
 // Renders the app icons to PNG with Node built-ins only: the pixel logo in white on #070707, with
 // one empty cell around it and, past that, a scattered field of dim pixels at several greys (some
-// left out). Only the app icons get the field; the logo inside the app stays plain.
+// left out), from fieldShade() in shared/logo.js. The install page lays the same field across the
+// screen; the logo inside the app stays plain.
 // Run once with `npm run icons`; the PNGs are committed.
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
-import { MARK } from '../src/shared/logo.js';
+import { MARK, fieldShade } from '../src/shared/logo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'src/icons');
 
 const BG = 0x07;
-const INK = 0xff;
-const DIM = [0x14, 0x1c, 0x26, 0x32, 0x40]; // the field's greys, darkest first
 
-// The logo's 11 x 13 mark (shared/logo.js), centred.
+// The logo's 11 x 13 mark (shared/logo.js), centred, in the field fieldShade() draws around it.
 const COLS = MARK[0].length;
 const ROWS = MARK.length;
 const DOT = 0.75; // dot size, as a share of the grid pitch
 const ROUND = 0.34; // corner radius, as a share of the dot
-
-// The field: smooth value noise (so pixels gather in patches) mixed with per-cell noise, seeded so
-// every run draws the same icon. Change SEED for a different scatter.
-const SEED = 3;
-const PATCH = 2.5; // patch size, in cells
-const CLUSTER = 0.55; // share of the noise that is patches rather than per cell
-const GAPS = 0.3; // share of the noise range left empty
-
-const lit = (i, j) => MARK[j]?.[i] === '#';
-
-function mulberry32(a) {
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const hash = (i, j, seed) => mulberry32((i * 374761393) ^ (j * 668265263) ^ seed)();
-
-function noise(x, y, seed) {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const u = (x - x0) ** 2 * (3 - 2 * (x - x0));
-  const v = (y - y0) ** 2 * (3 - 2 * (y - y0));
-  const a = hash(x0, y0, seed);
-  const b = hash(x0 + 1, y0, seed);
-  const c = hash(x0, y0 + 1, seed);
-  const d = hash(x0 + 1, y0 + 1, seed);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-
-// Unlit cells walled in by the mark (the cent's bowl) stay empty, like its margin.
-const OPEN = new Set();
-{
-  const inside = (i, j) => i >= -1 && j >= -1 && i <= COLS && j <= ROWS;
-  const stack = [[-1, -1]];
-  OPEN.add('-1,-1');
-  while (stack.length) {
-    const [i, j] = stack.pop();
-    for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) {
-      if (!inside(a, b) || lit(a, b) || OPEN.has(`${a},${b}`)) continue;
-      OPEN.add(`${a},${b}`);
-      stack.push([a, b]);
-    }
-  }
-}
-const inBox = (i, j) => i >= 0 && j >= 0 && i < COLS && j < ROWS;
-const enclosed = (i, j) => inBox(i, j) && !lit(i, j) && !OPEN.has(`${i},${j}`);
-// Inside the mark's box only its open mouth (the mark above and below, or left and right) gets
-// the field, so nothing tucks into the curve of the C.
-const inMouth = (i, j) =>
-  (MARK.slice(0, j).some((row) => row[i] === '#') && MARK.slice(j + 1).some((row) => row[i] === '#')) ||
-  (MARK[j].slice(0, i).includes('#') && MARK[j].slice(i + 1).includes('#'));
-
-/** The grey of cell (i, j) in the mark's grid (it runs past the mark both ways), or null if empty. */
-function shade(i, j) {
-  if (lit(i, j)) return INK;
-  if (inBox(i, j) && (enclosed(i, j) || !inMouth(i, j))) return null;
-  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) if (lit(i + di, j + dj)) return null;
-  const n = CLUSTER * noise(i / PATCH, j / PATCH, SEED) + (1 - CLUSTER) * hash(i, j, SEED + 1);
-  if (n < GAPS) return null;
-  return DIM[Math.min(DIM.length - 1, Math.floor(((n - GAPS) / (1 - GAPS)) * DIM.length))];
-}
+// The mark is centred on its box, not optically: the field is on the mark's grid, so any nudge
+// would leave the grid off centre, its dots cut unevenly at opposite edges.
 
 // pitch is in pixels. A whole pitch snaps every dot to the pixel grid; a fractional one doesn't.
 function render(size, pitch) {
@@ -95,7 +32,7 @@ function render(size, pitch) {
   const cells = new Map();
   const cell = (i, j) => {
     const key = `${i},${j}`;
-    if (!cells.has(key)) cells.set(key, shade(i, j));
+    if (!cells.has(key)) cells.set(key, fieldShade(i, j));
     return cells.get(key);
   };
   const SS = 4;
@@ -178,7 +115,7 @@ function svgDots(size, pitch) {
   const groups = new Map();
   for (let j = Math.floor(-at(0, ROWS) / pitch) - 1; at(j, ROWS) < size; j++) {
     for (let i = Math.floor(-at(0, COLS) / pitch) - 1; at(i, COLS) < size; i++) {
-      const grey = shade(i, j);
+      const grey = fieldShade(i, j);
       if (grey === null || at(i, COLS) + d <= 0 || at(j, ROWS) + d <= 0) continue;
       const x = +at(i, COLS).toFixed(2);
       const y = +at(j, ROWS).toFixed(2);

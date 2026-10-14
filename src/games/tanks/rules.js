@@ -57,6 +57,8 @@ export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb', 'minigun'];
  * it), trap (lays mines by plan rather than by chance: on your way to it, then watches them),
  * detonate (shoots one of the mines on the ground when its blast would catch you), lead (0-1:
  * how much of your motion it aims ahead for). Yellow and Hornet are the enemies that lay mines.
+ * Lines: a V2 kind names the first version it upgrades (upgrade); White is Violet's twin, a
+ * second V2 of Pink (twin). Kinds with neither stand alone: Red, Black, Olive and Lime.
  */
 export const TYPES = {
   player: { speed: 1.9, turn: 7, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 2, reload: 0.12 },
@@ -66,7 +68,7 @@ export const TYPES = {
   },
   ash: {
     speed: 1.0, turn: 4, turret: 1.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 0, reload: 2.2,
-    aim: 'direct', think: 0.25, react: 0.45, spread: 0.07, dodge: 0.2, range: [6, 11],
+    aim: 'direct', think: 0.25, react: 0.45, spread: 0.07, dodge: 0.2, range: [6, 11], upgrade: 'brown',
   },
   marine: {
     speed: 1.0, turn: 4, turret: 1.8, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 1, mines: 0, reload: 2.4,
@@ -82,11 +84,11 @@ export const TYPES = {
   },
   green: {
     speed: 0, turn: 0, turret: 2.4, weapon: 'rocket', shot: ROCKET, bounces: 2, bullets: 2, mines: 0, reload: 1.7,
-    aim: 'bank', think: 0.25, react: 0.35, spread: 0.02, dodge: 0,
+    aim: 'bank', think: 0.25, react: 0.35, spread: 0.02, dodge: 0, upgrade: 'marine',
   },
   violet: {
     speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
-    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], lead: 0.3,
+    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], lead: 0.3, upgrade: 'pink',
   },
   red: {
     speed: 1.0, turn: 4, turret: 2.0, weapon: 'missile', shot: MISSILE, bounces: 0, bullets: 1, mines: 0, reload: 3,
@@ -95,7 +97,7 @@ export const TYPES = {
   white: {
     speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
     aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.5, range: [3, 8], lead: 0.3,
-    invisible: true,
+    invisible: true, upgrade: 'pink', twin: 'violet',
   },
   black: {
     speed: 2.4, turn: 8, turret: 3.2, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 3, mines: 0, reload: 0.8,
@@ -112,6 +114,7 @@ export const TYPES = {
   hornet: {
     speed: 1.8, turn: 6, turret: 2.2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 4, reload: 2.4,
     aim: 'direct', think: 0.15, react: 0.35, spread: 0.06, dodge: 0.45, range: [4, 8], trap: true, detonate: true,
+    upgrade: 'yellow',
   },
 };
 

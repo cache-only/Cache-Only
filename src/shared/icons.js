@@ -1,7 +1,7 @@
 // The icons: pixel art on a 9 x 9 grid of the logo's rounded-square pixels. A pixel is 4 units
 // with a gap of 1 (the logo's proportions), so a whole icon is 44 x 44 units. '#' is lit, '+' is
 // dimmed and '.' is dark. The four corner pixels always stay dark: an .icon-btn's corners would
-// cut them off. Shapes are solid, their details cut out. Lines (close, new, update) are one
+// cut them off. Shapes are solid, their details cut out. Lines (close, new, update, share) are one
 // pixel. The one exception to the pixels is SHAPES below: Tanks' shell and mine.
 //
 // app.js puts every icon on every page as one sprite of <symbol id="i-<name>">, so a page only
@@ -99,24 +99,24 @@ export const ICONS = {
   share: [
     '....#....',
     '...###...',
-    '..#####..',
+    '..#.#.#..',
     '....#....',
     '.##.#.##.',
-    '.##.#.##.',
+    '.#..#..#.',
+    '.#.....#.',
+    '.#.....#.',
     '.#######.',
-    '.#######.',
-    '.........',
   ],
-  add: [
+  app: [
+    '.........',
+    '..#####..',
     '.#######.',
-    '#########',
-    '####.####',
-    '####.####',
-    '##.....##',
-    '####.####',
-    '####.####',
-    '#########',
+    '.##...##.',
+    '.##.####.',
+    '.##...##.',
     '.#######.',
+    '..#####..',
+    '.........',
   ],
   dots: [
     '.........',

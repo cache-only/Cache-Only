@@ -57,7 +57,8 @@ cache-only/
       app.js              # app feel on every page (no zoom) and the icon sprite; the build adds it, never link it by hand
       ui.js               # sheets, confirm sheet, side menu, progressive-blur layers, board sizing
       i18n.js             # English and Catalan strings
-      logo.js             # the pixel logo as a grid of spans, and its focus (progress) states
+      logo.js             # the pixel logo as a grid of spans, its focus (progress) states, and the field around it (fieldShade)
+      pixel-field.js      # the install page's background: the app icon's field across the page, blurring out and in at random
       icons.js            # every icon, as 9 x 9 pixel bitmaps
       game-art.js         # board art for the launcher's tiles and hero (never reads a game's folder)
     icons/
@@ -174,10 +175,20 @@ service worker with scope `/` covers everything.
 ## Launcher
 
 - **In a browser tab** (not standalone: `navigator.standalone !== true` and not
-  `display-mode: standalone`) the launcher shows only how to install: the big pixel logo, partly
-  out of focus, with the "Cache Only" name under it as one lockup (this page has no header and no
-  rail), "Install the app", and three glass steps (Tap Share, Add to Home Screen, Open it from the
-  new icon; browser-menu steps off iOS). No game list and nothing to download.
+  `display-mode: standalone`) the launcher shows only how to install, over a pixel field
+  (`shared/pixel-field.js`): the app icon's field (`fieldShade()` in `shared/logo.js`) laid across
+  the whole page on the big logo's grid, the mark lit white as its brightest pixels. The field stays
+  whole under the text: pixels near a line of text only dim, easing back over a few cells and a
+  little unevenly, so no edge or hole shows. About a quarter of the field's pixels are blurring
+  out or back in at any moment (`blurOut()`/`blurIn()`, slowed to `--t-twinkle`); the mark loses
+  about one pixel at a time; the step icons stay still; nothing moves under reduced motion. Over
+  it: the logo with "Cache Only" under it in Display as one lockup (this page has no header), then
+  "Install the app" (32/800, centred) heading three steps (Tap Share, Add to Home Screen, Open it
+  from the new icon; browser-menu steps off iOS). Each step is a `.glass-row`: its icon in a 44 glass tile (the last step's is `app`, a tile with
+  a C cut out of it), a
+  "Step n" eyebrow over the line, on a panel that blurs like a sheet (`--sheet`, `--blur-sheet`).
+  Landscape puts the lockup on the left and the steps in the wider right column. No game list and
+  nothing to download.
   A tab also keeps no offline copy: `registerSW()` does nothing outside the installed app, and
   `dropBrowserCopy()` unregisters any worker and deletes every cache left by an earlier visit,
   then reloads once if that old copy served the page. So the tab always shows the current
@@ -185,51 +196,84 @@ service worker with scope `/` covers everything.
   `/games/` file is cached, because then the tab shares storage with an installed app (Chrome,
   Android) whose downloaded games must survive. When Chrome turns the tab into the app window,
   the `display-mode` change starts the worker.
-- **In the installed app** the launcher is one vertically scrolling page (portrait and landscape
-  alike, never a side-by-side split) under a header that shows the pixel logo, the "Cache Only"
-  wordmark, a mono status line and the settings button. There is no fixed bottom bar.
-  - **Status line:** "Ready offline · 2 of 3 games", "Downloading · 64%", "Offline · 2 of 3
-    games", "Ready offline" once every game is downloaded (or "Checking offline files…" while the shell is checked).
-    The header logo comes into focus with download progress: pixels go from blurred grey to sharp
-    white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only progress
-    indicator anywhere in the app.
+- **In the installed app** the header is only the settings button, floating at the top right
+  over whatever scrolls under it (the rest of its row lets taps through). No wordmark, no title
+  and no status text on screen. There is no fixed bottom bar. The pixel logo is in the page, large
+  (120 wide, with its glow), centred over the suggested game's art (`.home-mark`), or over nothing
+  while nothing is downloaded.
+  - **Portrait:** one vertically scrolling page from right under the status bar: a square as wide
+    as the page (`.lead`) holding the logo over the suggested game's art with the suggested game
+    at its foot, then the grid. The top blur runs from the top of the screen down to the foot of
+    the settings button (`--bar-total`), and the logo centres in the room under it, so it sits sharp.
+    At rest the top blur stays out of the way and slides in with whatever scrolls under it
+    (`--scrolled`, set by `launcher.js`), so the art is seen right up to the edge.
+  - **Landscape:** everything runs left to right in one strip that scrolls sideways, from the top
+    of the screen down with no header band (the body is the scroller; the page itself never
+    scrolls), never a rail or a side-by-side split. It starts with the same square as in
+    portrait, two tiles wide and as tall as the two rows (`--lead`): the art, the logo in the
+    middle of it, the eyebrow and panel at its foot. The other tiles follow in two rows
+    (`--tile`: two rows and their gap fill the height). Settings (and Update) floats, fixed at the
+    top right, over the tiles. Progressive blurs at the left and right edges (`.edge-left/-right`)
+    take the place of the top and bottom ones; the left one, like the top one in portrait, stays
+    out of the way at rest and slides in with the strip. A mouse wheel scrolls the strip too.
+  - **Status:** the logo is the status. It stays out of focus until every app-shell file is
+    confirmed in its cache, then comes into focus with download progress: pixels go from blurred
+    grey to sharp white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only
+    progress indicator anywhere in the app. The words ("Ready offline · 2 of 3 games",
+    "Downloading · 64%", "Offline · 2 of 3 games", "Checking offline files…") are still written to
+    a visually hidden live region (`#statusLine`) for screen readers.
   - **Suggested:** the most played game on this device, as a "Suggested" eyebrow over a glass
     panel with its title and a primary Resume (saved session) or Play button. The panel is shaped
     like a game tile: radius 18, its button inset 10 with radius 8 (the tile art's), its title
-    starting 18 in like a tile's. Plays are counted in
+    starting 18 in like a tile's, and it blurs what's behind it like a sheet (`--sheet`,
+    `--blur-sheet`). Plays are counted in
     `gh:app:plays` (`{ id: n }`) whenever a game is opened from the launcher; ties and no history
-    fall back to registry order. Hidden while nothing is downloaded. Its board art bleeds in behind
-    the top of the screen, fading out under the top progressive blur.
-  - **Games:** right under the suggested panel, with no heading and no "Download all", a grid of
-    square game tiles (2 columns in portrait, 4 in landscape) for every game except the suggested
-    one. The grid sits 12 below the panel, the same gap the tiles keep between them. A tile shows the game's own board as art (`shared/game-art.js`, from the game's save when
+    fall back to registry order. Its board art (`.hero`) is a square that runs out to the
+    screen's edges and never past them, so all of it is seen (Tanks' 4:3 arena fills it and loses
+    an eighth at each side). In portrait it starts at the top of the screen, as wide as the page,
+    and fades out toward the panel. In landscape it is exactly as tall as the screen and starts at
+    the column's gutter (the screen's left edge, or the safe area's), so it sits centred on the
+    column, and fades out to the right, toward the tiles.
+  - **Nothing downloaded yet:** the same layout, with the same panel offering every game
+    (`.is-all`): no art behind it, the eyebrow hidden but keeping its room, the title "Download all
+    games" (two lines where one won't fit), and for its button a square primary with only the
+    download icon (`.btn-icon`). It downloads every game not on the device, one after another; it
+    is disabled while the host doesn't answer or while every missing game is already downloading.
+    Once the first game arrives, the panel suggests it. It shows only once the packs are known, so
+    a returning friend never sees it flash.
+  - **Games:** right under (portrait) or after (landscape) the suggested game, with no heading,
+    square game tiles (2 columns in portrait, 2 rows in landscape) for every game
+    except the suggested one, then 10 fillers (`SOON` in `launcher.js`): empty tiles labelled
+    "Coming soon" where a title would be, with nothing to press, hidden from screen readers and
+    never counted as games. The grid sits 12 from the suggested game, the same gap the tiles keep between them. A tile shows the game's own board as art (`shared/game-art.js`, from the game's save when
     there is one, with a generic pixel field for an id it doesn't know) and its title at the
     bottom left over a progressive blur. No sizes, scores or records are shown (sizes live only in
     the code; aria-labels say what a tile does). States: on this device = sharp, the whole tile is
     a link to play; downloadable = art blurred and a plain download icon, the whole tile is the
     download button; downloading or queued = no icon, the art unblurs as the pack arrives
     (blur = (1 − p) · 8px); out of reach = icon at 40%, art dimmed.
-  - A muted line under the grid says "Offline. Downloaded games still work." while the host is
-    out of reach and games are left to download, or that a download failed. Nothing once every
-    game is downloaded.
+  - A muted line right under the suggested game (so the fillers never push it out of sight) says
+    "Offline. Downloaded games still work." while the host is out of reach and games are left to
+    download, or that a download failed. Nothing once every game is downloaded.
 - **First launch** (the app shell still downloading, or failed): "Preparing the app" with the big
   pixel logo coming into focus file by file, "x / y files", "Keep the app open and stay online…",
   and blurred placeholder tiles. A failed install shows "Download failed" and how to recover.
 - **Downloads** are offered only while the host answers. The launcher fetches `/version.json`
   (no-store, cache-busting query, 5 s timeout) on start, every 15 s while visible, on
   `online`/`offline`, and when the app comes back to the foreground. While it answers, tiles that
-  aren't downloaded are download buttons, one game each. When it doesn't, those tiles dim their
-  icon and move to the bottom.
+  aren't downloaded are download buttons, one game each (and, while nothing is downloaded, the
+  panel's button downloads them all). When it doesn't, those tiles dim their icon and move to the
+  bottom.
 - **"Ready offline" check:** after `navigator.serviceWorker.ready`, confirm every app-shell file is
-  in its cache; only then does the status line say "Ready offline" (Settings shows the version).
+  in its cache; only then does the logo come into focus (and the hidden status say "Ready
+  offline"; Settings shows the version).
   A tile is sharp only when every file of its pack is cached. These tell a friend it's safe to go
   offline, so they must be accurate.
 - **Update available:** no banner. The header's settings button turns white in place (solid
   `--ink`, radius 8, 44 tall): the update icon takes the settings icon's exact spot and "Update"
   grows out to its left. Tapping it reloads to the new version (aria-label "Update available. Tap
-  to reload and update."). Settings is out of reach until then. In the landscape rail it stays the
-  44 square, icon only. The white button is the screen's one primary, so the suggested game's
-  button turns secondary while it shows.
+  to reload and update."). Settings is out of reach until then. The white button is the screen's
+  one primary, so the suggested game's button turns secondary while it shows.
 - Call `navigator.storage.persist()` once at start. Nothing shows the answer.
 - Settings is a sheet: Language (English / Català segmented control), Sound ("Sound effects"
   with a switch on the right, in a `.toggle-row`: one switch for every sound in the app, saved as
@@ -302,7 +346,8 @@ style a button, header, card, sheet or menu locally.
   (`--r-btn`). `.btn` is 48 tall (650 16px), glass (secondary); `.btn-primary` is solid `--ink`
   with `--bg` text, at most one per screen. `.icon-btn` is a 44 glass rounded square (home,
   settings, close, the moves under a board, pressed = solid white), its pixel icon filling it to
-  one gap from the edge. `.btn-small` is 32 tall with 13px text, only in a section header next to
+  one gap from the edge. `.btn-icon` makes a `.btn` a 48 square holding only its icon, filled the
+  same way (the launcher's "Download all games"). `.btn-small` is 32 tall with 13px text, only in a section header next to
   a 12px label, its tap area still 44. Disabled is the same button at 40% opacity, never a new
   style. (Tanks' thumbsticks are round: they are sticks, not buttons.)
 - **Concentric radii:** an outer radius is the inner radius plus the inset between them, starting
@@ -310,38 +355,44 @@ style a button, header, card, sheet or menu locally.
   control, the switch track, fields) and the rows and text cards beside them; 4 a chip inset 4
   inside one (the selected segment); 5 the switch knob, inset 3; 24 a sheet,
   holding its close button and buttons inset 16; 18 a launcher game tile (8 art + 10) and the
-  suggested game's panel (its button inset 10); 26 a game board (16 tile + 10). Check every
-  nested shape.
+  suggested game's panel (its button inset 10); 16 an install step's panel (its icon tile inset
+  8); 26 a game board (16 tile + 10). Check every nested shape.
 - **Pixels:** the logo and every icon are rounded-square pixels, 3/4 of their pitch with a 1/4 gap
   and corners at 34% (`--r-pixel`). The logo (`shared/logo.js`) is a solid 11 × 13 cent sign and
   nothing else, `--logo-w` wide. Icons (`shared/icons.js`) are 9 × 9 bitmaps (`#` lit,
   `+` dimmed) with the four corner pixels always dark. Shapes are solid with their details cut
-  out, and lines (close, new, update) are one pixel. The one exception is Tanks' shell and mine
+  out, and lines (close, new, update, share) are one pixel. The one exception is Tanks' shell and mine
   (`SHAPES` in the same file): smooth shapes, not pixels, solid while ready and outlined while in
   use (`-empty`). `shared/app.js` puts every icon on every page as one sprite, and pages write
   `<svg class="icon"><use href="#i-name"/></svg>`. Never add a `<symbol>` to a page; add a bitmap
   to `ICONS`. `npm run icons` redraws the app icons from the logo: the white mark on `#070707`,
-  one empty cell around it, nothing inside its box but the C's open mouth, and past that a seeded
-  scatter of dim pixels in five greys with gaps (`SEED` in `scripts/make-icons.mjs`), the
-  outermost cut by the icon's edge at every size. Only the outer app icons
-  get the scatter; the logo inside the app stays the plain mark.
-- **Progressive blur** (`.pblur` with `.pblur-top/-bottom/-tile/-left`, or `blurLayers()` in
+  centred on its box, not optically (the field shares its grid, which must stay centred, its dots
+  cut evenly at opposite edges), one empty cell around it, nothing inside its box but the C's open mouth and, in its bowl, a
+  column of three dim pixels between the C and the bar (the field's noise, never left out and
+  never the darkest grey), and past that a seeded
+  scatter of dim pixels in five greys with gaps (`fieldShade()` and `SEED` in `shared/logo.js`), the
+  outermost cut by the icon's edge at every size. The outer app icons and the browser tab's
+  install page get the scatter (`shared/pixel-field.js` carries the same field on across the
+  page); the logo inside the installed app stays the plain mark.
+- **Progressive blur** (`.pblur` with `.pblur-top/-bottom/-side/-tile/-left`, or `blurLayers()` in
   `shared/ui.js`): stacked backdrop-filter layers with staggered mask gradients, at the top and
-  bottom edges of scrolling screens, behind the side menu and under each game tile's title.
+  bottom edges of scrolling screens (left and right where one scrolls sideways), behind the side
+  menu and under each game tile's title.
   Nothing that wraps the layers may set opacity, filter or mask.
 - **Blur out and blur in** (`.blur-out` / `.blur-in` in `styles.css`, `blurOut()` / `blurIn()` in
   `shared/ui.js`): the one animation for something that steps away and comes back in place. Blur
   out fades it while it goes soft (`--blur-fade`, over `--t-blur`) and leaves it untouchable; blur
-  in fades it back as it comes into focus. The home button uses it while the side menu is open.
+  in fades it back as it comes into focus. The home button uses it while the side menu is open,
+  and the install page's pixel field at random, slowed to `--t-twinkle`.
 - **Progress** is the pixel logo coming into focus (`shared/logo.js`), and a downloading tile
   unblurring. There are no spinners or progress bars.
 - **Header:** portrait, a row under the status bar (icon button, stats right-aligned as a mono
   label over a 17/750 tabular value, and optionally `.stat-meters` under them: a row of small
   two-state icons, filled while ready and hollow while used, such as Tanks' shells and mines;
-  in a landscape game header each meter runs down the right edge). Game pages show no title in the header (the game's name is
-  on its start sheet); only the launcher has one, its wordmark and status line. Landscape: the
-  launcher's header becomes a rail down the right edge (`--rail-w`): settings on top, its title
-  running vertically in the middle. A game page has no rail: its header stays in the page (never
+  in a landscape game header each meter runs down the right edge). No page shows a title in the
+  header (a game's name is on its start sheet); the launcher's header is only settings, floating
+  at the top right, its logo being in the page (Launcher, above). A game page's header stays in
+  the page (never
   `position: fixed`) and shares the shell's grid cell with the play area, so the home button floats
   in the top-left corner and the stats stack down the top-right, each in a `--side-w` gutter the
   play area keeps free, with the board centred between them. The side menu's list starts under
@@ -436,7 +487,11 @@ style a button, header, card, sheet or menu locally.
   (sweep, direct, bank shots found by mirroring the target in wall faces, guided missiles, lobbed
   bombs, or a minigun's spray, whose turret drags as its barrels speed up),
   lead (an exact intercept on your smoothed velocity, stopped at walls), dodging, and invisibility for
-  white. Yellow and Hornet lay mines. Yellow drops one of its 2 now and then. Hornet lays its 4 by
+  white. Kinds come in lines: a V2 names the first version it upgrades (`upgrade` in `TYPES`):
+  Brown → Grey, Teal → Green, Yellow → Hornet, Pink → Violet and White (Violet's twin, `twin`); Red,
+  Black, Olive and Lime stand alone. A V2 reacts and thinks at least as fast as its V1 (a test
+  checks), and the field guide rates every kind on five axes: Aim, Awareness, Defence, Tactics,
+  Mines (TANKS.md A5 plans the rest). Yellow and Hornet lay mines. Yellow drops one of its 2 now and then. Hornet lays its 4 by
   plan: at a cell on your shortest way to it that it reaches well before you, then watches the mine
   from a lookout and shoots it as you pass (only when the blast spares every enemy); it knows its
   side's quiet mines only go off when driven onto, and drives clear of any about to blow. No enemy
@@ -503,8 +558,10 @@ style a button, header, card, sheet or menu locally.
 ## Tanks field guide (keep it in sync)
 
 A reference page for Tanks, published as a private claude.ai artifact:
-**https://claude.ai/artifact/YKPsuThAVXPnPLm4Wwa5gN**. It shows every enemy kind (card, scene,
-stats table, shared AI behaviour, aim styles), how to read a tank at a glance and the colour plan,
+**https://claude.ai/artifact/YKPsuThAVXPnPLm4Wwa5gN**. It shows every enemy kind grouped into lines
+(card, scene, what each V2 gains and gives up), a stats table, an intelligence table (five axes,
+levels worked out from the stats, with proposed levels marked as such), what we could add
+(`guide/plans.mjs`, nothing in it is built), shared AI behaviour and aim styles, how to read a tank at a glance and the colour plan,
 all missions as drawn maps with their names and an enemy matrix, how a map is written, and a map
 editor that runs the tests' map checks live. It is not part of the app: it lives in `guide/`,
 never under `src/`, and never ships in a pack.
@@ -572,8 +629,8 @@ Friends see the update within about 10 minutes, the next time they open the app 
    **Add to Home Screen**.
 2. The friend opens the app **from the home-screen icon** while still online. Home-screen
    apps have their own storage, separate from Safari.
-3. Wait for "Ready offline" under the logo, then tap the tile of each game they want. A game is
-   ready when its tile is sharp.
+3. Wait for the big logo to come into focus (sharp white: the app is ready offline), then
+   tap the tile of each game they want. A game is ready when its tile is sharp.
 4. Turn on airplane mode, force-quit the app, reopen it and play a game. If that works,
    they're done for good. Games they skipped keep a dimmed download icon until they're back
    online.

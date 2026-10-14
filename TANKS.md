@@ -402,6 +402,68 @@ Violet, White and Black carried 2 mines each, and Yellow laid its 4 only now and
   mine or dodging a shell never runs it onto another mine (`clearMove`).
 - **Mine discs:** Yellow's rear deck holds 2, Hornet's 4, in one row as before.
 
+### A5. Lines (V1 → V2) and five axes of intelligence
+**Status:** lines done 2026-10-14; behaviours planned · **Size:** L
+
+Stats were one flat list (aim, think, react, spread, dodge, range, lead, layRate, trap, detonate), and
+Hornet's planning had no place on it. Now kinds are grouped into **lines** and rated on **five axes**.
+
+**Lines** (`upgrade` in `TYPES`; White also has `twin`). A V2 is the upgraded version of a first
+version (V1):
+
+| Line | V1 | V2 |
+| --- | --- | --- |
+| Brown | Brown | Grey |
+| Teal | Teal | Green (can't move) |
+| Yellow | Yellow | Hornet |
+| Pink | Pink | Violet, and White (Violet's twin, invisible) |
+
+Red, Black, Olive and Lime stand alone. A test holds every V2 to reacting and thinking at least as fast
+as its V1. The field guide groups the roster by line and says what each V2 gains and gives up,
+worked out from the stats.
+
+**Five axes**, each with named levels, shown in the guide's Intelligence table (worked out from the
+stats, so it stays true):
+
+| Axis | Question | Levels today |
+| --- | --- | --- |
+| Aim | How does it find a line on you? | sweep, direct (or guided, lob, spray), bank, bank ×2; plus lead and accuracy |
+| Awareness | How fast does it notice? | slow, steady, quick, sharp (reaction time; think rate alongside) |
+| Defence | What does it do about a shot coming at it? | none, sidesteps, often, nearly all (+ invisible) |
+| Tactics | What does it do with no shot? | fixed, roams / snipes, hunts, ambush |
+| Mines | How does it use mines? | none, scatters, traps |
+
+**Gaps the table shows:**
+
+- Every mover only *roams* when it has no shot: it wanders at random at its distance. With you
+  hiding, Grey, Teal, Red and Pink spend 46–67% of their time like that, which reads as a bug.
+- Green gives up Teal's movement (by design) and Teal's 50% lead (probably not).
+- Violet and White gain no Tactics over Pink.
+- Nobody shoots a shell down, the Defence level the expert playtest bot already uses.
+
+**Plan, in order** (each step playtested so the expert bot keeps 6 wins in 8):
+
+1. **Tactics: seek.** A mover at its distance with no shot drives to the nearest cell in its band that
+   has a line on you (bank lines for bank aimers) instead of roaming; it pauses only to line up a
+   shot, watch a mine, give way or take cover. Test: with a firing spot within a few steps, it is
+   heading there.
+2. **Defence: shoot down.** A share of noticed shells it fires at instead of (or as well as) stepping
+   aside, aiming at where the shell will be (shells that meet cancel out). For Black, Violet, White
+   and Hornet.
+3. **Tactics: cover.** Violet and White fire, then step back behind a wall until reloaded (A3's
+   "hide after firing"), so the Pink line's V2 gains a Tactics level.
+4. **Aim for Green:** give it lead, so the Teal line's V2 is the better aimer.
+5. **Mines for Black:** 2 on the ground at once, dropped behind it as it hunts, so chasing it head-on
+   is a risk (it carried 2 until A4).
+6. **Targets per line once done:** Grey seeks; Hornet ambushes (done); Violet and White seek and take
+   cover and shoot down; Black hunts, shoots down and drops mines; Red, Lime and Teal seek; Brown,
+   Green and Olive stay fixed. Then extend the test so a V2 is at least its V1's level on every axis
+   it can use.
+
+The field guide shows these as **Proposed** next to each kind's level today, and lists them under
+"What we could add". They live in `guide/plans.mjs` (with the aimless-time measurement); when one
+ships, take it out of there and the guide shows it as the kind's level from the stats.
+
 ## M. Maps and missions
 
 ### M1. A map editor

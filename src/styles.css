@@ -34,8 +34,8 @@
   --glass-line: rgba(255, 255, 255, 0.14);
   --glass-line-strong: rgba(255, 255, 255, 0.22);
   --hairline: rgba(255, 255, 255, 0.08);
-  --panel: rgba(24, 24, 24, 0.55); /* glass panel over art */
-  --sheet: rgba(21, 21, 21, 0.4); /* a sheet is glass: it blurs what's behind, barely tinted */
+  --panel: rgba(24, 24, 24, 0.55); /* a notice laid over a board or arena */
+  --sheet: rgba(21, 21, 21, 0.4); /* a sheet is glass: it blurs what's behind, barely tinted (the suggested game's panel too) */
   --blur: 20px;
   --blur-panel: 24px;
   --blur-sheet: 40px;
@@ -81,18 +81,10 @@
   /* The header: an icon-button row right under the status bar. */
   --bar-top: calc(max(var(--safe-t), 8px) + 8px);
   --bar-total: calc(var(--bar-top) + 44px);
-  --rail-w: 0px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --t-blur: 0.24s; /* blur in and blur out (Motion, below) */
+  --t-twinkle: 1.2s; /* the same, slowed down for the install page's pixel field */
   --blur-fade: 8px;
-}
-
-/* In landscape the launcher's header becomes a rail down the right edge. Game pages have no rail
-   (they set it back to 0 below). */
-@media (orientation: landscape) {
-  :root {
-    --rail-w: calc(84px + var(--safe-r));
-  }
 }
 
 *,
@@ -284,6 +276,18 @@ button {
 
 .btn-block {
   width: 100%;
+}
+
+/* Icon only: the same button, square, its pixel icon filling it to one pixel gap from the edge
+   like an icon button's. */
+.btn-icon {
+  width: 48px;
+  padding: 0;
+}
+
+.btn-icon .icon {
+  width: 44px;
+  height: 44px;
 }
 
 /* Disabled is the same button at 40%, never a new style. */
@@ -578,7 +582,8 @@ button {
 }
 
 /* Panel: glass over art, shaped like a game tile (18 = 8 + 10): its button sits inset 10 with the
-   tile art's radius 8, and its text starts where a tile's title does. */
+   tile art's radius 8, and its text starts where a tile's title does. It blurs what's behind it
+   the way a sheet does (the sheet's tint and blur). */
 .panel {
   display: flex;
   align-items: center;
@@ -587,9 +592,9 @@ button {
   padding: 10px 10px 10px 18px;
   border: 1px solid var(--glass-line);
   border-radius: var(--r-game-tile);
-  background: var(--panel);
-  -webkit-backdrop-filter: blur(var(--blur-panel));
-  backdrop-filter: blur(var(--blur-panel));
+  background: var(--sheet);
+  -webkit-backdrop-filter: blur(var(--blur-sheet));
+  backdrop-filter: blur(var(--blur-sheet));
 }
 
 .panel-text {
@@ -600,30 +605,41 @@ button {
   border-radius: var(--r-game-art);
 }
 
-/* A glass row in a list (install steps). */
+/* A glass row in a list (install steps): an icon in a glass tile, then an eyebrow over a line of
+   text, on a panel that blurs what's behind it like a sheet. The panel's radius is the tile's 8
+   plus the 8 it sits in. */
 .glass-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 60px;
-  padding: 10px 18px;
+  padding: 8px 16px 8px 8px;
   border: 1px solid var(--glass-line);
+  border-radius: calc(var(--r-btn) + 8px);
+  background: var(--sheet);
+  -webkit-backdrop-filter: blur(var(--blur-sheet));
+  backdrop-filter: blur(var(--blur-sheet));
+}
+
+.glass-row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
   border-radius: var(--r-btn);
   background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--blur));
-  backdrop-filter: blur(var(--blur));
+}
+
+.glass-row-icon .icon {
+  width: 32px;
+  height: 32px;
+}
+
+.glass-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font: 600 16px/1.3 var(--font-sans);
-}
-
-.glass-row .icon {
-  width: 22px;
-  height: 22px;
-}
-
-.glass-row .eyebrow {
-  min-width: 1ch;
-  font-weight: 600;
-  font-size: 13px;
 }
 
 /* Notice: a glass text card laid over a board or arena for a moment (Tanks' mission banners). */
@@ -724,13 +740,41 @@ button {
 .pblur-left > i:nth-child(4) { --b: 32px; --from: 5%; --to: 40%; }
 .pblur-left > b { background: linear-gradient(to right, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.55) 45%, rgba(0, 0, 0, 0.15)); }
 
-/* The fixed edges of a scrolling screen. */
+/* The side edges of a screen that scrolls sideways (the launcher's games in landscape). */
+.pblur-side > i:nth-child(1) { --b: 2px; --from: 55%; --to: 100%; }
+.pblur-side > i:nth-child(2) { --b: 6px; --from: 35%; --to: 75%; }
+.pblur-side > i:nth-child(3) { --b: 14px; --from: 15%; --to: 50%; }
+.pblur-side > b { background: linear-gradient(var(--dir), rgba(11, 11, 11, 0.85), rgba(11, 11, 11, 0)); }
+
+/* The fixed edges of a scrolling screen: top and bottom, or left and right when it scrolls
+   sideways (shown only there, by the page). */
 .edge-top,
 .edge-bottom {
   position: fixed;
   left: 0;
-  right: var(--rail-w);
+  right: 0;
   z-index: 5;
+}
+
+.edge-left,
+.edge-right {
+  display: none;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+
+.edge-left {
+  --dir: to right;
+  left: 0;
+  width: calc(var(--safe-l) + 16px);
+}
+
+.edge-right {
+  --dir: to left;
+  right: 0;
+  width: calc(var(--safe-r) + 16px);
 }
 
 .edge-top {
@@ -792,12 +836,39 @@ button {
   pointer-events: none;
 }
 
-/* ---------- Header and rail ---------- */
+/* ---------- Pixel field (shared/pixel-field.js) ---------- */
 
-/* Portrait: a row right under the status bar (icon button, then the launcher's title, stats
-   right-aligned). Game pages show no title, only their stats. Landscape: the launcher's header is
-   a rail down the right edge (settings on top, title running down the middle); a game's floats
-   over the play area, home in the top-left corner and the stats down the top-right. */
+/* The browser tab's background: the app icon's scatter of dim pixels across the whole page, with
+   the mark lit white in it. Its pixels blur out and back in at random, slower than anything else
+   (--t-twinkle). */
+.pixel-field {
+  --t-blur: var(--t-twinkle);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pixel-field i {
+  position: absolute;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: var(--r-pixel);
+}
+
+.pixel-field i.mark {
+  background: var(--ink);
+}
+
+/* ---------- Header ---------- */
+
+/* Portrait: a row right under the status bar (a game's home button and its stats right-aligned;
+   the launcher's logo centred and settings at the right). No page shows a title. Landscape: a
+   game's header floats over the play area, home in the top-left corner and the stats down the
+   top-right; the launcher's logo scrolls along with its games while settings floats at the top
+   right (Launcher, below). */
 .bar {
   position: relative;
   z-index: 10;
@@ -807,38 +878,6 @@ button {
   gap: 12px;
   min-height: var(--bar-total);
   padding: var(--bar-top) calc(var(--safe-r) + 16px) 0 calc(var(--safe-l) + 16px);
-}
-
-.bar-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.bar-title h1 {
-  overflow: hidden;
-  font: 750 17px/1.2 var(--font-display);
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.wordmark {
-  font: 700 15px/1.2 var(--font-display);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.status-line {
-  overflow: hidden;
-  font: 500 11px/1.3 var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .bar-stats {
@@ -910,37 +949,10 @@ button {
 }
 
 @media (orientation: landscape) {
-  .launcher .bar {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: var(--rail-w);
-    min-height: 0;
-    flex-direction: column;
-    gap: 14px;
-    padding: calc(var(--safe-t) + 16px) var(--safe-r) calc(var(--safe-b) + 21px) 0;
-    border-left: 1px solid var(--hairline);
-    background: var(--bg);
-  }
-  .launcher .bar > * {
-    flex: none;
-  }
-  .launcher .bar-title {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    writing-mode: vertical-rl;
-  }
-
   /* A game's header stays in the page (never fixed) and shares the shell's one grid cell with
      the play area, so it floats over it: home in the top-left corner, the stats stacked down the
      top-right, each in a gutter (--side-w) the play area keeps free on its side. */
   .game-page {
-    --rail-w: 0px;
     --side-w: 72px; /* 16 + 44 + 12 */
   }
   .game-page .shell {
@@ -990,8 +1002,8 @@ button {
   flex-direction: column;
 }
 
-/* Portrait: header, then the board, then the moves. Landscape: the board on the left, the
-   moves beside it, the rail on the right. */
+/* Portrait: header, then the board, then the moves. Landscape: the board on the left and the
+   moves beside it, with the header floating over the corners. */
 .play {
   flex: 1;
   min-height: 0;
@@ -1234,14 +1246,13 @@ dialog.sheet[open] {
 
 @media (orientation: landscape) {
   dialog.sheet {
-    max-width: min(700px, calc(100% - 2 * var(--rail-w)));
+    max-width: 700px;
     max-height: calc(100dvh - 22px);
     padding-left: 16px;
     padding-right: 16px;
   }
   dialog.sheet.sheet-docked {
-    right: var(--rail-w);
-    max-width: min(560px, calc(100% - var(--rail-w) - 32px));
+    max-width: min(560px, calc(100% - 32px));
   }
 }
 
@@ -1341,16 +1352,19 @@ dialog.sheet[open] {
 
 /* ---------- Launcher ---------- */
 
+/* The header is only settings, floating at the top right over whatever scrolls under it; the
+   rest of its row lets taps through. */
 .launcher .bar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  padding-left: calc(var(--safe-l) + 20px);
+  justify-content: flex-end;
+  pointer-events: none;
 }
 
-.bar-logo {
-  margin-right: -2px;
+.launcher .bar-actions {
+  pointer-events: auto;
 }
 
 /* Settings, and an update waiting for a reload. While one waits, the settings button turns white
@@ -1428,29 +1442,87 @@ dialog.sheet[open] {
   flex-direction: column;
   gap: 12px; /* the suggested game sits as far above the grid as the tiles sit apart */
   padding: calc(var(--bar-total) + 22px) calc(var(--safe-r) + 16px) calc(var(--safe-b) + 72px) calc(var(--safe-l) + 16px);
+  overflow-x: clip; /* the hero's bleed past the sides must not make the page scroll sideways */
 }
 
-/* The small logo and the status line belong to the home view; first launch and the browser
-   tab have their own big logo. */
-.launcher:not([data-view="home"]) .bar-logo,
-.launcher:not([data-view="home"]) .status-line {
+/* The home view starts right under the status bar, with the big logo over the suggested game's
+   art. The top blur runs from the top of the screen down to the foot of the settings button, and
+   the logo centres in the room below it, so it sits sharp. At rest the blur stays out of the way,
+   so the art is seen right up to the edge; it slides in with whatever scrolls under it
+   (--scrolled, set by launcher.js). */
+.launcher[data-view="home"] .home {
+  padding-top: var(--safe-t);
+}
+
+.launcher[data-view="home"] .edge-top {
+  height: var(--bar-total);
+  transform: translateY(calc(min(var(--scrolled, 0px), var(--bar-total)) - var(--bar-total)));
+}
+
+.launcher[data-view="home"] .home-mark {
+  padding-top: calc(var(--bar-total) - var(--safe-t));
+}
+
+/* The logo and the note belong to the home view; first launch and the browser tab have their own
+   big logo. */
+.launcher:not([data-view="home"]) :is(.lead, .home-note) {
   display: none;
 }
 
-/* The suggested game's board, bleeding in behind the top of the screen and fading out. */
-.hero {
+/* The suggested game's square: the logo over its art, the eyebrow and panel at its foot. As wide
+   as the page in portrait, and in landscape the two-tile column, which is as tall as the screen
+   allows. */
+.lead {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  aspect-ratio: 1;
+}
+
+/* The logo, large and centred over the suggested game's art, or alone while nothing is
+   downloaded. It is the status: out of focus until the app is ready offline, then it comes into
+   focus as games download. */
+.home-mark {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 0;
+}
+
+.home-mark .logo {
+  --logo-w: 120px;
+  position: relative;
+  z-index: 1;
+}
+
+.home-mark .logo-glow {
+  --logo-w: 192px;
   position: absolute;
-  top: calc(var(--safe-t) - 18px);
-  left: 50%;
   z-index: 0;
-  width: min(calc(100% + 48px), 560px);
-  transform: translateX(-50%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
-  mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
+}
+
+/* The suggested game's board: a square that runs out to the screen's edges and never past them,
+   so all of it is seen. In portrait it starts at the top of the screen, as wide as the page (16
+   past .lead on each side), and fades out toward the panel; landscape is below. */
+.hero {
+  --hero-fade: to bottom;
+  position: absolute;
+  top: calc(-1 * var(--safe-t));
+  left: calc(-16px - var(--safe-l));
+  right: calc(-16px - var(--safe-r));
+  z-index: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
+  mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
   pointer-events: none;
 }
 
-.home > section {
+.home > section,
+.lead > section {
   position: relative;
   z-index: 1;
 }
@@ -1459,7 +1531,6 @@ dialog.sheet[open] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 156px;
 }
 
 .suggest > .eyebrow {
@@ -1472,14 +1543,29 @@ dialog.sheet[open] {
   text-overflow: ellipsis;
 }
 
+/* Nothing downloaded yet: the same panel offers every game. The eyebrow keeps its room, so the
+   layout doesn't move, and the title may take two lines rather than lose its end. */
+.suggest.is-all > .eyebrow {
+  visibility: hidden;
+}
+
+.suggest.is-all .panel-text {
+  padding: 2px 0;
+  white-space: normal;
+  text-wrap: balance;
+}
+
 .games {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
+/* Right under the suggested game, so the fillers never push it out of sight. */
 .home-note {
-  padding: 4px 4px 0;
+  position: relative;
+  z-index: 1;
+  padding: 0 4px;
   text-align: center;
 }
 
@@ -1565,6 +1651,14 @@ dialog.sheet[open] {
   opacity: 0.8;
 }
 
+/* Blurred, the art isn't clipped to its corners: Safari cuts a filtered element's blur off at its
+   own rounded clip, which draws a hard outline around it. The blur spreads softly into the tile
+   instead (the tile still clips at its own edge), and the art's corner cells are as round as the
+   clip, so nothing shows once it's sharp. */
+.game-tile:is(.is-remote, .is-waiting, .is-downloading, .is-unavailable) .game-tile-art {
+  overflow: visible;
+}
+
 .game-tile.is-downloading {
   cursor: progress;
 }
@@ -1584,6 +1678,23 @@ dialog.sheet[open] {
 
 .game-tile.is-unavailable .game-tile-icon {
   opacity: 0.4;
+}
+
+/* A filler for a game still to come: an empty tile labelled where a title would be, and nothing
+   to press. */
+.game-tile.is-soon {
+  cursor: default;
+}
+
+.game-tile-soon {
+  position: absolute;
+  left: 18px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  white-space: nowrap;
 }
 
 /* Placeholders while the app gets ready. */
@@ -1626,14 +1737,13 @@ dialog.sheet[open] {
   place-items: center;
 }
 
-.intro-mark > .t-heading {
+.intro-mark > p {
   position: relative;
   z-index: 1;
 }
 
-/* The browser tab has no header and no rail: the logo and name lockup stands in for it. */
+/* The browser tab has no header: the logo and name lockup stands in for it. */
 .launcher[data-view="install"] {
-  --rail-w: 0px;
   --bar-total: calc(max(var(--safe-t), 8px) + 8px);
 }
 
@@ -1683,63 +1793,121 @@ dialog.sheet[open] {
   --logo-w: 176px;
 }
 
-/* The small logo in a step row takes the same 22 as the icons beside it. */
-.glass-row .logo-xs {
-  margin: 0 4px;
+/* The field draws the browser tab's logo; the logo itself only holds its place. */
+.install .intro-logo .logo:not(.logo-glow) {
+  visibility: hidden;
 }
 
+.install .intro-mark {
+  gap: 20px;
+}
+
+/* The steps' heading, centred over them: a little over a title, well under the name above. */
+.install .intro-side > .t-title {
+  padding: 0 4px 4px;
+  font-size: 32px;
+  text-align: center;
+}
+
+/* Landscape: everything runs left to right in one strip that scrolls sideways, from the top of the
+   screen down, with no header band: settings floats at the top right over it. The strip starts
+   with the suggested game laid out as in portrait, in a column two tiles wide: its art bleeding in
+   from the top, the logo large in the middle of it, the eyebrow and panel at its foot. The other
+   tiles and the fillers follow in two rows. */
 @media (orientation: landscape) {
-  .launcher .bar {
-    left: auto;
-    padding-left: 0;
-  }
-  .launcher .bar .bar-actions {
-    order: -1;
-  }
-  /* The rail is narrow: there the white button keeps the settings button's square, icon only. */
-  .bar-update-label {
-    display: none;
-  }
-  .launcher .bar-logo {
-    order: 2;
-  }
-  .bar-logo {
-    margin: 0;
-  }
-  .bar-logo .logo {
-    --logo-w: 24px;
+  .launcher {
+    /* Two rows of tiles and the gap between them fill the height. */
+    --tile: clamp(96px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - 12px) / 2), 260px);
+    --lead: calc(2 * var(--tile) + 12px);
   }
   .home {
     max-width: none;
-    padding: calc(var(--safe-t) + 18px) calc(var(--rail-w) + 24px) calc(var(--safe-b) + 56px) calc(var(--safe-l) + 24px);
+    padding: calc(var(--bar-total) + 8px) calc(var(--safe-r) + 24px) calc(var(--safe-b) + 56px) calc(var(--safe-l) + 24px);
   }
-  .home > section {
+  .home > .intro {
     width: 100%;
     max-width: 920px;
     margin-left: auto;
     margin-right: auto;
   }
-  .hero {
-    top: 0;
-    left: calc(50% - var(--rail-w) / 2);
-    width: min(66%, 560px);
-    transform: translate(-50%, -41%);
-    -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 72%);
-    mask-image: linear-gradient(to bottom, #000 45%, transparent 72%);
+
+  /* The page itself never scrolls: the body is the sideways scroller, while everything fixed (the
+     header, the edges) stays put. (The root's overflow keeps the body's from passing to the
+     viewport.) */
+  :root:has(> .launcher[data-view="home"]) {
+    overflow: hidden;
   }
-  .suggest {
-    margin-top: 0;
+  .launcher[data-view="home"] {
+    position: fixed;
+    inset: 0;
+    overflow: auto hidden;
+  }
+  .launcher[data-view="home"] :is(.edge-top, .edge-bottom) {
+    display: none;
+  }
+  .launcher[data-view="home"] :is(.edge-left, .edge-right) {
+    display: block;
+  }
+  .launcher[data-view="home"] .home {
+    display: grid;
+    grid-template: minmax(0, 1fr) auto / var(--lead) auto;
+    gap: 0 12px;
+    width: max-content;
+    min-width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
+  }
+  /* The column is as tall as two tiles and their gap, so it is square; a note under it takes its
+     room from the logo. No top blur here, so the logo centres in the whole of it. It holds no box
+     of its own, so the art measures from the strip. */
+  .lead {
+    grid-area: 1 / 1;
+    position: static;
+    aspect-ratio: auto;
+    min-height: 0;
+  }
+  .launcher[data-view="home"] .home-mark {
+    padding-top: 0;
+  }
+  .home-note {
+    grid-area: 2 / 1;
+    padding-top: 20px;
+  }
+  .games {
+    grid-area: 1 / 2 / -1 / 3;
+    align-self: end;
+  }
+  /* The art is exactly as tall as the screen, from the top edge to the bottom one, and starts
+     where the column's gutter does (the screen's left edge, or the safe area's), so it sits
+     centred on the column. It fades out to the right, toward the tiles, the way it fades toward
+     the panel in portrait. */
+  .hero {
+    --hero-fade: to right;
+    top: 0;
+    bottom: 0;
+    left: var(--safe-l);
+    right: auto;
+  }
+  /* The left edge blur stays out of the way at rest and slides in with the strip, like the top
+     one in portrait. */
+  .launcher[data-view="home"] .edge-left {
+    transform: translateX(calc(min(var(--scrolled, 0px), var(--safe-l) + 16px) - var(--safe-l) - 16px));
   }
   .tile-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: none;
+    grid-template-rows: repeat(2, var(--tile));
+    grid-auto-flow: column;
+    grid-auto-columns: var(--tile);
   }
+
   .intro {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: center;
     gap: 24px 48px;
     text-align: left;
-    min-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 80px);
+    min-height: calc(100dvh - var(--bar-total) - 8px - var(--safe-b) - 56px);
   }
   .intro-mark {
     grid-area: mark;
@@ -1751,20 +1919,22 @@ dialog.sheet[open] {
   .prepare .intro-side {
     grid-area: side;
   }
+  /* The steps take the wider column, so their lines rarely wrap. */
   .install {
-    grid-template-areas: "mark side" "text side";
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    grid-template-areas: "mark side";
     align-content: center;
-  }
-  .install .intro-mark {
-    justify-self: start;
-    align-self: end;
-  }
-  .install .intro-text {
-    grid-area: text;
-    align-self: start;
+    column-gap: 40px;
   }
   .install .intro-side {
     grid-area: side;
+    gap: 10px;
+  }
+  .install .intro-side > .t-title {
+    padding-bottom: 0;
+  }
+  .install .intro-side > .t-note {
+    text-align: center;
   }
   .intro-text {
     align-items: flex-start;
@@ -1940,6 +2110,17 @@ dialog.sheet[open] {
 
 .art-hero.art-sudoku {
   gap: 1.2cqi;
+}
+
+/* The hero is square, so the 4:3 arena fills its height and loses an eighth of its width at
+   each side (no tank sits there). */
+.art-hero.art-tanks {
+  height: 100%;
+}
+
+.art-hero > .art-arena {
+  width: calc(100% * 4 / 3);
+  margin-inline: calc(100% / -6);
 }
 
 /* ---------- Motion ---------- */

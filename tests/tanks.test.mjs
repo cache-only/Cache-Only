@@ -244,6 +244,21 @@ test('blasts chain to nearby mines, and a shell sets a mine off', () => {
   assert.equal(s.mines.length, 0);
 });
 
+test('lines: every V2 names the first version it upgrades, and reacts and thinks at least as fast', () => {
+  const v2 = Object.keys(TYPES).filter((k) => TYPES[k].upgrade);
+  assert.deepEqual(v2.sort(), ['ash', 'green', 'hornet', 'violet', 'white']);
+  for (const [k, t] of Object.entries(TYPES)) {
+    if (!t.upgrade) {
+      assert.equal(t.twin, undefined, `${k} has a twin but no line`);
+      continue;
+    }
+    const base = TYPES[t.upgrade];
+    assert.ok(base && !base.upgrade, `${k} upgrades a first version`);
+    if (t.twin) assert.equal(TYPES[t.twin]?.upgrade, t.upgrade, `${k} is the twin of a V2 in its own line`);
+    assert.ok(t.react <= base.react && t.think <= base.think, `${k} is at least as quick as ${t.upgrade}`);
+  }
+});
+
 test('Yellow and Hornet lay mines: Yellow 2 now and then, Hornet 4 by plan and far more often', () => {
   assert.deepEqual(ENEMY_KINDS.filter((kind) => TYPES[kind].mines > 0), ['yellow', 'hornet']);
   assert.equal(TYPES.yellow.mines, 2);

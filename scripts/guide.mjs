@@ -83,6 +83,7 @@ export async function buildGuide() {
   const M = await load(path.join(TANKS, 'missions.js'));
   const A = await load(path.join(TANKS, 'art.js'));
   const { enemyText, SCENES } = await load(path.join(GUIDE, 'enemies.mjs'));
+  const plans = await load(path.join(GUIDE, 'plans.mjs'));
   const i18n = await readFile(path.join(ROOT, 'src/shared/i18n.js'), 'utf8');
   const tanksJs = await readFile(path.join(TANKS, 'tanks.js'), 'utf8');
   const css = await readFile(path.join(TANKS, 'styles.css'), 'utf8');
@@ -139,6 +140,20 @@ export async function buildGuide() {
     if (/undefined|NaN|Infinity/.test(flat)) throw new Error(`guide: text for "${k}" has a missing value: ${flat}`);
   }
   for (const k of Object.keys(SCENES)) if (!kinds.includes(k)) throw new Error(`guide: scene for unknown kind "${k}"`);
+  // Proposed additions (guide/plans.mjs): every kind and axis they name must exist.
+  const AXES = ['aim', 'aware', 'defence', 'tactics', 'mines'];
+  for (const [k, byAxis] of Object.entries(plans.PROPOSED)) {
+    if (!kinds.includes(k)) throw new Error(`guide: plans.mjs proposes for unknown kind "${k}"`);
+    for (const [axis, p] of Object.entries(byAxis)) {
+      if (!AXES.includes(axis)) throw new Error(`guide: plans.mjs uses unknown axis "${axis}"`);
+      if (!(p.level >= 0 && p.level <= 3) || !p.name) throw new Error(`guide: plans.mjs entry ${k}.${axis} needs a level 0-3 and a name`);
+    }
+  }
+  for (const a of plans.ADDITIONS) {
+    if (!AXES.includes(a.axis)) throw new Error(`guide: plans.mjs addition "${a.name}" has unknown axis "${a.axis}"`);
+    for (const k of a.who) if (!kinds.includes(k)) throw new Error(`guide: plans.mjs addition "${a.name}" names unknown kind "${k}"`);
+  }
+  for (const k of Object.keys(plans.AIMLESS)) if (!kinds.includes(k)) throw new Error(`guide: plans.mjs measures unknown kind "${k}"`);
   const offLimits = { player: color['--tk-player'], fire: color['--tk-fire'], crate: color['--tk-crate'] };
 
   const data = {
@@ -163,6 +178,7 @@ export async function buildGuide() {
     colours,
     offLimits,
     variants: A.VARIANTS,
+    plans: { proposed: plans.PROPOSED, additions: plans.ADDITIONS, aimless: plans.AIMLESS },
   };
   const cps = M.CHECKPOINTS.map(String);
   const fill = {

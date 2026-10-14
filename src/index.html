@@ -19,12 +19,10 @@
   <script type="module" src="/launcher.js"></script>
 </head>
 <body class="launcher">
+  <!-- Only settings floats up here, at the top right. The logo is in the page, over the suggested
+       game; the status words are there for screen readers. -->
   <header class="bar">
-    <span id="barLogo" class="bar-logo"></span>
-    <div class="bar-title">
-      <span class="wordmark">Cache Only</span>
-      <span class="status-line" id="statusLine" role="status" aria-live="polite"></span>
-    </div>
+    <span class="visually-hidden" id="statusLine" role="status" aria-live="polite"></span>
     <!-- While an update waits, the settings button turns white: the update icon takes the
          settings icon's place and "Update" grows out to its left. -->
     <div class="bar-actions" id="barActions" hidden>
@@ -38,22 +36,40 @@
   </header>
 
   <div class="pblur pblur-top edge-top" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  <!-- Landscape: the games scroll sideways, under these. -->
+  <div class="pblur pblur-side edge-left" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  <div class="pblur pblur-side edge-right" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+
+  <!-- A browser tab: the app icon's pixel field across the whole page (shared/pixel-field.js). -->
+  <div class="pixel-field" id="installField" aria-hidden="true" hidden></div>
 
   <main class="home" id="home">
-    <div class="hero" id="hero" aria-hidden="true"></div>
+    <!-- The installed app: one square (.lead) holding the logo, large and centred over the
+         suggested game's art (it is the status: it comes into focus once the app is ready offline
+         and as games download), with the suggested game at its foot; then a note while offline,
+         then every game and the fillers still to come. While nothing is downloaded, the same panel
+         offers every game (.is-all): no art, no eyebrow, and a download icon for its button. -->
+    <div class="lead">
+      <div class="hero" id="hero" aria-hidden="true"></div>
 
-    <!-- The installed app: the suggested game, then every game. -->
-    <section class="suggest" id="suggest" hidden>
-      <h2 class="eyebrow" data-i18n="launcher.suggested"></h2>
-      <div class="panel">
-        <span class="panel-text t-title" id="suggestName"></span>
-        <a class="btn btn-primary" id="suggestBtn"></a>
-      </div>
-    </section>
+      <div class="home-mark" id="homeMark" aria-hidden="true"></div>
+
+      <section class="suggest" id="suggest" hidden>
+        <h2 class="eyebrow" data-i18n="launcher.suggested"></h2>
+        <div class="panel">
+          <span class="panel-text t-title" id="suggestName"></span>
+          <a class="btn btn-primary" id="suggestBtn"></a>
+          <button type="button" class="btn btn-primary btn-icon" id="getAllBtn" data-i18n-label="launcher.downloadAll" hidden>
+            <svg class="icon"><use href="#i-download"/></svg>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <p class="t-note home-note" id="homeNote"></p>
 
     <section class="games" id="gamesSection" hidden>
       <ul class="tile-grid" id="games"></ul>
-      <p class="t-note home-note" id="homeNote"></p>
     </section>
 
     <!-- First launch: the app shell is still downloading. -->
@@ -71,18 +87,16 @@
       </div>
     </section>
 
-    <!-- A browser tab: only how to install. -->
+    <!-- A browser tab: only how to install, over the pixel field (#installField). -->
     <section class="intro install" id="install" hidden>
-      <!-- No header on this page: the logo and the name are one lockup. -->
+      <!-- No header on this page: the logo and the name are one lockup. The logo only holds the
+           place of the field's lit mark. -->
       <div class="intro-mark" id="installMark">
         <div class="intro-logo"></div>
-        <p class="t-heading">Cache Only</p>
-      </div>
-      <div class="intro-text">
-        <h1 class="t-title" data-i18n="install.title"></h1>
-        <p class="t-body" data-i18n="install.lead"></p>
+        <p class="t-display">Cache Only</p>
       </div>
       <div class="intro-side">
+        <h1 class="t-title" data-i18n="install.title"></h1>
         <ol class="steps" id="installSteps"></ol>
         <p class="t-note" data-i18n="install.note"></p>
       </div>

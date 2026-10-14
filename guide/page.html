@@ -118,7 +118,15 @@
   .chip.lg { width: 30px; height: 30px; font-size: 15px; }
   .masthead .chip { box-shadow: none; }
 
-  /* ---------- Roster ---------- */
+  /* ---------- Roster: a block per line (a first version and its V2 upgrades), then the rest ---------- */
+  .lines { display: grid; gap: 34px; }
+  .line { display: grid; gap: 12px; }
+  .line-head { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .line-head h3 { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .line-head .arrow { font-family: var(--font-mono); color: var(--muted); font-size: 13px; }
+  .line-head p { font-size: 13.5px; color: var(--muted); max-width: 90ch; }
+  .line-head p b { color: var(--text); }
+  .tier { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 2px; border: 1px solid var(--rule); white-space: nowrap; }
   .roster { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 940px) { .roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   .card {
@@ -213,6 +221,37 @@
   tbody tr:not(.you):hover td, tbody tr:not(.you):hover th { background: var(--surface-2); }
   .legend-line { font-size: 13px; color: var(--muted); max-width: 80ch; }
   .legend-line .meter { display: inline-block; width: 46px; vertical-align: middle; margin: 0 4px; }
+
+  /* ---------- Intelligence ---------- */
+  .smarts td { vertical-align: top; min-width: 132px; }
+  .smarts td b { display: block; font-weight: 700; }
+  .smarts td small { display: block; font-size: 12px; color: var(--muted); }
+  .smarts tr.line-row th { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding-top: 14px; background: var(--surface); text-align: left; }
+  .pips { display: inline-flex; gap: 2px; margin-top: 4px; }
+  .pips i { width: 10px; height: 4px; border-radius: 1px; background: var(--line); }
+  .pips i.on { background: var(--text); }
+  .pips i.up { background: var(--signal); }
+  .propose { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 5px; border-radius: 2px; background: var(--signal); color: var(--on-signal); white-space: nowrap; }
+  .smarts .then { margin-top: 6px; padding: 5px 7px; border-radius: 2px; background: var(--you); }
+  .smarts .then b::before { content: "→ "; color: var(--warn); }
+  .smarts-key { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 13px; color: var(--muted); }
+  .line-head .could { font-size: 13px; color: var(--text); background: var(--you); border-radius: 2px; padding: 5px 8px; max-width: 90ch; }
+  .adds { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 860px) { .adds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .add { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .add header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+  .add h3 { font-size: 17px; font-weight: 800; }
+  .add p { font-size: 14px; }
+  .add .who { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+  .add .who span { display: inline-flex; align-items: center; gap: 5px; }
+  .add .why { font-size: 13px; color: var(--muted); }
+  .numbers { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; width: auto; }
+  .numbers td, .numbers th { padding: 4px 14px 4px 0; }
+  .axes { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); margin: 0; }
+  @media (min-width: 860px) { .axes { grid-template-columns: repeat(5, minmax(0, 1fr)); column-gap: 22px; } }
+  .axes div { padding: 9px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+  .axes dt { font-weight: 700; }
+  .axes dd { margin: 0; font-size: 13px; color: var(--muted); }
 
   /* ---------- Shared rules ---------- */
   .two { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
@@ -383,6 +422,8 @@
   <a href="#enemies">Enemies</a>
   <a href="#reading">Read a tank</a>
   <a href="#compare">Side by side</a>
+  <a href="#smarts">Intelligence</a>
+  <a href="#adds">Could add</a>
   <a href="#shared">Shared rules</a>
   <a href="#missions">Missions</a>
   <a href="#anatomy">How a map is made</a>
@@ -391,9 +432,9 @@
 
 <main class="wrap">
   <section id="enemies">
-    <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · in order of appearance</span></header>
-    <p class="intro">Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up; a kind in no mission yet says Test, and you can try it on the test range (the Test button on the game's start sheet).</p>
-    <div class="roster" id="roster"></div>
+    <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · by line</span></header>
+    <p class="intro">Kinds come in lines: a first version (V1) and the upgrades built on it (V2), which see, react and fight better. Each line's note says what its V2 gains and gives up. Red, Black, Olive and Lime stand alone. Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up; a kind in no mission yet says Test, and you can try it on the test range (the Test button on the game's start sheet).</p>
+    <div class="lines" id="roster"></div>
   </section>
 
   <section id="reading">
@@ -416,6 +457,20 @@
     <header class="sec-head"><h2>Side by side</h2><span class="label">Tap a column to sort</span></header>
     <p class="legend-line">The bar under each number shows how dangerous that value is compared with the other enemies: <span class="meter"><i style="width:100%"></i></span> is the most dangerous. For reload, accuracy and timing, a lower number fills more of the bar. Your own tank sits on the top row for comparison.</p>
     <div class="scroller"><table id="board"></table></div>
+  </section>
+
+  <section id="smarts">
+    <header class="sec-head"><h2>Intelligence</h2><span class="label">Five axes · by line</span></header>
+    <p class="intro">How clever each kind is, on five separate axes rather than one number: how it finds a line on you, how fast it notices, what it does about a shot coming at it, what it does when it has no shot, and how it uses mines. Read down a line to see what its V2 adds. Each level is worked out from the kind's stats in rules.js.</p>
+    <dl class="axes" id="axes"></dl>
+    <p class="smarts-key"><span>The bars show each kind’s level today, worked out from its stats.</span><span><span class="propose">Proposed</span> marks a level it would reach with an addition below: not built yet.</span></p>
+    <div class="scroller"><table class="smarts" id="smarts-table"></table></div>
+  </section>
+
+  <section id="adds">
+    <header class="sec-head"><h2>What we could add</h2><span class="label">Proposed · not built</span></header>
+    <p class="intro">Additions that would raise a kind on one of the five axes, and give each V2 a clear edge over its first version. The plan lives in TANKS.md (A5) and guide/plans.mjs; when one ships, its level moves into the table above as the kind’s level today.</p>
+    <div class="adds" id="add-list"></div>
   </section>
 
   <section id="shared">
@@ -920,18 +975,51 @@ document.getElementById('yours').append(
   h('span', {}, 'reload ', h('b', {}, `${fmt(P0.reload, 2)} s`)),
 );
 
-/* ---------- Roster ---------- */
+/* ---------- Lines: a first version (V1) and the upgrades built on it (V2) ---------- */
+const LINES = KINDS.filter((k) => !T[k].upgrade && KINDS.some((o) => T[o].upgrade === k)).map((k) => [k, ...KINDS.filter((o) => T[o].upgrade === k)]);
+const ALONE = KINDS.filter((k) => !T[k].upgrade && !LINES.some(([b]) => b === k));
+const tierOf = (k) => (T[k].upgrade ? 'V2' : LINES.some(([b]) => b === k) ? 'V1' : null);
+const AIM_WORD = { sweep: 'sweeps its turret about', direct: 'aims straight at you', bank: 'finds bank shots', guided: 'fires guided missiles', lob: 'lobs bombs', spray: 'sprays a minigun' };
+const AIM_LEVEL = { sweep: 0, direct: 1, guided: 1, lob: 1, spray: 1, bank: 2 };
+const aimLevel = (t) => AIM_LEVEL[t.aim] + (t.aim === 'bank' && t.bounces > 1 ? 1 : 0);
+const aimWord = (t) => (t.aim === 'bank' && t.bounces > 1 ? 'finds two-bounce shots' : AIM_WORD[t.aim]);
+/** What a V2 kind gains over the kind it upgrades, and what it gives up, from their stats. */
+function changes(a, b) {
+  const gains = [];
+  const costs = [];
+  const one = (better, text) => (better ? gains : costs).push(text);
+  if (!a.speed && b.speed) gains.push(`drives (${fmt(b.speed)} cells a second)`);
+  else if (a.speed && !b.speed) costs.push('never moves: it sits bolted to a pad');
+  else if (a.speed !== b.speed) one(b.speed > a.speed, `${b.speed > a.speed ? 'faster' : 'slower'} (${fmt(b.speed)} cells a second, from ${fmt(a.speed)})`);
+  if (aimLevel(b) !== aimLevel(a) || a.aim !== b.aim) one(aimLevel(b) >= aimLevel(a), `${aimWord(b)} (V1 ${aimWord(a)})`);
+  if ((b.lead || 0) !== (a.lead || 0)) one((b.lead || 0) > (a.lead || 0), b.lead ? `leads its shots by ${Math.round(b.lead * 100)}%${a.lead ? ` (${Math.round(a.lead * 100)}%)` : ''}` : `no lead (V1 leads ${Math.round(a.lead * 100)}%)`);
+  if (b.weapon !== a.weapon) gains.push(`fires ${WEAPON[b.weapon].toLowerCase()}s, not ${WEAPON[a.weapon].toLowerCase()}s`);
+  if (b.spread !== a.spread && b.spread != null) one(b.spread < a.spread, `aims to within ±${fmt(deg(b.spread))}° (±${fmt(deg(a.spread))}°)`);
+  if (b.bounces !== a.bounces) one(b.bounces > a.bounces, `${b.bounces} ricochet${b.bounces === 1 ? '' : 's'} (${a.bounces})`);
+  if (b.bullets !== a.bullets) one(b.bullets > a.bullets, `${b.bullets} shots at once (${a.bullets})`);
+  if (b.reload !== a.reload) one(b.reload < a.reload, `reloads in ${fmt(b.reload, 2)} s (${fmt(a.reload, 2)})`);
+  if (b.react !== a.react) one(b.react < a.react, `reacts in ${fmt(b.react, 2)} s (${fmt(a.react, 2)})`);
+  if (b.think !== a.think) one(b.think < a.think, `thinks every ${fmt(b.think, 2)} s (${fmt(a.think, 2)})`);
+  if (b.dodge !== a.dodge && b.speed) one(b.dodge > a.dodge, `notices ${Math.round(b.dodge * 100)}% of shells (${Math.round(a.dodge * 100)}%)`);
+  if (b.mines !== a.mines) one(b.mines > a.mines, `${b.mines} mines (${a.mines})`);
+  if (b.trap && !a.trap) gains.push('lays its mines by plan and watches them');
+  if (b.detonate && !a.detonate) gains.push('shoots a mine as you pass it');
+  if (b.invisible && !a.invisible) gains.push('turns invisible');
+  return { gains, costs };
+}
 const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb', minigun: 'Minigun' };
-const roster = document.getElementById('roster');
-for (const k of KINDS) {
+function card(k) {
   const t = T[k];
   const info = INFO[k];
   const canvas = h('canvas', { role: 'img', 'aria-label': info.scene });
   const shot = t.weapon === 'bomb' ? `${fmt(DATA.bombFlight)} s` : fmt(t.shot);
-  roster.append(h('article', { class: 'card', id: `t-${k}` },
+  const tier = tierOf(k);
+  paint(canvas, () => drawScene(canvas, k));
+  return h('article', { class: 'card', id: `t-${k}` },
     h('header', { class: 'card-head' },
       chip(k, 'lg'),
       h('div', { class: 'card-title' }, h('h3', {}, info.name), h('p', { class: 'role' }, info.role)),
+      tier ? h('span', { class: 'tier', title: tier === 'V2' ? `Upgrades ${INFO[t.upgrade].name}` : 'First version of its line' }, tier) : null,
       FIRST[k]
         ? h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}: ${DATA.names[FIRST[k] - 1]}` }, `M${pad(FIRST[k])}`)
         : h('span', { class: 'gate', title: 'In no mission yet: try it on the test range' }, 'Test'),
@@ -949,9 +1037,31 @@ for (const k of KINDS) {
       ),
       h('p', { class: 'weak' }, h('b', {}, 'Weak spot'), info.weak),
     ),
-  ));
-  paint(canvas, () => drawScene(canvas, k));
+  );
 }
+const lineName = (base) => `${INFO[base].name} line`;
+const AXIS_NAMES = { aim: 'Aim', aware: 'Awareness', defence: 'Defence', tactics: 'Tactics', mines: 'Mines' };
+/** What we could add to kind k (guide/plans.mjs), as a line under its line's heading. */
+const proposalLine = (k) => h('p', { class: 'could' }, h('span', { class: 'propose' }, 'Proposed'), ' ', h('b', {}, `${INFO[k].name}: `),
+  Object.entries(DATA.plans.proposed[k]).map(([axis, v]) => `${AXIS_NAMES[axis]} → ${v.name.toLowerCase()}`).join('; '));
+document.getElementById('roster').append(
+  ...LINES.map(([base, ...ups]) => h('div', { class: 'line' },
+    h('header', { class: 'line-head' },
+      h('h3', {}, lineName(base), h('span', { class: 'arrow' }, 'V1'), chip(base), h('span', { class: 'arrow' }, '→ V2'), ups.map((k) => chip(k))),
+      ...ups.map((k) => {
+        const { gains, costs } = changes(T[base], T[k]);
+        const twin = T[k].twin ? ` Built like ${INFO[T[k].twin].name}, as its twin.` : '';
+        return h('p', {}, h('b', {}, `${INFO[k].name} over ${INFO[base].name}: `), `${gains.join('; ')}.`, costs.length ? ` Gives up: ${costs.join('; ')}.` : '', twin);
+      }),
+      ...[base, ...ups].filter((k) => DATA.plans.proposed[k]).map((k) => proposalLine(k)),
+    ),
+    h('div', { class: 'roster' }, [base, ...ups].map(card)),
+  )),
+  h('div', { class: 'line' },
+    h('header', { class: 'line-head' }, h('h3', {}, 'Stand alone'), h('p', {}, 'Kinds with no first version or upgrade (yet): each is the only one of its kind.'), ...ALONE.filter((k) => DATA.plans.proposed[k]).map((k) => proposalLine(k))),
+    h('div', { class: 'roster' }, ALONE.map(card)),
+  ),
+);
 
 /* ---------- Read a tank ---------- */
 const kindName = (k) => (k === 'player' ? 'You' : INFO[k].name);
@@ -1086,7 +1196,7 @@ function renderBoard() {
     const t = T[k];
     return h('tr', { class: you ? 'you' : null },
       h('th', { class: 'stick', scope: 'row' },
-        h('span', { class: 'tankcell' }, chip(k), h('span', {}, you ? 'You' : INFO[k].name, h('small', {}, you ? 'for comparison' : INFO[k].role))),
+        h('span', { class: 'tankcell' }, chip(k), h('span', {}, you ? 'You' : INFO[k].name, h('small', {}, you ? 'for comparison' : `${INFO[k].role}${tierOf(k) ? ` · ${tierOf(k)}` : ''}`))),
       ),
       COLUMNS.map((c) => {
         if (c.text) return h('td', { class: 'txt' }, c.text(t, k));
@@ -1105,6 +1215,83 @@ function renderBoard() {
   board.replaceChildren(thead, h('tbody', {}, row('player', true), order.map((k) => row(k, false))));
 }
 renderBoard();
+
+/* ---------- Intelligence: five axes, levels worked out from each kind's stats ---------- */
+const AXES = [
+  {
+    key: 'aim', name: 'Aim', ask: 'How it finds a line on you: sweeping about, straight at you, off walls, or with a weapon of its own (guided, lobbed, sprayed). Plus how far ahead of you it aims, and how true.', max: 3,
+    of: (t) => ({
+      level: aimLevel(t),
+      name: t.aim === 'bank' && t.bounces > 1 ? 'Bank ×2' : AIM_NAME[t.aim],
+      detail: `${t.aim === 'lob' ? `lands within ${fmt(t.scatter, 2)} cells` : `±${fmt(deg(t.spread))}°`}${t.lead ? `, leads ${Math.round(t.lead * 100)}%` : ''}`,
+    }),
+  },
+  {
+    key: 'aware', name: 'Awareness', ask: 'How quickly it notices: how often it thinks again, and how long it takes to react to a new line of fire.', max: 3,
+    of: (t) => {
+      const level = t.react >= 0.55 ? 0 : t.react >= 0.4 ? 1 : t.react >= 0.3 ? 2 : 3;
+      return { level, name: ['Slow', 'Steady', 'Quick', 'Sharp'][level], detail: `reacts ${fmt(t.react, 2)} s, thinks every ${fmt(t.think, 2)} s` };
+    },
+  },
+  {
+    key: 'defence', name: 'Defence', ask: 'What it does about a shot coming at it: the share of shells it notices and sidesteps. White also fades out of sight.', max: 3,
+    of: (t) => {
+      const level = !t.dodge ? 0 : t.dodge < 0.4 ? 1 : t.dodge < 0.7 ? 2 : 3;
+      const name = !t.speed ? 'None (fixed)' : ['None', 'Sidesteps', 'Sidesteps often', 'Sidesteps nearly all'][level];
+      return { level: level + (t.invisible ? 1 : 0), name, detail: `${t.dodge ? `notices ${Math.round(t.dodge * 100)}% of shells` : 'never dodges'}${t.invisible ? ', invisible' : ''}` };
+    },
+  },
+  {
+    key: 'tactics', name: 'Tactics', ask: 'What it does when it has no shot: sits on its pad, roams at its distance from you, snipes from afar, hunts you down, or sets an ambush.', max: 3,
+    of: (t) => {
+      if (!t.speed) return { level: 0, name: 'Fixed', detail: 'never moves' };
+      if (t.trap) return { level: 3, name: 'Ambush', detail: `mines your way, waits at a lookout ${t.range[0]}–${t.range[1]} cells off` };
+      if (t.range[0] <= 2) return { level: 2, name: 'Hunts', detail: `closes in to ${t.range[0]}–${t.range[1]} cells` };
+      if (t.range[0] >= 7) return { level: 1, name: 'Snipes', detail: `stays ${t.range[0]}–${t.range[1]} cells off` };
+      return { level: 1, name: 'Roams', detail: `keeps ${t.range[0]}–${t.range[1]} cells off` };
+    },
+  },
+  {
+    key: 'mines', name: 'Mines', ask: 'How it uses mines: none, dropped now and then, or laid by plan on your way and set off as you pass.', max: 3,
+    of: (t) => (!t.mines ? { level: 0, name: '—', detail: '' } : t.trap ? { level: 3, name: 'Traps', detail: `${t.mines}, laid by plan and shot as you pass` } : { level: 1, name: 'Scatters', detail: `${t.mines}, dropped now and then` }),
+  },
+];
+document.getElementById('axes').append(...AXES.map((a) => h('div', {}, h('dt', {}, a.name), h('dd', {}, a.ask))));
+const PLANS = DATA.plans;
+const pips = (level, max, then = null) => h('span', { class: 'pips', 'aria-hidden': 'true' }, Array.from({ length: max }, (_, i) => h('i', { class: i < level ? 'on' : then != null && i < then ? 'up' : null })));
+const smartRow = (k) => h('tr', {},
+  h('th', { class: 'stick', scope: 'row' }, h('span', { class: 'tankcell' }, chip(k), h('span', {}, INFO[k].name, h('small', {}, tierOf(k) ? `${tierOf(k)}${T[k].twin ? ` · twin of ${INFO[T[k].twin].name}` : ''}` : 'stands alone')))),
+  AXES.map((a) => {
+    const v = a.of(T[k]);
+    const then = PLANS.proposed[k]?.[a.key];
+    return h('td', { title: `${a.name}: ${v.name}${v.detail ? `, ${v.detail}` : ''}${then ? `. Proposed: ${then.name}` : ''}` },
+      h('b', {}, v.name), v.detail ? h('small', {}, v.detail) : null,
+      then ? h('div', { class: 'then' }, h('span', { class: 'propose' }, 'Proposed'), h('b', {}, then.name), then.detail ? h('small', {}, then.detail) : null) : null,
+      pips(Math.min(v.level, a.max), a.max, then ? Math.min(then.level, a.max) : null));
+  }),
+);
+document.getElementById('smarts-table').append(
+  h('thead', {}, h('tr', { class: 'heads' }, h('th', { class: 'stick', scope: 'col' }, 'Tank'), AXES.map((a) => h('th', { scope: 'col' }, a.name)))),
+  h('tbody', {},
+    LINES.flatMap((line) => [h('tr', { class: 'line-row' }, h('th', { colspan: AXES.length + 1 }, lineName(line[0]))), ...line.map(smartRow)]),
+    h('tr', { class: 'line-row' }, h('th', { colspan: AXES.length + 1 }, 'Stand alone')),
+    ALONE.map(smartRow),
+  ),
+);
+
+/* ---------- What we could add (guide/plans.mjs): proposed, not built ---------- */
+const axisName = (key) => AXES.find((a) => a.key === key).name;
+const aimless = Object.entries(PLANS.aimless).sort((a, b) => b[1] - a[1]);
+document.getElementById('add-list').append(...PLANS.additions.map((a) => h('article', { class: 'add' },
+  h('header', {}, h('span', { class: 'propose' }, axisName(a.axis)), h('h3', {}, a.name)),
+  h('p', {}, a.what),
+  h('div', { class: 'who' }, 'For', a.who.map((k) => h('span', {}, chip(k), INFO[k].name))),
+  h('p', { class: 'why' }, a.why),
+  a.aimless ? h('div', { class: 'scroller' }, h('table', { class: 'numbers' },
+    h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Kind'), h('th', { scope: 'col' }, 'Time with no goal'))),
+    h('tbody', {}, aimless.map(([k, v]) => h('tr', {}, h('td', {}, INFO[k].name), h('td', {}, `${v}%`)))),
+  )) : null,
+)));
 
 /* ---------- Shared rules ---------- */
 const RULES = [
