@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { intercept, pathField, predict, shotTarget, tapTarget } from '../src/games/tanks/ai.js';
 import { VARIANTS } from '../src/games/tanks/art.js';
 import { makeBot } from '../scripts/playtest.mjs';
-import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../guide/mapcheck.mjs';
+import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../src/games/tanks/mapcheck.js';
 import { createWorld, fire, isWorld, lob, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
 import { CHECKPOINTS, MISSIONS, TEST_MAX, testMap } from '../src/games/tanks/missions.js';
 import {
@@ -947,4 +947,96 @@ test('every kind has its own colour (a striped variant wears its base kind’s),
       assert.ok(distance(set[k], set[name]) >= 10, `${k} is too close to the ${name} colour`);
     }
   }
+});
+
+/* ---------- Your own maps: the map editor's model (maps.js) ---------- */
+
+const MAPS = await import('../src/games/tanks/maps.js');
+
+test('a new map is open floor with you on the left, and wants an enemy', () => {
+  const rows = MAPS.blankMap();
+  assert.ok(MAPS.isMapRows(rows));
+  assert.equal(rows[7].indexOf('@'), 2);
+  assert.equal(rows.join('').replace(/[.@]/g, ''), '');
+  const report = MAPS.mapReport(rows);
+  assert.equal(report.ready, false);
+  assert.deepEqual(report.problems.map((p) => p.code), ['enemies']);
+});
+
+test('the editor paints one of you, mirrors the other flank on request, and never paints over you', () => {
+  const rows = MAPS.blankMap();
+  // Painting you somewhere moves you.
+  const moved = MAPS.paintCell(rows, 5, 3, '@');
+  assert.equal(moved.join('').split('@').length, 2);
+  assert.equal(moved[3][5], '@');
+  // Mirrored: the twin cell across the middle row too, but never a second you.
+  const walls = MAPS.paintCell(rows, 9, 2, '#', { mirror: true });
+  assert.equal(walls[2][9], '#');
+  assert.equal(walls[ROWS - 1 - 2][9], '#');
+  assert.equal(MAPS.paintCell(rows, 9, 2, '@', { mirror: true })[ROWS - 1 - 2][9], '.');
+  // The middle row is its own twin, and the twin cell of your tank keeps you.
+  assert.equal(MAPS.paintCell(rows, 9, 7, 'b', { mirror: true }).join('').split('b').length, 2);
+  const guarded = MAPS.paintCell(MAPS.paintCell(rows, 4, 12, '@'), 4, 2, 'x', { mirror: true });
+  assert.equal(guarded[12][4], '@');
+  assert.equal(guarded[2][4], 'x');
+  // Off the map: nothing changes.
+  assert.equal(MAPS.paintCell(rows, COLS, 0, '#'), rows);
+  assert.equal(MAPS.paintCell(rows, 0, -1, '#'), rows);
+});
+
+test('a quick drag paints every cell between two points', () => {
+  const line = MAPS.cellsOnLine(0, 0, 7, 3);
+  assert.deepEqual(line[0], [0, 0]);
+  assert.deepEqual(line.at(-1), [7, 3]);
+  for (let i = 1; i < line.length; i++) {
+    assert.ok(Math.abs(line[i][0] - line[i - 1][0]) <= 1 && Math.abs(line[i][1] - line[i - 1][1]) <= 1, 'no gaps');
+  }
+  assert.deepEqual(MAPS.cellsOnLine(4, 4, 4, 4), [[4, 4]]);
+  assert.deepEqual(MAPS.cellsOnLine(3, 5, 3, 2), [[3, 5], [3, 4], [3, 3], [3, 2]]);
+});
+
+test('your maps must be playable: your tank, 1 to 8 enemies, every enemy within reach', () => {
+  const blank = Array.from({ length: ROWS }, () => '.'.repeat(COLS));
+  const map = (edits) => blank.map((line, r) => (edits[r] ? edits[r].padEnd(COLS, '.') : line));
+  assert.deepEqual(MAPS.mapReport(map({ 3: '..........b' })).problems.map((p) => p.code), ['player']);
+  const crowd = map({ 1: '@', 3: '...........bbbbbbbbb' });
+  assert.deepEqual(MAPS.mapReport(crowd).problems.filter((p) => p.blocking).map((p) => p.code), ['count']);
+  assert.equal(MAPS.mapReport(crowd).problems[0].n, 9);
+  // Walled in with no line of sight: it blocks play, and says which tank and where.
+  const sealed = MAPS.mapReport(map({ 6: '...............###', 7: '..@............#b#', 8: '...............###' }));
+  assert.equal(sealed.ready, false);
+  assert.deepEqual(sealed.problems.find((p) => p.code === 'unreachable'), { code: 'unreachable', kind: 'brown', at: [16, 7], blocking: true });
+  // A clear shot at your start is only a note: the map can still be played.
+  const open = MAPS.mapReport(map({ 7: '..@..............b' }));
+  assert.equal(open.ready, true);
+  assert.deepEqual(open.problems, [{ code: 'startShot', kind: 'brown', at: [17, 7], blocking: false }]);
+  // Every campaign mission would pass the editor without a word.
+  for (const rows of MISSIONS) assert.deepEqual(MAPS.mapReport(rows).problems, [], rows.join('\n'));
+});
+
+test('the editor draws a map exactly as a mission starts, even one not ready yet', () => {
+  const pose = (t) => ({ type: t.type, x: t.x, y: t.y, body: t.body, turret: t.turret, alive: t.alive });
+  for (const rows of [...MISSIONS, testMap('hornet', 6)]) {
+    const s = MAPS.mapWorld(rows);
+    assert.deepEqual(s.grid, parseLevel(rows).grid);
+    assert.deepEqual(s.tanks.map(pose), createWorld(parseLevel(rows)).tanks.map(pose));
+  }
+  // With nowhere to face, enemies face your side of the map.
+  const s = MAPS.mapWorld(MAPS.paintCell(MAPS.paintCell(MAPS.blankMap(), 2, 7, '.'), 12, 4, 'k'), 5);
+  assert.equal(s.gridVer, 5);
+  assert.deepEqual(s.tanks.map((t) => [t.type, t.turret]), [['black', Math.PI]]);
+});
+
+test('saved maps load only when well formed', () => {
+  const good = MAPS.blankMap();
+  assert.ok(MAPS.isMapRows(MISSIONS[19]));
+  assert.ok(!MAPS.isMapRows(good.slice(1)), 'a row short');
+  assert.ok(!MAPS.isMapRows(good.map((l, r) => (r ? l : `${l}.`))), 'a cell too many');
+  assert.ok(!MAPS.isMapRows(MAPS.paintCell(good, 0, 0, '?')), 'an unknown cell');
+  assert.ok(!MAPS.isMapRows(good.map((l, r) => (r === 0 ? `@${l.slice(1)}` : l))), 'two of you');
+  const saved = MAPS.readMaps({ next: 2, list: [{ id: 1, name: 'A', rows: good }, { id: 6, name: 'B', rows: good }, { id: 3, name: 'C', rows: ['...'] }, null] });
+  assert.deepEqual(saved.list.map((m) => m.id), [1, 6]);
+  assert.equal(saved.next, 7, 'new ids never reuse a saved one');
+  assert.deepEqual(MAPS.readMaps(null), { next: 1, list: [] });
+  for (const ch of Object.keys(SPAWN_CODES)) assert.ok(MAPS.MAP_CELLS.includes(ch), `brush for ${SPAWN_CODES[ch]}`);
 });

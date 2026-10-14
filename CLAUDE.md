@@ -69,7 +69,7 @@ cache-only/
     games/
       sudoku/  index.html  sudoku.js  generator.js  solver.js  styles.css
       2048/    index.html  game.js  styles.css
-      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  art.js  render.js  audio.js  styles.css
+      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  art.js  render.js  audio.js  styles.css
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
@@ -79,7 +79,6 @@ cache-only/
   guide/
     page.html             # field guide template: layout, styles, page code (draws with the game's art.js)
     enemies.mjs           # field guide text and card scene per enemy kind
-    mapcheck.mjs          # map checks shared by the tests and the guide's map editor
     out/                  # built guide, gitignored
   dist/                   # build output, served, gitignored
   .github/workflows/
@@ -203,19 +202,21 @@ service worker with scope `/` covers everything.
   while nothing is downloaded.
   - **Portrait:** one vertically scrolling page from right under the status bar: a square as wide
     as the page (`.lead`) holding the logo over the suggested game's art with the suggested game
-    at its foot, then the grid. The top blur runs from the top of the screen down to the foot of
-    the settings button (`--bar-total`), and the logo centres in the room under it, so it sits sharp.
-    At rest the top blur stays out of the way and slides in with whatever scrolls under it
-    (`--scrolled`, set by `launcher.js`), so the art is seen right up to the edge.
+    at its foot, then the grid. The top edge is always there, from the top of the screen down to
+    the foot of the settings button (`--bar-total`): a blur that starts at the button's foot and
+    deepens all the way up, under a shade from transparent to `--bg` at the top. The logo centres
+    in the room under it, so it sits sharp.
   - **Landscape:** everything runs left to right in one strip that scrolls sideways, from the top
     of the screen down with no header band (the body is the scroller; the page itself never
     scrolls), never a rail or a side-by-side split. It starts with the same square as in
     portrait, two tiles wide and as tall as the two rows (`--lead`): the art, the logo in the
     middle of it, the eyebrow and panel at its foot. The other tiles follow in two rows
     (`--tile`: two rows and their gap fill the height). Settings (and Update) floats, fixed at the
-    top right, over the tiles. Progressive blurs at the left and right edges (`.edge-left/-right`)
-    take the place of the top and bottom ones; the left one, like the top one in portrait, stays
-    out of the way at rest and slides in with the strip. A mouse wheel scrolls the strip too.
+    top right, over the tiles; the strip ends with room for the settings button (its 44 and a tile
+    gap), so the last tiles clear it once scrolled to the end. Progressive blurs at the left and right edges (`.edge-left/-right`)
+    take the place of the top and bottom ones; the left one stays out of the way at rest and
+    slides in with the strip (`--scrolled`, set by `launcher.js`). A mouse wheel scrolls the strip
+    too.
   - **Status:** the logo is the status. It stays out of focus until every app-shell file is
     confirmed in its cache, then comes into focus with download progress: pixels go from blurred
     grey to sharp white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only
@@ -228,12 +229,11 @@ service worker with scope `/` covers everything.
     starting 18 in like a tile's, and it blurs what's behind it like a sheet (`--sheet`,
     `--blur-sheet`). Plays are counted in
     `gh:app:plays` (`{ id: n }`) whenever a game is opened from the launcher; ties and no history
-    fall back to registry order. Its board art (`.hero`) is a square that runs out to the
-    screen's edges and never past them, so all of it is seen (Tanks' 4:3 arena fills it and loses
-    an eighth at each side). In portrait it starts at the top of the screen, as wide as the page,
-    and fades out toward the panel. In landscape it is exactly as tall as the screen and starts at
-    the column's gutter (the screen's left edge, or the safe area's), so it sits centred on the
-    column, and fades out to the right, toward the tiles.
+    fall back to registry order. Its board art (`.hero`) is a square (Tanks' 4:3 arena fills it
+    and loses an eighth at each side). In portrait it starts at the top of the screen, as wide as
+    the page, and fades out toward the panel. In landscape it runs from the screen's left edge
+    (through the safe area) to the column's far gutter, centred on the screen's height, and fades
+    out to the right, toward the tiles.
   - **Nothing downloaded yet:** the same layout, with the same panel offering every game
     (`.is-all`): no art behind it, the eyebrow hidden but keeping its room, the title "Download all
     games" (two lines where one won't fit), and for its button a square primary with only the
@@ -347,7 +347,7 @@ style a button, header, card, sheet or menu locally.
   with `--bg` text, at most one per screen. `.icon-btn` is a 44 glass rounded square (home,
   settings, close, the moves under a board, pressed = solid white), its pixel icon filling it to
   one gap from the edge. `.btn-icon` makes a `.btn` a 48 square holding only its icon, filled the
-  same way (the launcher's "Download all games"). `.btn-small` is 32 tall with 13px text, only in a section header next to
+  same way (the launcher's "Download all games", the Tanks map editor's Play). `.btn-small` is 32 tall with 13px text, only in a section header next to
   a 12px label, its tap area still 44. Disabled is the same button at 40% opacity, never a new
   style. (Tanks' thumbsticks are round: they are sticks, not buttons.)
 - **Concentric radii:** an outer radius is the inner radius plus the inset between them, starting
@@ -503,13 +503,22 @@ style a button, header, card, sheet or menu locally.
   mortar tube and a minigun's spinning bundle; treads or a concrete pad: moves or not; rear-deck
   discs: mines left), colour only
   which kind it is. The colour plan sits above the `--tk-*` colours in `tanks/styles.css`, and a test
-  holds new colours to it; past about a dozen kinds, a variant wears another kind's colour with a
-  pattern (`VARIANTS` in `art.js`: Hornet is Yellow with hazard stripes, off its rear deck). Walls are flat grey; crates a lighter grey with diagonal stripes. Blocks of
-  a kind that touch draw as one, edged only outside, and the stripes run on across them.
+  holds new colours to it; past about 14 kinds, a variant can wear another kind's colour with
+  hazard stripes (`VARIANTS` in `art.js`, empty today; Hornet has its own cream). Nothing has an ink
+  outline: one light from the top left of the screen (`LIGHT`), fixed however the arena turns,
+  lights every part on the edges facing it, shades the edges facing away, and gives each part a
+  soft shadow on the one under it and every tank a shadow on the floor built from all its parts,
+  each raised by its height. Shells, rockets, rounds, missiles, bombs and mines get the same light;
+  only a missile glows and wears its owner's colour. Edges and shadows are canvas shadows, so
+  `render.js` and the guide pass a `kit` of spare canvases (`makeKit`); a tank under about 1.5 px
+  of blur is lit hard, part by part, which costs far less. Walls are brick, laid along the screen;
+  crates are toy crates braced with an X, one box a cell; pits are holes broken in the floor, a
+  dark recess with a crack off a corner now and then. The floor has a tone per slab and dims into
+  its corners.
 - **Campaign** (`missions.js`): 20 missions, 3 lives, a bonus tank after missions 5, 10 and 15,
   which also unlock checkpoints (start at 6, 11 or 16). A retry keeps destroyed enemies destroyed.
   Each mission has one idea, a name and a one-line briefing (`tanks.name.<n>`, `tanks.brief.<n>`),
-  shown on its banner. Every map must pass `guide/mapcheck.mjs` (the tests run it): every enemy
+  shown on its banner. Every map must pass `mapcheck.js` (the tests run it): every enemy
   reachable, no enemy with a clear shot at your start, no two missions with the same blocks.
   Playtest new or changed maps with `npm run playtest` (`scripts/playtest.mjs`): its expert bot
   should win each mission at least 6 times in 8, and its casual bot shows how hard the mission is
@@ -520,6 +529,26 @@ style a button, header, card, sheet or menu locally.
   to 10), side on `_|__|__` and `__|__|_`, you at the far left. A test never touches the campaign:
   it isn't saved, counts toward no record, shows Mission "Test" with no lives, its side menu says
   End test, and it ends back on the range sheet.
+- **Your maps** (the map editor, `maps.js`): the start sheet's Maps button opens "Your maps", a
+  docked sheet listing the maps this phone has drawn (pick one and it shows behind the sheet),
+  with Edit, New map and Play; with none yet it explains the editor and offers only New map. A
+  new map is open floor with you at the left (column 2, row 7), named "Map n". The editor is a
+  phase of its own (`edit`, `.is-editing` on the page): the header holds only home and a square
+  primary Play (`.btn-icon`, off while the map can't be played), and under the arena in portrait
+  (beside it, two columns, in landscape) sit a line about the map's state and the tools: Wall,
+  Crate, Hole, Erase, You, Enemy and Undo, the brushes drawn by the game's own art. Enemy opens a
+  modal sheet with the test range's kind grid, and the pick becomes the brush. Tap or drag on the
+  map to paint: blocks and Erase paint every cell crossed; a tank follows the finger until it
+  lifts, and there is only ever one of you. A stroke is one undo step (in memory, kept while you
+  play the map and come back). A mouse paints too, right-click erases, and a map character picks
+  its brush (Cmd or Ctrl+Z undoes, Escape opens the menu). The side menu adds Your maps, Mirror
+  painting (a switch: the twin cell across the middle row too, never you), Rename (a modal sheet
+  with a `.field.is-line`) and Delete map (confirmed). Your maps only need to be playable:
+  `mapReport` blocks a map without your tank, with no enemies or more than 8, or with an enemy
+  `checkMap` can't reach (ringed red); an enemy with a clear shot at your start is a note
+  (ringed white), not a block. A map plays like a test: Mission "Custom", no lives, never saved
+  mid-battle, no record; its side menu says Back to the editor or Back to your maps, and it ends
+  back where it started.
 - **Input:** touch works like Brawl Stars. The controls float over the whole play area at 20% opacity.
   The sticks start only on the bottom half of the screen, in portrait and landscape alike. A thumb
   anywhere on its left half drives, with the stick centred where it lands. On its right half,
@@ -537,7 +566,8 @@ style a button, header, card, sheet or menu locally.
   missing from a touch event's `touches`, so a lost `touchend` can't leave one held. Keyboard and mouse: WASD/arrows, mouse to aim, click to fire, Space or right-click for a mine,
   P or Escape for the menu. The on-screen controls only appear on touch devices.
 - **Menu:** no back or pause button. The header's home button opens a side menu (Resume, Quit
-  campaign or End test, Back to games) down the left edge over a progressive blur (`.side-menu` in
+  campaign, End test or the way back from a map of yours, Back to games; in the editor, Resume,
+  Your maps, Mirror painting, Rename, Delete map, Back to games) down the left edge over a progressive blur (`.side-menu` in
   `styles.css`, `setupSideMenu` in `shared/ui.js`). Opening it pauses the battle; closing it plays on.
   The home button blurs out while the menu is open and blurs back in when it closes: Resume is the
   way back, so there is no close icon.
@@ -547,6 +577,10 @@ style a button, header, card, sheet or menu locally.
   the DOM, and `art.js` drawing only on the context it is given.
 - **Save:** the campaign at every mission start and end; the whole world on pause, hide and
   pagehide, so a killed app reopens paused mid-battle. `summary: { mission }` feeds the launcher.
+  Your maps are `gh:tanks:maps` (`{ next, list: [{ id, name, rows }] }`), written 250 ms after
+  every stroke, at once on leaving the editor, and on hide; `readMaps` drops any malformed entry.
+  The picked map, the enemy brush's kind and Mirror painting live in `prefs`. Export and Import
+  in Settings carry them like any other save.
 - **Sound** is synthesised with Web Audio (no audio files). It follows the iOS silent switch
   (`navigator.audioSession.type = 'ambient'`) and the app's Sound switch in Settings
   (`shared/sound.js`); the game has no sound setting of its own.
@@ -570,9 +604,10 @@ never under `src/`, and never ships in a pack.
 itself: stats, kinds and spawn letters from `rules.js`, maps, checkpoints and bonus tanks from
 `missions.js`, English kind names, mission names, briefings and kind warnings from `i18n.js`,
 `LIVES` from `tanks.js`, and the `--tk-*` colours from the game's `styles.css`. The build also
-bundles the game's `rules.js`, `ai.js`, `engine.js` and `art.js` and `guide/mapcheck.mjs` into the
+bundles the game's `rules.js`, `ai.js`, `engine.js`, `art.js` and `mapcheck.js` into the
 page, so every tank, map and shot is drawn by the game's own art and the editor runs the same
-checks as the tests. Enemy text and card scenes are in `guide/enemies.mjs`. Their numbers come
+checks as the tests. (The guide's editor is for campaign missions; players draw their own maps in
+the game.) Enemy text and card scenes are in `guide/enemies.mjs`. Their numbers come
 from `TYPES` and the rule constants, but behaviour written into the prose (sweep timing, the
 bank-shot search, mine rules, lead, the missile's steering, the mortar's aim, the white tank's
 fade) is copied by hand from `ai.js`, `engine.js` and `render.js`. So is the shared-rules text
@@ -664,7 +699,9 @@ Friends see the update within about 10 minutes, the next time they open the app 
   drag, rounds that cancel out with other shots), deterministic save/resume with missiles, bombs and a
   spinning minigun, the test range map (its walls, and the map checks for every kind at 1 to 6),
   jam-free movement (corridor passing, stuck recovery, no tank pinned over 1.5 s in any mission),
-  lead aim, the colour plan, and mission names in both languages.
+  lead aim, the colour plan, mission names in both languages, and the map editor's model
+  (`maps.js`: one of you, mirroring, gap-free drags, what blocks a map of yours and what is only a
+  note, a map drawn exactly as its mission starts, and saved maps checked as they load).
 - Field guide: `tests/guide.test.mjs` builds the guide from the game and fails if an enemy kind has
   no text or scene, a mission has no name or briefing, a colour is missing, or the page script
   doesn't parse. It also checks that the game code bundled into the page behaves exactly like the

@@ -3,7 +3,7 @@
 // enemy kind with no text or scene in guide/enemies.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkMap } from '../guide/mapcheck.mjs';
+import { checkMap } from '../src/games/tanks/mapcheck.js';
 import { buildGuide, bundle } from '../scripts/guide.mjs';
 import { createWorld, parseLevel, step } from '../src/games/tanks/engine.js';
 import { MISSIONS, testMap } from '../src/games/tanks/missions.js';

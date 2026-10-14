@@ -127,6 +127,39 @@ two wide baffles across the tip, so it reads as a hammerhead where a shell barre
 still reads at phone size (checked at an iPhone SE's 23 points a cell). Rocket flames keep their
 orange; only the barrel changed. Teal, Green and Black carry it.
 
+### R6. No outlines: one light, brick, toy crates and broken floor
+**Status:** done 2026-10-14 · **Size:** M
+
+Every part of a tank had a black ink outline. Now nothing does: one light from the top left of the
+screen (`LIGHT` in `art.js`), fixed however the arena turns, lights every part on the edges that
+face it and shades the edges that face away, and each part casts a soft shadow on the one under it.
+Each part has a height (treads 0.10, hull 0.18, barrel 0.24, turret 0.27, what sits on it 0.31),
+and a tank's shadow on the floor is built from all of them, each moved along the light by its
+height, so the turret and barrel are in it. The cleats run across each tread from edge to edge, and
+the plates at the front and back of the hull have rounded corners.
+
+- **Soft and cheap:** edges and shadows are canvas shadows. A tank's lit edges, shaded edges and
+  layer shadows go into three masks, each blurred once (`paintSoft`); every tank's floor shadow
+  goes into one mask, blurred once a frame (`drawShadows`). Under about 1.5 px of blur (a small
+  tank on a 2x screen) a tank is lit hard, part by part (`paintHard`). `render.js` and the guide
+  give the art a kit of spare canvases (`makeKit`), so `art.js` still has no DOM.
+- **Shots:** today's shapes and pale, with their own shape blurred on the floor below them and a
+  shaded edge. Only a missile glows (flame and nose light) and wears its owner's colour. A bomb is
+  a dark ball shaded round, with a soft pale glow at its edge, over a shadow that sharpens as it
+  lands. A mine has a soft shadow, a lit casing, its owner's colour as a raised cap and a light
+  that glows on the floor, red and wider in its last seconds. `--tk-signal` gives mine lights and
+  the start beacon their yellow (art.js read an undefined `--signal` before).
+- **Obstacles:** walls are brick, three courses a cell in running bond laid along the screen;
+  crates are toy crates braced with an X, one box a cell, since a blast clears them a cell at a
+  time (`--tk-stripe` is gone); pits are holes broken in the floor, uneven at the edge, a dark
+  recess inside with a crack off a corner now and then (`--tk-hole-rim` is gone). The floor has a
+  seeded tone per slab, dims into its corners and darkens softly round every block. All of it is
+  in the static floor layer, so it costs nothing a frame.
+- **Colours:** one per kind, as before. Hornet is cream (`#e8d4a2`) instead of Yellow with hazard
+  stripes, so `VARIANTS` is empty; the art still draws stripes for any kind named in it.
+- Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS),
+  which also covers a darker-body V2 look that is on hold.
+
 ---
 
 ## W. New enemies and weapons
@@ -250,10 +283,9 @@ A machine-gun tank that sprays rounds non-stop, with a spin-up as its warning.
 
 Yellow with a plan: it mines your way to it, watches each mine, and sets it off as you pass.
 
-- **Look:** Yellow's colour with black hazard stripes across the front of the hull (the rear deck
-  stays plain so its 4 mine discs read). It is the first kind to reuse a colour: `VARIANTS` in
-  `art.js` names it a variant of Yellow, and the colour test lets a variant wear exactly its base
-  kind's colour. Kind `hornet`, map letter `h`, Hornet / Vespa.
+- **Look:** cream (`#e8d4a2`, since 2026-10-14, see R6), its own colour; it used to be Yellow's
+  colour with black hazard stripes, a variant in `art.js`. Kind `hornet`, map letter `h`, Hornet /
+  Vespa.
 - **Stats:** like Yellow, sharper: speed 1.8, turret 2.2 rad/s, thinks every 0.15 s, reacts in
   0.35 s, ±3.4°, dodges 45%, keeps 4–8 cells away, 4 mines.
 - **The plan** (`planTrap` in `ai.js`, state in `ai.plan`, `pc`, `wc`, `planT`, `since`):
@@ -538,7 +570,7 @@ Extra tests or editor warnings, beyond "is it winnable":
 - Warn when more than about 75% of the floor is open, or when the map is mirrored (a nudge, not a
   failure).
 
-**Shipped:** `guide/mapcheck.mjs`. Errors, which the tests reject: the parser's rules, 1–8
+**Shipped:** `guide/mapcheck.mjs` (now `src/games/tanks/mapcheck.js`, M8). Errors, which the tests reject: the parser's rules, 1–8
 enemies, every enemy reachable, no clear straight shot at your start (mortars excepted, since
 they lob), and no two missions with the same blocks. Nudges, shown in the editor: more than 75%
 open, and mirrored. The tests run it over every mission and check that it catches each problem.
@@ -579,6 +611,31 @@ break line of sight behind, room to circle it), or add it to a late mission, the
 Hornet plays on the test range only. Try it on a phone first, then give it a mission whose idea is
 mines (a long approach with choke points, or Switchbacks-style corridors), or swap it in for a
 Yellow in a late mission, and keep the expert bot at 6 wins in 8.
+
+### M8. Your own maps: a map editor in the game
+**Status:** done 2026-10-14 · **Size:** L
+
+Next to Test and Play on the start sheet, players draw their own maps, save them on the phone
+and play them. M1's editor is for writing campaign missions in the field guide; this one is for
+players, so it works on a phone with a thumb.
+
+**Shipped:** a Maps button opens "Your maps" (a docked sheet: the list, Edit, New map, Play). The
+editor puts the tools under the arena in portrait and beside it in landscape: Wall, Crate, Hole,
+Erase, You, Enemy (a sheet with every kind) and Undo, drawn with the game's art, with a line
+saying what the map still needs and a square Play in the header. Drags paint every cell they
+cross; a tank follows the finger until it lifts. The side menu has Your maps, Mirror painting,
+Rename and Delete map. The rules a map must meet live in `maps.js` (`mapReport`, on top of
+`mapcheck.js`, which moved from `guide/` into the game so the game can ship it): your tank, 1 to 8
+enemies, each within reach; a clear shot at your start is only a note. A map plays like a test
+(nothing saved mid-battle, no record) and ends back where it started. Maps are saved in
+`gh:tanks:maps`, so Settings' Export and Import carry them.
+
+**Later:**
+
+- Share a map with a friend as a short code (like Sudoku's 81-character puzzle string) and
+  enter one to add it to Your maps.
+- Start a new map from a campaign mission or the test range instead of open floor.
+- A best time per map of yours.
 
 ## C. Controls and screen
 
@@ -686,7 +743,7 @@ banner shows and you are back on the range sheet. The last pick is kept in `pref
 
 ## Suggested order
 
-Every entry except A3 and M5 has shipped (the last on 2026-10-13). Next:
+Every entry except A3, M5, M6 and M7 has shipped (the last, M8, on 2026-10-14). Next:
 
 1. **C1 and C2 on a real iPhone:** the floating home button and stats in landscape, the stick
    size, the cancel zone and the 20% opacity.

@@ -334,10 +334,10 @@ document.body.addEventListener('wheel', (event) => {
   event.preventDefault();
 }, { passive: false });
 
-// The edge blur where the scroll starts (the top in portrait, the left in landscape) stays out of
-// the way at rest, so the suggested game's art is seen right up to the edge, and slides in with
-// whatever scrolls under it.
-const startEdges = document.querySelectorAll('.edge-top, .edge-left');
+// The left edge blur in landscape stays out of the way at rest, so the suggested game's art is seen
+// right up to the edge, and slides in with whatever scrolls under it. (The top one in portrait is
+// always there.)
+const startEdges = document.querySelectorAll('.edge-left');
 function trackScroll() {
   const scrolled = `${Math.round(Math.max(window.scrollY, document.body.scrollLeft, 0))}px`;
   for (const edge of startEdges) edge.style.setProperty('--scrolled', scrolled);

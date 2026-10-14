@@ -18,7 +18,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkMap } from '../guide/mapcheck.mjs';
+import { checkMap } from '../src/games/tanks/mapcheck.js';
 import { createWorld, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
 import { MISSIONS } from '../src/games/tanks/missions.js';
 import {

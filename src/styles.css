@@ -491,6 +491,19 @@ button {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+/* A list to pick one from (Tanks' own maps): the same control, one choice per row, its text
+   starting where a side-menu row's does. */
+.segmented.is-list {
+  grid-auto-flow: row;
+}
+
+.segmented.is-list button {
+  overflow: hidden;
+  padding: 0 14px;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
 /* Switch: track 8, knob 5 inset 3. */
 .switch {
   appearance: none;
@@ -554,6 +567,15 @@ button {
   font: 500 16px/1.5 var(--font-mono);
   letter-spacing: 0.08em;
   resize: none;
+}
+
+/* One line of text (a name): as tall as a button, in the body face rather than the code face. */
+.field.is-line {
+  min-height: 0;
+  height: 48px;
+  padding: 0 18px;
+  font: 500 16px/1 var(--font-sans);
+  letter-spacing: 0;
 }
 
 /* A code to copy (Sudoku's share string): the one place text can be selected outside a field. */
@@ -1446,17 +1468,23 @@ dialog.sheet[open] {
 }
 
 /* The home view starts right under the status bar, with the big logo over the suggested game's
-   art. The top blur runs from the top of the screen down to the foot of the settings button, and
-   the logo centres in the room below it, so it sits sharp. At rest the blur stays out of the way,
-   so the art is seen right up to the edge; it slides in with whatever scrolls under it
-   (--scrolled, set by launcher.js). */
+   art. The top edge is always there, from the top of the screen down to the foot of the settings
+   button: a blur that starts at the button's foot and deepens all the way up (each layer stays on
+   once it has come in), under a shade from transparent to the background at the top. The logo
+   centres in the room below it, so it sits sharp. */
 .launcher[data-view="home"] .home {
   padding-top: var(--safe-t);
 }
 
 .launcher[data-view="home"] .edge-top {
   height: var(--bar-total);
-  transform: translateY(calc(min(var(--scrolled, 0px), var(--bar-total)) - var(--bar-total)));
+}
+
+.launcher[data-view="home"] .edge-top > i:nth-child(1) { --b: 3px; --from: 80%; --to: 100%; }
+.launcher[data-view="home"] .edge-top > i:nth-child(2) { --b: 7px; --from: 45%; --to: 80%; }
+.launcher[data-view="home"] .edge-top > i:nth-child(3) { --b: 14px; --from: 10%; --to: 45%; }
+.launcher[data-view="home"] .edge-top > b {
+  background: linear-gradient(to bottom, var(--bg), rgba(11, 11, 11, 0.86) 24%, rgba(11, 11, 11, 0.68) 46%, rgba(11, 11, 11, 0.42) 66%, rgba(11, 11, 11, 0.18) 84%, rgba(11, 11, 11, 0));
 }
 
 .launcher[data-view="home"] .home-mark {
@@ -1856,7 +1884,9 @@ dialog.sheet[open] {
     min-width: 100%;
     height: 100%;
     margin: 0;
-    padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
+    /* The strip ends with room for the floating settings button (44, a tile gap before it), so
+       the last tiles clear it once scrolled to the end. */
+    padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px + 44px + 12px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
   }
   /* The column is as tall as two tiles and their gap, so it is square; a note under it takes its
      room from the logo. No top blur here, so the logo centres in the whole of it. It holds no box
@@ -1878,16 +1908,17 @@ dialog.sheet[open] {
     grid-area: 1 / 2 / -1 / 3;
     align-self: end;
   }
-  /* The art is exactly as tall as the screen, from the top edge to the bottom one, and starts
-     where the column's gutter does (the screen's left edge, or the safe area's), so it sits
-     centred on the column. It fades out to the right, toward the tiles, the way it fades toward
-     the panel in portrait. */
+  /* The art runs from the screen's left edge (through the safe area) to the column's far gutter,
+     as a square centred on the screen's height, so it fills the height and a notch's wider safe
+     area only spills it a little past the top and bottom. It fades out to the right, toward the
+     tiles, the way it fades toward the panel in portrait. */
   .hero {
     --hero-fade: to right;
-    top: 0;
-    bottom: 0;
-    left: var(--safe-l);
+    --hero-side: calc(var(--safe-l) + var(--lead) + 32px);
+    top: calc(50% - var(--hero-side) / 2);
+    left: 0;
     right: auto;
+    width: var(--hero-side);
   }
   /* The left edge blur stays out of the way at rest and slides in with the strip, like the top
      one in portrait. */

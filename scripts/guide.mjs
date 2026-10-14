@@ -2,7 +2,7 @@
 // Everything game-specific is read from the game itself: stats, kinds and spawn letters
 // from rules.js, maps from missions.js, names and briefings from i18n.js, starting lives
 // from tanks.js and colours from the game's styles.css. The game's rules.js, ai.js,
-// engine.js and art.js, and guide/mapcheck.mjs, are bundled into the page, so the guide
+// engine.js, art.js and mapcheck.js are bundled into the page, so the guide
 // draws with the game's own art and its map editor runs the same checks as the tests.
 // The guide is not part of the app and never ships in a pack. After building, republish
 // the output to the artifact (see CLAUDE.md).
@@ -22,7 +22,7 @@ export const MODULES = [
   ['ai', path.join(TANKS, 'ai.js')],
   ['engine', path.join(TANKS, 'engine.js')],
   ['art', path.join(TANKS, 'art.js')],
-  ['mapcheck', path.join(GUIDE, 'mapcheck.mjs')],
+  ['mapcheck', path.join(TANKS, 'mapcheck.js')],
 ];
 
 const load = (file) => import(pathToFileURL(file).href);

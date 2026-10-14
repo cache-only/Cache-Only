@@ -2,16 +2,18 @@ import { formatNumber, localize, t } from '../../shared/i18n.js';
 import { createSaver, createStore } from '../../shared/storage.js';
 import { registerSW } from '../../shared/sw-client.js';
 import { setSoundOn, watchSound } from '../../shared/sound.js';
-import { closeSheet, confirmDialog, modalOpen, openSheet, setupSideMenu } from '../../shared/ui.js';
+import { closeSheet, confirmDialog, modalOpen, openSheet, setupSheet, setupSideMenu } from '../../shared/ui.js';
 import { tapTarget } from './ai.js';
-import { drawBadge } from './art.js';
+import { drawBadge, drawGround } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
+import { MAP_CELLS, MAX_ENEMIES, NAME_MAX, blankMap, cellsOnLine, mapReport, mapWorld, paintCell, readMaps } from './maps.js';
 import { BONUS_AFTER, CHECKPOINTS, MISSIONS, TEST_MAX, testMap } from './missions.js';
 import { createRenderer } from './render.js';
-import { ENEMY_KINDS, STEP, TYPES, owned } from './rules.js';
+import { COLS, CRATE, ENEMY_KINDS, FLOOR, HOLE, ROWS, SPAWN_CODES, STEP, TYPES, WALL, owned } from './rules.js';
 
 const SCHEMA = 1;
+const MAPS_SCHEMA = 1;
 const LIVES = 3;
 const BRIEF_S = 2.4; // the mission banner, before the shooting starts...
 const BRIEF_READ = 0.025; // ...plus this long per character of its note, up to BRIEF_MAX
@@ -34,14 +36,20 @@ const audio = createAudio();
 
 /* ---------- Saved data ---------- */
 
-// test: what the test range was last set to.
-const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, ...(store.load('prefs', 1) || {}) };
+// test: what the test range was last set to. map: the map of yours last picked. kind: the
+// enemy the map editor places. mirror: the editor paints both flanks at once.
+const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, map: null, kind: ENEMY_KINDS[0], mirror: false, ...(store.load('prefs', 1) || {}) };
 if (!ENEMY_KINDS.includes(prefs.test?.kind) || !(prefs.test.count >= 1 && prefs.test.count <= TEST_MAX)) {
   prefs.test = { kind: ENEMY_KINDS.at(-1), count: 1 };
 }
+if (!ENEMY_KINDS.includes(prefs.kind)) prefs.kind = ENEMY_KINDS[0];
 const stats = { best: 0, kills: 0, wins: 0, checkpoint: 1, ...(store.load('stats', 1) || {}) };
 const savePrefs = () => store.save('prefs', 1, prefs);
 const saveStats = () => store.save('stats', 1, stats);
+// Your own maps, from the map editor: { next: the next id, list: [{ id, name, rows }] }. Saved
+// after every change, like a move in a game.
+const maps = readMaps(store.load('maps', MAPS_SCHEMA));
+const mapsSaver = createSaver(store, 'maps', MAPS_SCHEMA, () => (maps.list.length ? maps : null));
 // Sound used to be switched in this game's menu; a mute set there carries over to Settings once.
 if ('sound' in prefs) {
   if (prefs.sound === false) setSoundOn(false);
@@ -55,9 +63,15 @@ let campaign = null;
 // A test range run in progress, { kind, count }. It leaves the campaign alone: nothing in it
 // counts, and it is never saved.
 let test = null;
+// One of your maps being played, { id, from: 'edit' | 'maps' }: like a test, it counts toward
+// nothing and is never saved, and it ends back where it was started from.
+let custom = null;
+// The map being drawn: { map (its entry in maps.list), history (earlier rows, for undo),
+// stroke (the finger or mouse painting), hover (the cell under the mouse), report }.
+let editor = null;
 let world = null; // the mission (or test) being played
 let backdrop = null; // a world drawn, frozen, behind the menu and results
-let phase = 'menu'; // menu | brief | play | paused | ending | over
+let phase = 'menu'; // menu | brief | play | paused | ending | over | edit
 let phaseT = 0;
 let briefS = BRIEF_S;
 let ending = null;
@@ -67,7 +81,7 @@ const saver = createSaver(store, 'session', SCHEMA, () =>
     ? {
         campaign,
         // Mid-mission the whole world is saved, so a killed app resumes exactly here.
-        world: !test && (phase === 'play' || phase === 'paused') ? world : null,
+        world: !test && !custom && (phase === 'play' || phase === 'paused') ? world : null,
         summary: { mission: campaign.mission + 1 },
       }
     : null,
@@ -457,9 +471,19 @@ wrap.addEventListener('pointerdown', () => {
 document.addEventListener('keydown', (event) => {
   // macOS sends no keyup for keys let go while Cmd is down, so a held key would stick.
   if (event.key === 'Meta') input.keys.clear();
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  // The map editor: a map character picks its brush, Cmd or Ctrl+Z undoes, Escape opens the menu.
+  if (phase === 'edit' && !modalOpen() && !menu.isOpen()) {
+    if ((event.metaKey || event.ctrlKey) && key === 'z') undoEdit();
+    else if (event.metaKey || event.ctrlKey || event.altKey) return;
+    else if (key === 'Escape') menu.open();
+    else if (key.length === 1 && MAP_CELLS.includes(key)) pickBrush(key);
+    else return;
+    event.preventDefault();
+    return;
+  }
   if (modalOpen() || event.metaKey || event.ctrlKey || event.altKey) return;
   audio.unlock();
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   if (key === 'p' || key === 'Escape') {
     if (menu.isOpen()) menu.close();
     else if (phase === 'play') menu.open();
@@ -507,10 +531,12 @@ document.addEventListener('keyup', (event) => {
 
 function renderHud() {
   const lives = $('livesStat');
-  // A test has no lives: the stat goes, and the mission reads "Test".
-  lives.parentElement.hidden = !!test;
+  // A test or a map of yours has no lives: the stat goes, and the mission reads "Test" or "Custom".
+  lives.parentElement.hidden = !!(test || custom);
   if (test) {
     $('missionStat').textContent = t('tanks.test');
+  } else if (custom) {
+    $('missionStat').textContent = t('tanks.mapStat');
   } else if (campaign) {
     $('missionStat').textContent = String(campaign.mission + 1);
     lives.textContent = String(campaign.lives);
@@ -610,9 +636,9 @@ function hideBanner() {
   $('banner').hidden = true;
 }
 
-// The campaign menu, the test range and the results are docked sheets: the header and its side
-// menu still work.
-const sheets = { menu: $('startSheet'), test: $('testSheet'), over: $('overSheet') };
+// The campaign menu, the test range, your maps and the results are docked sheets: the header and
+// its side menu still work.
+const sheets = { menu: $('startSheet'), test: $('testSheet'), maps: $('mapsSheet'), over: $('overSheet') };
 
 function showOverlay(name) {
   for (const [key, el] of Object.entries(sheets)) {
@@ -666,6 +692,8 @@ function setPhase(next) {
   // while it is starting or being played.
   pads.classList.toggle('shown', LOOPING.includes(next));
   pads.classList.toggle('live', next === 'brief' || next === 'play');
+  // The map editor: its tools under the arena and Play in the header (styles.css).
+  document.body.classList.toggle('is-editing', next === 'edit');
   if (LOOPING.includes(next)) startLoop();
   else stopLoop();
 }
@@ -719,7 +747,7 @@ function draw() {
   let beacon = 0;
   if (phase === 'brief') beacon = 1;
   else if (playing && s.time < 1.6) beacon = 1 - s.time / 1.6;
-  renderer.draw(s, { aim, reticle: playing && input.reticle ? input.aimPoint : null, beacon });
+  renderer.draw(s, { aim, reticle: playing && input.reticle ? input.aimPoint : null, beacon, cells: editCells() });
 }
 
 function onEvents(events) {
@@ -788,6 +816,7 @@ function launch(level, { alive = null, title, name, sub = '', note = '' }) {
 
 function beginMission() {
   test = null;
+  custom = null;
   const n = campaign.mission + 1;
   stats.best = Math.max(stats.best, n);
   for (const cp of CHECKPOINTS) if (n >= cp) stats.checkpoint = Math.max(stats.checkpoint, cp);
@@ -826,9 +855,9 @@ function closeCampaign(victory, reached) {
 
 function missionOver() {
   const won = world.phase === 'won';
-  if (test) {
-    // A test only says how it went, then goes back to the test range.
-    ending = { won, test: true, shown: false };
+  if (test || custom) {
+    // A test or a map of yours only says how it went, then goes back where it started.
+    ending = { won, side: true, shown: false };
     releaseInput();
     setPhase('ending');
     return;
@@ -861,8 +890,8 @@ function missionOver() {
 function tickEnding() {
   if (!ending.shown && phaseT >= BANNER_AT) {
     ending.shown = true;
-    if (ending.test) {
-      showBanner({ title: t(ending.won ? 'tanks.testCleared' : 'tanks.destroyed') });
+    if (ending.side) {
+      showBanner({ title: t(ending.won ? (test ? 'tanks.testCleared' : 'tanks.mapCleared') : 'tanks.destroyed') });
       audio.play(ending.won ? 'clear' : 'lost');
     } else if (ending.won) {
       showBanner({ title: t(ending.result ? 'tanks.victoryShort' : 'tanks.cleared'), sub: ending.bonus ? t('tanks.bonus') : '' });
@@ -890,7 +919,7 @@ function finishEnding() {
   const done = ending;
   ending = null;
   hideBanner();
-  if (done.test) showTest();
+  if (done.side) leaveSideRun();
   else if (done.result) showResults(done.result);
   else beginMission();
 }
@@ -923,6 +952,8 @@ function showMenu() {
   $('record').textContent = record;
   $('help').textContent = t(touchUI ? 'tanks.helpTouch' : 'tanks.helpKeys');
   test = null;
+  custom = null;
+  editor = null;
   world = null;
   backdrop = createWorld(parseLevel(MISSIONS[campaign ? campaign.mission : 0]), { alive: campaign ? campaign.alive : null });
   renderer.reset();
@@ -961,6 +992,7 @@ function renderTest() {
 
 function showTest() {
   test = null;
+  custom = null;
   world = null;
   renderTest();
   renderHud();
@@ -978,6 +1010,298 @@ function beginTest() {
   const { kind, count } = prefs.test;
   test = { kind, count };
   launch(parseLevel(testMap(kind, count)), { title: t('tanks.test'), name: t(`tanks.type.${kind}`) });
+}
+
+/* ---------- Your maps: the map editor, and playing what you draw ---------- */
+
+const mapList = $('mapList');
+const kindGrid = $('kindGrid');
+const brushTools = [...document.querySelectorAll('#editBrushes [data-brush]')];
+const kindSheet = setupSheet($('kindSheet'));
+const renameSheet = setupSheet($('renameSheet'));
+const UNDO_MAX = 100;
+const SWATCH = 32;
+const BLOCK_OF = { '#': WALL, x: CRATE, o: HOLE };
+const letterOf = (kind) => Object.keys(SPAWN_CODES).find((ch) => SPAWN_CODES[ch] === kind);
+const sameRows = (a, b) => a.join('\n') === b.join('\n');
+let brush = '#'; // a map character: what a tap on the map paints
+let editVer = 0; // bumped for every map drawn, so the renderer redraws the floor
+let editFrame = 0;
+
+const findMap = (id) => maps.list.find((m) => m.id === id) || null;
+const pickedMap = () => findMap(prefs.map) || maps.list.at(-1) || null;
+
+function problemText(p) {
+  return t(`tanks.edit.${p.code}`, { n: p.n, max: MAX_ENEMIES, kind: p.kind ? t(`tanks.type.${p.kind}`) : '' });
+}
+
+/** One line on a map: what stops it being played, or that it's ready (and the first note, if any). */
+function reportText(report) {
+  const blocking = report.problems.find((p) => p.blocking);
+  if (blocking) return problemText(blocking);
+  return [t('tanks.edit.ready', { n: report.enemies, max: MAX_ENEMIES }), ...report.problems.slice(0, 1).map(problemText)].join(' ');
+}
+
+/** Draws a map, frozen, behind the sheets or under the editor's tools. */
+function showMap(rows) {
+  backdrop = mapWorld(rows, ++editVer);
+  draw();
+}
+
+/** Your maps, as a docked sheet: pick one to play or edit, or start a new one. */
+function showMaps() {
+  mapsSaver.flush();
+  test = null;
+  custom = null;
+  editor = null;
+  world = null;
+  renderer.reset();
+  renderMaps();
+  renderHud();
+  showOverlay('maps');
+  setPhase('menu');
+}
+
+function renderMaps() {
+  const map = pickedMap();
+  const any = maps.list.length > 0;
+  $('mapsIntro').textContent = t('tanks.mapsIntro', { max: MAX_ENEMIES });
+  $('mapsIntro').hidden = any;
+  mapList.hidden = !any;
+  mapList.replaceChildren(...maps.list.map((m) => choice({ 'data-id': m.id, 'aria-pressed': String(m === map) }, m.name)));
+  $('mapStatus').textContent = map ? reportText(mapReport(map.rows)) : '';
+  $('editMapBtn').hidden = !any;
+  $('playListBtn').hidden = !any;
+  $('playListBtn').disabled = !map || !mapReport(map.rows).ready;
+  // With no maps yet, a new one is the one thing to do here.
+  $('newMapBtn').classList.toggle('btn-primary', !any);
+  showMap(map ? map.rows : blankMap());
+}
+
+function newMap() {
+  let n = 1;
+  while (maps.list.some((m) => m.name === t('tanks.mapN', { n }))) n++;
+  const map = { id: maps.next++, name: t('tanks.mapN', { n }), rows: blankMap() };
+  maps.list.push(map);
+  mapsSaver.flush();
+  editMap(map);
+}
+
+/** Opens a map in the editor. Back from playing it, its undo history is still there. */
+function editMap(map) {
+  if (!map) return;
+  prefs.map = map.id;
+  savePrefs();
+  if (editor?.map !== map) editor = { map, history: [], stroke: null, hover: null, report: null };
+  test = null;
+  custom = null;
+  world = null;
+  renderer.reset();
+  showOverlay(null);
+  setPhase('edit');
+  renderHud();
+  paintSwatches();
+  renderEditor();
+}
+
+/** The editor's state: its line about the map, Play, the tools and the map itself. */
+function renderEditor() {
+  const { map } = editor;
+  editor.report = mapReport(map.rows);
+  $('editNote').textContent = reportText(editor.report);
+  $('playMapBtn').disabled = !editor.report.ready;
+  renderTools();
+  showMap(map.rows);
+}
+
+function renderTools() {
+  const tool = SPAWN_CODES[brush] ? 'enemy' : brush;
+  for (const b of brushTools) b.setAttribute('aria-pressed', String(b.dataset.brush === tool));
+  $('undoTool').disabled = !editor?.history.length;
+  const kind = t(`tanks.type.${prefs.kind}`);
+  $('enemyName').textContent = kind;
+  $('enemyTool').setAttribute('aria-label', t('tanks.tool.enemy', { kind }));
+}
+
+/** After a change: save soon, and redraw once per frame however fast a finger paints. */
+function editChanged() {
+  mapsSaver.schedule();
+  if (!editFrame) {
+    editFrame = requestAnimationFrame(() => {
+      editFrame = 0;
+      if (editor && phase === 'edit') renderEditor();
+    });
+  }
+}
+
+/** The rings the editor lays over the map: what's wrong, and the cell under the mouse. */
+function editCells() {
+  if (phase !== 'edit' || !editor?.report) return null;
+  const cells = editor.report.problems.filter((p) => p.at).map((p) => ({ c: p.at[0], r: p.at[1], kind: p.blocking ? 'error' : 'note' }));
+  if (editor.hover) cells.push({ c: editor.hover[0], r: editor.hover[1], kind: 'cursor' });
+  return cells;
+}
+
+/** Each brush drawn as the arena draws it: a block on its own, or a tank on its floor. */
+function paintSwatch(el, cell) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  el.width = el.height = Math.round(SWATCH * dpr);
+  const c = el.getContext('2d');
+  const pal = renderer.palette();
+  if (BLOCK_OF[cell] !== undefined) {
+    c.setTransform(SWATCH * dpr, 0, 0, SWATCH * dpr, 0, 0);
+    drawGround(c, pal, { cols: 1, rows: 1, kindAt: (col, row) => (col === 0 && row === 0 ? BLOCK_OF[cell] : FLOOR) });
+  } else {
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBadge(c, pal, cell === '@' ? 'player' : SPAWN_CODES[cell], SWATCH, SWATCH);
+  }
+}
+
+function paintSwatches() {
+  for (const el of document.querySelectorAll('#editBrushes .swatch[data-cell]')) paintSwatch(el, el.dataset.cell);
+  paintSwatch($('enemySwatch'), letterOf(prefs.kind));
+}
+
+/** Picks the brush for a map character (an enemy's letter also picks that kind). */
+function pickBrush(ch) {
+  brush = ch;
+  if (SPAWN_CODES[ch] && SPAWN_CODES[ch] !== prefs.kind) {
+    prefs.kind = SPAWN_CODES[ch];
+    savePrefs();
+    paintSwatch($('enemySwatch'), ch);
+  }
+  renderTools();
+}
+
+/** The enemy brush picks its kind on a sheet, the same grid as the test range's. */
+function openKinds() {
+  if (!kindGrid.children.length) kindGrid.append(...ENEMY_KINDS.map((k) => choice({ 'data-kind': k, 'aria-label': t(`tanks.type.${k}`) }, badge(k))));
+  for (const b of kindGrid.children) b.setAttribute('aria-pressed', String(b.dataset.kind === prefs.kind));
+  openSheet(kindSheet);
+}
+
+function undoEdit() {
+  if (!editor?.history.length || editor.stroke) return;
+  editor.map.rows = editor.history.pop();
+  editChanged();
+}
+
+/** The map cell under a pointer, as [col, row]; it may be off the map. */
+function cellUnder(event) {
+  const box = canvas.getBoundingClientRect();
+  const p = renderer.toWorld(event.clientX - box.left, event.clientY - box.top);
+  return [Math.floor(p.x), Math.floor(p.y)];
+}
+
+const onMap = ([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS;
+const isTank = (ch) => ch === '@' || !!SPAWN_CODES[ch];
+
+/**
+ * Paints along a stroke. Blocks and erasing paint every cell the finger crosses; a tank follows
+ * the finger until it lifts, so a drag places one tank (and its twin, mirrored) rather than a trail.
+ */
+function strokeTo(cell) {
+  const s = editor.stroke;
+  const [c, r] = [Math.max(0, Math.min(COLS - 1, cell[0])), Math.max(0, Math.min(ROWS - 1, cell[1]))];
+  const mirror = prefs.mirror;
+  let rows;
+  if (isTank(s.ch)) {
+    rows = paintCell(s.base, c, r, s.ch, { mirror });
+  } else {
+    rows = editor.map.rows;
+    for (const [cc, rr] of cellsOnLine(s.last[0], s.last[1], c, r)) rows = paintCell(rows, cc, rr, s.ch, { mirror });
+  }
+  s.last = [c, r];
+  if (sameRows(rows, editor.map.rows)) return;
+  editor.map.rows = rows;
+  editChanged();
+}
+
+function endStroke(event) {
+  const s = editor?.stroke;
+  if (!s || s.id !== event.pointerId) return;
+  editor.stroke = null;
+  // One stroke, one step to undo.
+  if (sameRows(s.base, editor.map.rows)) return;
+  editor.history.push(s.base);
+  if (editor.history.length > UNDO_MAX) editor.history.shift();
+  editChanged();
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  if (phase !== 'edit' || !editor || editor.stroke) return;
+  const cell = cellUnder(event);
+  if (!onMap(cell)) return;
+  event.preventDefault();
+  canvas.setPointerCapture?.(event.pointerId);
+  // A right-click erases.
+  const ch = event.pointerType === 'mouse' && event.button === 2 ? '.' : brush;
+  editor.stroke = { id: event.pointerId, ch, base: editor.map.rows, last: cell };
+  strokeTo(cell);
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  if (phase !== 'edit' || !editor) return;
+  const cell = cellUnder(event);
+  if (event.pointerType === 'mouse') {
+    const hover = onMap(cell) ? cell : null;
+    if (String(hover) !== String(editor.hover)) {
+      editor.hover = hover;
+      draw();
+    }
+  }
+  if (editor.stroke?.id === event.pointerId) strokeTo(cell);
+});
+
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, endStroke);
+canvas.addEventListener('pointerleave', () => {
+  if (!editor?.hover) return;
+  editor.hover = null;
+  draw();
+});
+
+/** Plays a map of yours, if it's ready. from: 'edit' or 'maps', where it ends up afterwards. */
+function playMap(map, from) {
+  if (!map || !mapReport(map.rows).ready) return;
+  mapsSaver.flush();
+  test = null;
+  custom = { id: map.id, from };
+  launch(parseLevel(map.rows), { title: map.name });
+  // Play stays in the header while the side menu is open; starting from there closes the menu.
+  menu.close();
+}
+
+/** Ends a test or a map of yours: back to the test range, the editor or your maps. */
+function leaveSideRun() {
+  if (test) {
+    showTest();
+    return;
+  }
+  const map = findMap(custom?.id);
+  const from = custom?.from;
+  custom = null;
+  if (map && from === 'edit') editMap(map);
+  else showMaps();
+}
+
+function openRename() {
+  if (!editor) return;
+  menu.close();
+  $('renameInput').value = editor.map.name;
+  openSheet(renameSheet);
+  $('renameInput').focus();
+  $('renameInput').select();
+}
+
+async function deleteMap() {
+  const map = editor?.map;
+  if (!map || !(await confirmDialog(t('tanks.confirmDelete', { name: map.name }), { ok: t('tanks.delete') }))) return;
+  maps.list = maps.list.filter((m) => m !== map);
+  mapsSaver.flush();
+  prefs.map = maps.list.at(-1)?.id ?? null;
+  savePrefs();
+  showMaps();
+  menu.close();
 }
 
 async function chooseStart(index) {
@@ -1000,7 +1324,11 @@ function hold() {
     stopLoop();
   }
   $('quitBtn').hidden = phase !== 'paused' && phase !== 'brief';
-  $('quitLabel').textContent = t(test ? 'tanks.testEnd' : 'tanks.quit');
+  let quitLabel = 'tanks.quit';
+  if (test) quitLabel = 'tanks.testEnd';
+  else if (custom) quitLabel = custom.from === 'edit' ? 'tanks.backToEditor' : 'tanks.backToMaps';
+  $('quitLabel').textContent = t(quitLabel);
+  for (const el of document.querySelectorAll('.edit-item')) el.hidden = phase !== 'edit';
 }
 
 function release() {
@@ -1010,9 +1338,9 @@ function release() {
 }
 
 async function quit() {
-  if (test) {
-    // Nothing to lose in a test: straight back to the range.
-    showTest();
+  if (test || custom) {
+    // Nothing to lose in a test or a map of yours: straight back where it started.
+    leaveSideRun();
     menu.close();
     return;
   }
@@ -1041,6 +1369,54 @@ testCount.addEventListener('click', (event) => {
   if (b) pickTest({ count: Number(b.dataset.count) });
 });
 $('againBtn').addEventListener('click', () => chooseStart(0));
+$('mapsOpenBtn').addEventListener('click', showMaps);
+$('mapsClose').addEventListener('click', showMenu);
+mapList.addEventListener('click', (event) => {
+  const b = event.target.closest('button');
+  if (!b) return;
+  prefs.map = Number(b.dataset.id);
+  savePrefs();
+  renderMaps();
+});
+$('editMapBtn').addEventListener('click', () => editMap(pickedMap()));
+$('newMapBtn').addEventListener('click', newMap);
+$('playListBtn').addEventListener('click', () => playMap(pickedMap(), 'maps'));
+$('playMapBtn').addEventListener('click', () => playMap(editor?.map, 'edit'));
+$('editBrushes').addEventListener('click', (event) => {
+  const b = event.target.closest('.tool');
+  if (!b || b.disabled) return;
+  if (b.id === 'undoTool') undoEdit();
+  else if (b.dataset.brush === 'enemy') openKinds();
+  else pickBrush(b.dataset.brush);
+});
+kindGrid.addEventListener('click', (event) => {
+  const b = event.target.closest('button');
+  if (!b) return;
+  pickBrush(letterOf(b.dataset.kind));
+  closeSheet(kindSheet);
+});
+$('kindClose').addEventListener('click', () => closeSheet(kindSheet));
+$('renameClose').addEventListener('click', () => closeSheet(renameSheet));
+$('renameForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = $('renameInput').value.trim().slice(0, NAME_MAX);
+  if (name && editor) {
+    editor.map.name = name;
+    mapsSaver.flush();
+  }
+  closeSheet(renameSheet);
+});
+$('mapsBtn').addEventListener('click', () => {
+  showMaps();
+  menu.close();
+});
+$('renameBtn').addEventListener('click', openRename);
+$('deleteBtn').addEventListener('click', deleteMap);
+$('mirrorToggle').checked = prefs.mirror;
+$('mirrorToggle').addEventListener('change', (event) => {
+  prefs.mirror = event.target.checked;
+  savePrefs();
+});
 $('resumeBtn').addEventListener('click', () => menu.close());
 $('quitBtn').addEventListener('click', quit);
 

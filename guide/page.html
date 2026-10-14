@@ -1,6 +1,6 @@
 <!-- Tanks field guide. Built by scripts/guide.mjs into guide/out/ (npm run guide). Edit this template and
      guide/enemies.mjs, never the output. The build fills in the double-brace counts, bundles the game's
-     rules.js, ai.js, engine.js and art.js and guide/mapcheck.mjs where MODULES sits, and writes DATA. -->
+     rules.js, ai.js, engine.js, art.js and mapcheck.js where MODULES sits, and writes DATA. -->
 <title>Tanks Field Guide</title>
 <style>
   /* Layout: black wayfinding masthead on a signal stripe, then a roster of enemy cards, a sheet on reading
@@ -339,7 +339,7 @@
   .src-grid .ruler { color: var(--muted); font-size: 0.78em; }
   .src-grid .f { color: var(--muted); opacity: 0.55; }
   .src-grid .w { background: var(--tk-wall); color: var(--on-bar); }
-  .src-grid .x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); font-weight: 700; }
+  .src-grid .x { background: linear-gradient(45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), var(--tk-crate-dark); color: var(--on-bar); font-weight: 700; }
   .src-grid .o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .src-grid .t { background: var(--c); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ring); }
   .src-grid .t[data-ink="dark"] { color: var(--chip-dark); }
@@ -357,7 +357,7 @@
   .legend .sym { width: 30px; height: 30px; display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); }
   .legend .sym.f { background: var(--tk-floor); color: var(--muted); }
   .legend .sym.w { background: var(--tk-wall); color: var(--on-bar); }
-  .legend .sym.x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); }
+  .legend .sym.x { background: linear-gradient(45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), var(--tk-crate-dark); color: var(--on-bar); }
   .legend .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .legend b { display: block; font-size: 14px; }
   .legend p { font-size: 13.5px; color: var(--muted); }
@@ -377,7 +377,7 @@
   .brush .sym { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); font-size: 12px; }
   .brush .sym.f { background: var(--tk-floor); color: var(--muted); }
   .brush .sym.w { background: var(--tk-wall); color: var(--on-bar); }
-  .brush .sym.x { background: repeating-linear-gradient(-45deg, var(--tk-stripe) 0 2px, var(--tk-crate) 2px 5px); color: var(--on-bar); }
+  .brush .sym.x { background: linear-gradient(45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--tk-crate) 42% 58%, transparent 58%), var(--tk-crate-dark); color: var(--on-bar); }
   .brush .sym.o { background: var(--tk-hole); color: var(--on-bar-muted); }
   .brush .sym.t { background: var(--c); }
   .brush .sym.t[data-ink="dark"] { color: var(--chip-dark); }
@@ -545,7 +545,7 @@
 
   <section id="editor">
     <header class="sec-head"><h2>Map editor</h2><span class="label">Draws and checks maps the way the game and its tests do</span></header>
-    <p class="intro">Paint a map, watch the same checks the tests run, then copy it into <code>missions.js</code>. It starts from a mission, and your draft stays in this browser. Drag to paint; on a keyboard, a map character picks its brush.</p>
+    <p class="intro">Paint a map, watch the same checks the tests run, then copy it into <code>missions.js</code>. It starts from a mission, and your draft stays in this browser. Drag to paint; on a keyboard, a map character picks its brush. This one is for campaign missions. Players draw their own maps in the game (Maps on the start sheet), where only what makes a map playable blocks it: your tank, 1 to 8 enemies, each one within reach. A clear shot at your start is only a note there.</p>
     <div class="editor">
       <div class="ed-bar">
         <select class="btn" id="ed-load" aria-label="Start from"></select>
@@ -571,13 +571,13 @@
   </section>
 </main>
 
-<footer class="wrap">Source: src/games/tanks/rules.js, ai.js, engine.js, art.js and missions.js in Cache Only, and guide/mapcheck.mjs for the map checks. The tanks, maps and shots on this page are drawn by the game's own art.js.</footer>
+<footer class="wrap">Source: src/games/tanks/rules.js, ai.js, engine.js, art.js and missions.js in Cache Only, and mapcheck.js for the map checks. The tanks, maps and shots on this page are drawn by the game's own art.js.</footer>
 
 <script>
 /*__MODULES__*/
 const DATA = __DATA__;
 
-const { makePalette, drawGround, drawTank, drawTankShadow, drawShot, drawMine, drawTarget, drawBomb, bombAt, ART } = MOD.art;
+const { makePalette, makeKit, drawGround, drawTank, drawShadows, drawShot, drawMine, drawTarget, drawBomb, bombAt, ART } = MOD.art;
 const { FLOOR, WALL, CRATE, HOLE, angleDiff } = MOD.rules;
 const { checkMap, isMirrored, openShare } = MOD.mapcheck;
 
@@ -588,8 +588,7 @@ const COLS = DATA.cols;
 const ROWS = DATA.rows;
 const MUZZLE = DATA.muzzle;
 const INK = DATA.ink; // chip text colour per tank, picked by contrast at build time
-const SHADOW = { x: 0.07, y: 0.1 };
-const MINE_SHADOW = { x: 0.04, y: 0.06 };
+const KIT = makeKit(() => document.createElement('canvas')); // spare canvases for the art's soft light
 const UP = { x: 0, y: -1 };
 const deg = (rad) => (rad * 180) / PI;
 const pad = (n) => String(n).padStart(2, '0');
@@ -852,7 +851,7 @@ function drawScene(canvas, kind) {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
-  if (t.mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, { x: mx, y: my }, kind, 'on', MINE_SHADOW);
+  if (t.mines) for (const [mx, my] of sc.mines || []) drawMine(ctx, P, { x: mx, y: my }, kind, 'on');
 
   const ox = x + Math.cos(sc.turret) * MUZZLE;
   const oy = y + Math.sin(sc.turret) * MUZZLE;
@@ -881,19 +880,16 @@ function drawScene(canvas, kind) {
   }
   const alpha = sc.ghost ?? 1;
   const tank = { type: kind, x, y, body, turret: sc.turret };
-  if (target) {
-    drawTankShadow(ctx, P, target, SHADOW);
-    drawTank(ctx, P, target, {});
-  }
-  drawTankShadow(ctx, P, tank, SHADOW, alpha);
-  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, roll: sc.roll || 0, alpha });
+  drawShadows(ctx, P, [...(target ? [{ t: target }] : []), { t: tank, alpha }], { kit: KIT });
+  if (target) drawTank(ctx, P, target, { kit: KIT });
+  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, roll: sc.roll || 0, alpha, kit: KIT });
   for (const d of sc.shots) shotAt(ctx, P, t.weapon, path, d);
   // A minigun's stream: each round on its own line, a little either side of the turret's.
   for (const [d, off] of sc.spray || []) {
     const a = sc.turret + off;
     shotAt(ctx, P, t.weapon, [[ox, oy], [ox + Math.cos(a) * SW, oy + Math.sin(a) * SW]], d);
   }
-  if (bomb) drawBomb(ctx, P, bomb, UP);
+  if (bomb) drawBomb(ctx, P, bomb, { up: UP });
 }
 /**
  * A whole map at its first frame: enemies face your side with turrets aimed at you.
@@ -911,8 +907,8 @@ function drawMap(canvas, rows, { hover = null, marks = [] } = {}) {
     const toward = p ? Math.atan2(p.y - y, p.x - x) : PI;
     tanks.push({ type: e.kind, x, y, body: Math.abs(toward) > PI / 2 ? PI : 0, turret: toward });
   }
-  for (const t of tanks) drawTankShadow(ctx, P, t, SHADOW);
-  for (const t of tanks) drawTank(ctx, P, t, {});
+  drawShadows(ctx, P, tanks.map((t) => ({ t })), { kit: KIT });
+  for (const t of tanks) drawTank(ctx, P, t, { kit: KIT });
   for (const mk of marks) {
     ctx.strokeStyle = mk.kind === 'err' ? P.alarm : P.signal;
     ctx.lineWidth = Math.max(px * 2.5, 0.1);
@@ -932,8 +928,8 @@ function drawTile(canvas, kind, { cols = 2, rows = 1.6, cell = 46, turret = -0.5
   const P = palette();
   drawGround(ctx, P, { cols: Math.ceil(cols), rows: Math.ceil(rows), kindAt: () => FLOOR, px });
   const t = { type: kind, x: cols / 2 - 0.04, y: rows / 2, body, turret };
-  drawTankShadow(ctx, P, t, SHADOW);
-  drawTank(ctx, P, t, { mines: mines ?? T[kind].mines, lit, roll });
+  drawShadows(ctx, P, [{ t }], { kit: KIT });
+  drawTank(ctx, P, t, { mines: mines ?? T[kind].mines, lit, roll, kit: KIT });
 }
 
 /* ---------- Canvas registry: redraw on resize and theme change ---------- */
@@ -1107,7 +1103,7 @@ document.getElementById('swatches').append(
 );
 document.getElementById('plan').append(
   h('p', {}, h('b', {}, 'Still free: '), 'sand, maroon and navy (kept clearly apart from your blue).'),
-  h('p', {}, h('b', {}, 'Past about 12 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue. Hornet is the first: Yellow’s colour with hazard stripes.'),
+  h('p', {}, h('b', {}, 'Past about 14 kinds, '), 'reuse a colour with a pattern (stripes, spots, camo) for a variant, such as an elite version of an existing tank, instead of finding another hue. The art draws hazard stripes for any kind named a variant in art.js; none is today.'),
   h('p', {}, 'The tests hold every colour to the plan: at least a clear step (10 in OKLab ×100) from every other kind (a variant wears exactly its base kind’s colour instead) and from the off-limits colours, and chip text that reads at 4.5:1 or better. The game is dark only, so each kind has one colour.'),
 );
 
@@ -1399,8 +1395,8 @@ const MEANING = { '.': 'Floor', '#': 'Wall', x: 'Crate', o: 'Hole', '@': 'Your t
 const LEGEND = [
   ['f', '.', 'Floor', 'Open ground. Tanks drive, shells fly.'],
   ['w', '#', 'Wall', 'Stops tanks and shells. Shells ricochet off it, bombs fly over it, and blasts never touch it. The arena edge counts as wall.'],
-  ['x', 'x', 'Crate', 'A lighter grey than walls, with diagonal stripes, and crates that touch join into one block. Works like a wall until a blast clears it (a mine, or a landing bomb), which opens a new route mid-mission.'],
-  ['o', 'o', 'Hole', 'Stops tanks, but shells fly straight over it. A firing lane you can’t drive through.'],
+  ['x', 'x', 'Crate', 'A lighter grey than walls: a toy crate braced with an X, one box a cell. Works like a wall until a blast clears it (a mine, or a landing bomb), a cell at a time, which opens a new route mid-mission.'],
+  ['o', 'o', 'Hole', 'A pit broken in the floor. Stops tanks, but shells fly straight over it. A firing lane you can’t drive through.'],
   ['t', '@', 'You', 'Exactly one per map. You start facing right.'],
   ['e', DATA.codes[KINDS[0]], 'Enemies', `One letter per tank: ${KINDS.map((k) => `${DATA.codes[k]} ${INFO[k].name.toLowerCase()}`).join(', ')}. Each starts at the centre of its cell, facing your side with its turret aimed at you.`],
 ];
