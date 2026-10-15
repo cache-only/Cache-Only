@@ -10,18 +10,8 @@
     }
   },
   {
-    "id": "2048",
-    "code": "GP 02",
-    "name": "2048",
-    "path": "/games/2048/",
-    "description": {
-      "en": "Slide the tiles, merge equal numbers, reach 2048.",
-      "ca": "Llisca les fitxes, uneix els números iguals i arriba a 2048."
-    }
-  },
-  {
     "id": "tanks",
-    "code": "GP 03",
+    "code": "GP 02",
     "name": { "en": "Tanks", "ca": "Tancs" },
     "path": "/games/tanks/",
     "description": {

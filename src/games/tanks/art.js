@@ -686,12 +686,13 @@ function model(pal, t, { phase = 0, mines, lit = false, roll = 0, recoil = REST,
   } else if (T.weapon === 'laser') {
     // A slim emitter through two cooling rings, ending in a round lens at the muzzle. The lens is
     // dark at rest and lit red while the laser charges and burns (lit).
-    weapon.solids.push(metal(gun(0.1, -0.045, MUZZLE - 0.16, 0.09)));
-    for (const x of [0.2, 0.3]) weapon.solids.push(metal(gun(x, -0.085, 0.045, 0.17)));
-    weapon.solids.push({ path: disc(MUZZLE - 0.08 - back, 0, 0.085), fill: tone.dark });
+    // The rings and the lens sit past the turret's edge, so they read at a glance.
+    weapon.solids.push(metal(gun(0.1, -0.045, MUZZLE - 0.12, 0.09)));
+    for (const x of [0.26, 0.35]) weapon.solids.push(metal(gun(x, -0.095, 0.045, 0.19)));
+    weapon.solids.push({ path: disc(MUZZLE - 0.03 - back, 0, 0.08), fill: tone.dark });
     weapon.decals.push((c) => {
-      dot(c, MUZZLE - 0.08 - back, 0, 0.052, lit ? pal.alarm : tone.deep);
-      dot(c, MUZZLE - 0.08 - back, 0, 0.022, lit ? pal.flash : pal.ink);
+      dot(c, MUZZLE - 0.03 - back, 0, 0.05, lit ? pal.alarm : tone.deep);
+      dot(c, MUZZLE - 0.03 - back, 0, 0.021, lit ? pal.flash : pal.ink);
     });
   }
 

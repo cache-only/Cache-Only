@@ -31,6 +31,7 @@ import {
   SPIN_UP,
   SPRAY_TURN,
   STEP,
+  PAIR_GAP,
   TANK_R,
   TWIN_SPREAD,
   TYPES,
@@ -912,18 +913,21 @@ test('beside walls a tank dodges a shell it notices without swinging back and fo
 
 /* ---------- N2, N3: Night Red and Night Lime ---------- */
 
-test('Night Red fires a pair, one missile from each pod, 10 degrees either side of its aim, when both fit in the air', () => {
+test('Night Red fires a pair: its left pod, then its right PAIR_GAP later, 10 degrees either side of its aim', () => {
   const s = inert(createWorld(level(['', '', '', '', '', '', '', '..@.........R'])));
   const red = s.tanks[1];
   const events = [];
   assert.ok(fire(s, red, Math.PI, events));
-  const shots = events.filter((e) => e.type === 'shot');
-  assert.equal(shots.length, 2);
+  assert.deepEqual(events.filter((e) => e.type === 'shot').map((e) => e.side), [-1], 'the left pod first');
+  assert.equal(s.bullets.length, 1);
+  const early = run(s, PAIR_GAP - 0.05);
+  assert.equal(count(early, 'shot'), 0, 'a split second between them');
+  const later = run(s, 0.1);
+  assert.deepEqual(later.filter((e) => e.type === 'shot').map((e) => e.side), [1], 'then the right pod');
   assert.equal(s.bullets.length, 2);
-  const angles = s.bullets.map((b) => angleDiff(Math.atan2(b.vy, b.vx), Math.PI)).sort((x, y) => x - y);
-  assert.ok(Math.abs(angles[0] + TWIN_SPREAD) < 1e-9 && Math.abs(angles[1] - TWIN_SPREAD) < 1e-9);
-  // Each leaves its own pod, either side of the aim.
-  assert.deepEqual(s.bullets.map((b) => Math.sign(b.y - red.y)).sort(), [-1, 1]);
+  // Each left its own pod, TWIN_SPREAD to its own side of the aim (the turret's aim when it left).
+  const launches = [...events, ...later].filter((e) => e.type === 'shot').map((e) => angleDiff(e.angle, Math.PI));
+  assert.ok(Math.abs(launches[0] + TWIN_SPREAD) < 0.02 && Math.abs(launches[1] - TWIN_SPREAD) < 0.02, `launched at ${launches}`);
   assert.ok(s.bullets.every((b) => Math.abs(Math.hypot(b.vx, b.vy) - TYPES.redNight.shot) < 1e-9 && b.path));
   red.reload = 0;
   assert.equal(fire(s, red, Math.PI, []), false, 'no room for another pair');

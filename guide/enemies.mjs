@@ -141,8 +141,8 @@ export function enemyText({ T, kinds, R, name, note }) {
     }),
     redNight: (t) => ({
       role: 'Missile pair',
-      desc: `Red at night. It fires both pods at once, ${degs(R.twinSpread)}° either side of its aim, so two missiles come at you from two sides and close in. They fly at ${sp(t.shot)} cells a second (${vsShell(t)}), turn at up to ${degs(t.missileTurn)}° a second for ${num(t.fuel)} s, and keep after you wherever you go: duck behind a wall and they follow the open way round it to you. It still fires only down a clear straight line, and each missile dies on the first wall it touches.`,
-      perks: ['Two at once', 'Finds its way', `Turns ${degs(t.missileTurn)}°/s`, `Fuel ${num(t.fuel)} s`],
+      desc: `Red at night. It fires both pods, the left and then the right ${num(R.pairGap)} s later, each ${degs(R.twinSpread)}° to its side of its aim, so two missiles come at you from two sides and close in. They fly at ${sp(t.shot)} cells a second (${vsShell(t)}), turn at up to ${degs(t.missileTurn)}° a second for ${num(t.fuel)} s, and keep after you wherever you go: duck behind a wall and they follow the open way round it to you, swerving round any tank or mine on the way. It fires down a straight line when it has one, and round a corner along the open way when you are hiding close by. Each missile still dies on the first wall it touches, and the two of a pair never cancel each other out.`,
+      perks: ['Two in a row', 'Finds its way', 'Fires round corners', `Turns ${degs(t.missileTurn)}°/s`],
       weak: `A shell that meets a missile cancels it, so two shells stop the pair. They can't turn tighter than a circle ${num(t.shot / t.missileTurn)} cells in radius: cut a corner fine and they still hit the wall.`,
       scene: 'A night red tank firing a missile that curves after you, its light lit.',
     }),

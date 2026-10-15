@@ -34,6 +34,7 @@ export const SHELL_R = 0.09;
 export const MUZZLE = 0.56; // distance from a tank's centre to where its shells appear
 export const POD = 0.11; // how far either side of its aim a missile tank's two launch pods sit
 export const TWIN_SPREAD = 0.17; // radians either side of its aim a pair of missiles leaves at (Night Red)
+export const PAIR_GAP = 0.25; // seconds between the two missiles of a pair: left pod, then right
 export const MINE_R = 0.24;
 export const MINE_FUSE = 10; // seconds
 export const MINE_TRIGGER = 0.8; // a tank this close sets a mine off
@@ -157,7 +158,7 @@ export const NIGHT = {
     turn: 6, turret: 2.2, mines: 4, reload: 2.4, think: 0.15, react: 0.35, spread: 0.06, dodge: 0.45, range: [4, 8],
     layRate: null, trap: true, detonate: true,
   },
-  // Fires both pods at once, 10 degrees either side of its aim (pair); its missiles are faster,
+  // Fires both pods, left then right PAIR_GAP apart, 10 degrees either side of its aim (pair); its missiles are faster,
   // turn tighter, steer longer, and follow the open way round walls to you (path).
   red: { bullets: 2, shot: 3.8, missileTurn: 3.2, fuel: 5, pair: true, path: true, think: 0.18, react: 0.4, dodge: 0.35 },
   // Dodges more and sooner, and walks its stream across where you would sidestep to: up to walk

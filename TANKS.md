@@ -430,11 +430,14 @@ its **night version**.
 ### N2. Night Red: twin missiles that find their way
 **Status:** done 2026-10-15 · **Size:** M · **Needs:** N1
 
-**Built:** kind `redNight` (`R`). Fires both pods at once (`pair`), 10° either side of its aim
+**Built:** kind `redNight` (`R`). Fires its left pod, then its right `PAIR_GAP` (0.25 s) later (`pair`,
+`t.salvo`; at first both fired together, changed the same day), each 10° to its side of its aim
 (`TWIN_SPREAD`), needing room for both (2 in the air). Missiles fly at 3.8, turn at 3.2 rad/s for
-5 s, and steer for the furthest visible cell on the shortest open way to you (`path`, `waypoint()` in
-`engine.js`), so they follow you round a wall. It still fires only with a straight line on you, and
-it doesn't yet steer round allies. Both pods kick back together (`side: 0`).
+5 s, and steer for the furthest visible cell on the shortest open way to you (`path`, `routeTo()` in
+`ai.js`), so they follow you round a wall, swerving round any tank or mine ahead (`waypoint()` in
+`engine.js`). The two of a pair never cancel each other out (`pair`): they used to clash just after
+launch. It also fires round a corner along the open way when you hide within its range + 4 steps
+(`launchClear` checks the first stretch and allies). Each pod kicks back on its own shot.
 
 Red already has two launch pods. At night it uses both.
 
@@ -954,8 +957,8 @@ a close icon only repeated it (dropped 2026-10-14). The list holds Resume, Quit 
 while a mission is on. Since 2026-10-14 Resume is always there, the list has no title, the arena
 fades out and blurs behind it instead of a blur from the left edge, holding the home button goes
 straight back to the games, and Sound is one switch for the whole app in Settings. Leaving the app opens it, so a killed app reopens with it open. The menu
-is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku and 2048
-can switch to it too.
+is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku can switch
+to it too.
 
 ### C5. A tap that doesn't waste its shot on a wall
 **Status:** done 2026-10-14 · **Size:** S
@@ -1033,10 +1036,21 @@ light. Time each on an iPhone (a 3x screen).
 **Status:** in progress (Recoil and Exhaust puffs done 2026-10-15) · **Size:** M
 
 - **Recoil** (**done** 2026-10-15)**:** the barrel kicks back about 0.06 cells as it fires and eases
-  out over 150 ms. One number per tank. Shipped: `recoil` (0-1) in `drawTank`, back in 35 ms and
-  out over 150 ms (`recoilAt` in `render.js`, on world time, so it holds while paused). How far is
-  per weapon (`KICK` in `art.js`): shell 0.06, rocket 0.08, missile 0.05, minigun 0.025 a round
-  (it shudders while it sprays), and a mortar's tube sinks 14% instead.
+  out over 150 ms. One number per tank. Shipped, then redone the same day because 0.06 cells (about
+  1.4 px on a phone) couldn't be seen: `drawTank` takes `fired` (seconds since the shot, world time,
+  so it holds while paused) and `recoilAt` in `art.js` works out the rest from `RECOIL`. The gun
+  slides back in 30 ms, holds a beat and runs out over about 300 ms (shell 0.15 cells, a third of
+  its visible barrel; rocket 0.17; missile pod 0.12; minigun 0.04 a round, so it shudders while it
+  sprays). The turret jolts back 0.035 to 0.05 cells (the hull a third of that, a pad not at all)
+  and settles like a spring, about 15% past rest and back. A mortar's tube punches down 32% of its
+  size on the same spring and its turret gives a little; dust bursts out from under the pad.
+  Everything is at rest by 0.85 s. Kept pictures cover it (the slide in eighths in `POSE`, the jolt
+  as where the parts are laid), and a test holds the timing.
+- **Red's launcher** (**done** 2026-10-15, from a bug report)**:** its pods looked as if they swung
+  round the turret's edge instead of turning about its centre: the bright light sat behind the
+  centre and circled as the turret turned, and two parallel pods offset sideways slide round the
+  rim. The light is now on the turret's axis and the pods sit in a mount fixed to the turret; they
+  still fire in turn, and only the pod that fired slides back through the mount.
 - **Exhaust puffs** (**done** 2026-10-15)**:** two small puffs from the rear as a tank pulls away or
   turns hard, from the smoke the game already draws. Shipped: on moving after 0.3 s still, or after
   turning 0.8 rad at over 60% of its turn rate, at most every 0.5 s. Never from White, which they

@@ -2,7 +2,7 @@ import { formatPercent, getLang, localize, pick, setLang, t } from './shared/i18
 import { gameArt } from './shared/game-art.js';
 import { createLogo, setLogoProgress } from './shared/logo.js';
 import { createPixelField } from './shared/pixel-field.js';
-import { createStore, exportAll, importAll, isSaveFile } from './shared/storage.js';
+import { createStore, dropSavesExcept, exportAll, importAll, isSaveFile } from './shared/storage.js';
 import {
   applyUpdate,
   checkForUpdate,
@@ -70,6 +70,19 @@ function countPlay(id) {
   const p = plays();
   p[id] = (Number(p[id]) || 0) + 1;
   appStore.save('plays', 1, p);
+}
+
+/**
+ * A game gone from the registry takes its saves and its play count with it. Only in the
+ * installed app, whose registry comes from the worker's own release, never a stale CDN copy.
+ */
+function dropRetiredSaves() {
+  if (!isStandalone() || !registry.length || !registry.every((g) => typeof g?.id === 'string')) return;
+  const ids = registry.map((g) => g.id);
+  dropSavesExcept(ids);
+  const p = plays();
+  const kept = Object.fromEntries(Object.entries(p).filter(([id]) => ids.includes(id)));
+  if (Object.keys(kept).length < Object.keys(p).length) appStore.save('plays', 1, kept);
 }
 
 /* ---------- Games ---------- */
@@ -242,6 +255,7 @@ async function loadRegistry() {
   try {
     const res = await fetch('/registry.json');
     registry = await res.json();
+    if (res.ok && Array.isArray(registry)) dropRetiredSaves();
   } catch {
     registry = [];
   }
@@ -607,6 +621,7 @@ $('importFile').addEventListener('change', async (event) => {
   if (!ok) return;
   try {
     const written = importAll(blob);
+    dropRetiredSaves();
     savesMessage(t('settings.imported', { n: written }));
     // The language may have come with the import.
     setLang(appStore.peek('lang') || getLang());

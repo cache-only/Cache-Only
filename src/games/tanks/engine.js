@@ -26,6 +26,7 @@ import {
   SPIN_DOWN,
   SPIN_UP,
   TANK_R,
+  PAIR_GAP,
   TWIN_SPREAD,
   TYPES,
   VEL_SMOOTH,
@@ -276,31 +277,51 @@ export function fire(s, t, angle, events) {
 }
 
 /**
- * A pair of missiles at once, one from each pod, TWIN_SPREAD either side of `angle`, so they come
+ * A pair of missiles, one from each pod: the left one now, the right one PAIR_GAP later
+ * (updateSalvos), each TWIN_SPREAD to its side of the aim at the moment it leaves, so they come
  * at you from two sides. It needs room in the air for both.
  */
 function firePair(s, t, angle, events) {
   const T = TYPES[t.type];
-  if (owned(s.bullets, t) + 2 > T.bullets) return false;
+  if (t.salvo || owned(s.bullets, t) + 2 > T.bullets) return false;
   t.reload = T.reload;
-  const ux = Math.cos(angle);
-  const uy = Math.sin(angle);
   // The two of a pair steer for the same target, so they close in on each other: they never
   // cancel each other out (pair), though anything else they meet still cancels them.
   const pair = s.nextId;
-  for (const side of [-1, 1]) {
-    const x = t.x + ux * MUZZLE - uy * side * POD;
-    const y = t.y + uy * MUZZLE + ux * side * POD;
-    const a = angle + side * TWIN_SPREAD;
-    // Both pods fire together, so both kick back (side 0).
-    if (muzzleBlocked(s.grid, t.x, t.y, angle) || boxBlocked(s.grid, x, y)) {
-      events.push({ type: 'fizzle', id: t.id, x, y, side: 0, player: false });
+  podMissile(s, t, angle, -1, pair, events);
+  t.salvo = { left: PAIR_GAP, pair };
+  return true;
+}
+
+/** One missile of a pair from the pod on `side` (-1 left, 1 right), its own pod kicking back. */
+function podMissile(s, t, angle, side, pair, events) {
+  const T = TYPES[t.type];
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const x = t.x + ux * MUZZLE - uy * side * POD;
+  const y = t.y + uy * MUZZLE + ux * side * POD;
+  if (muzzleBlocked(s.grid, t.x, t.y, angle) || boxBlocked(s.grid, x, y)) {
+    events.push({ type: 'fizzle', id: t.id, x, y, side, player: false });
+    return;
+  }
+  const a = angle + side * TWIN_SPREAD;
+  s.bullets.push({ id: s.nextId++, owner: t.id, x, y, vx: Math.cos(a) * T.shot, vy: Math.sin(a) * T.shot, left: T.bounces, weapon: T.weapon, fuel: T.fuel, turn: T.missileTurn, path: !!T.path, pair });
+  events.push({ type: 'shot', id: t.id, x, y, angle: a, side, weapon: T.weapon, player: false });
+}
+
+/** The second missile of a pair leaves its right pod PAIR_GAP after the first, down the turret's aim then. */
+function updateSalvos(s, dt, events) {
+  for (const t of s.tanks) {
+    if (!t.salvo) continue;
+    if (!t.alive) {
+      t.salvo = null;
       continue;
     }
-    s.bullets.push({ id: s.nextId++, owner: t.id, x, y, vx: Math.cos(a) * T.shot, vy: Math.sin(a) * T.shot, left: T.bounces, weapon: T.weapon, fuel: T.fuel, turn: T.missileTurn, path: !!T.path, pair });
-    events.push({ type: 'shot', id: t.id, x, y, angle: a, side: 0, weapon: T.weapon, player: false });
+    t.salvo.left -= dt;
+    if (t.salvo.left > 1e-9) continue;
+    podMissile(s, t, t.turret, 1, t.salvo.pair, events);
+    t.salvo = null;
   }
-  return true;
 }
 
 /**
@@ -622,6 +643,7 @@ export function step(s, input, dt) {
     player.svy += ((player.y - py) / dt - player.svy) * k;
   }
 
+  updateSalvos(s, dt, events);
   updateLasers(s, dt, events);
   updateBullets(s, dt, events);
   updateBombs(s, dt, events);
@@ -639,7 +661,7 @@ export function step(s, input, dt) {
     }
     s.bullets = [];
     s.bombs = [];
-    for (const t of s.tanks) t.beam = null;
+    // A laser's beam stays as it was, so you see what hit you; nothing steps any more.
   }
   return events;
 }

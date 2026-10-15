@@ -8,7 +8,7 @@ deploys). Friends only need a connection to install the app, download games or p
 updates. After that, every downloaded game must run forever with no network. Being offline is
 the normal state, not an error.
 
-Games at launch: **Sudoku** and **2048**. **Tanks** came next; more will be added later, and
+Games at launch: **Sudoku**. **Tanks** came next; more will be added later, and
 each friend chooses which ones to keep.
 
 Everything below exists to protect one property: once a game is downloaded, it never needs
@@ -68,7 +68,6 @@ cache-only/
       icon-maskable-512.png
     games/
       sudoku/  index.html  sudoku.js  generator.js  solver.js  styles.css
-      2048/    index.html  game.js  styles.css
       tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  mapgen.js  art.js  render.js  audio.js  styles.css
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
@@ -136,6 +135,9 @@ service worker with scope `/` covers everything.
   address changes; phones that trust the CA need nothing new.
 - `http://<mac>.local:8081/` is the setup page: it hands out the CA and says how to trust it
   (iPhone: install the profile, then switch it on under Certificate Trust Settings).
+- The same process also serves `dist/` on `http://127.0.0.1:8080` for the Mac's own browser,
+  exactly as `npm run serve` does, so `npm run serve` isn't needed alongside it. Ctrl-C stops all
+  three ports at once.
 - That origin is not the real app's: test installs and saves stay separate from
   `https://cache-only.github.io`. No tunnels or public exposure: it's reachable only on the
   local network.
@@ -225,8 +227,8 @@ service worker with scope `/` covers everything.
   - **Status:** the logo is the status. It stays out of focus until every app-shell file is
     confirmed in its cache, then comes into focus with download progress: pixels go from blurred
     grey to sharp white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only
-    progress indicator anywhere in the app. The words ("Ready offline · 2 of 3 games",
-    "Downloading · 64%", "Offline · 2 of 3 games", "Checking offline files…") are still written to
+    progress indicator anywhere in the app. The words ("Ready offline · 1 of 2 games",
+    "Downloading · 64%", "Offline · 1 of 2 games", "Checking offline files…") are still written to
     a visually hidden live region (`#statusLine`) for screen readers.
   - **Suggested:** the most played game on this device, as a "Suggested" eyebrow over a glass
     panel with its title and a primary Resume (saved session) or Play button. The panel is shaped
@@ -332,11 +334,15 @@ service worker with scope `/` covers everything.
 - Write after every move, debounced to 250 ms, and on `visibilitychange` to hidden. iOS
   kills backgrounded web apps without warning.
 - Export and import cover all `gh:*` keys in one JSON blob.
+- A game gone from `registry.json` takes its saves (`gh:<id>:*`) and its play count with it: the
+  installed app's launcher deletes them on start and after an import (`dropSavesExcept` in
+  `storage.js`). Only the installed app does, because its registry comes from the worker's own
+  release, while a browser tab's could be a stale CDN copy. The worker already drops the pack.
 
 ## Design
 
 The approved design is dark, monochrome and built from the logo's rounded-square pixels. Every
-page (launcher, settings, first launch, install, and all three games) uses only the parts defined
+page (launcher, settings, first launch, install, and every game) uses only the parts defined
 in `src/styles.css`; a game's own stylesheet draws its board or arena and nothing else. Never
 style a button, header, card, sheet or menu locally.
 
@@ -363,7 +369,7 @@ style a button, header, card, sheet or menu locally.
   inside one (the selected segment); 5 the switch knob, inset 3; 24 a sheet,
   holding its close button and buttons inset 16; 18 a launcher game tile (8 art + 10) and the
   suggested game's panel (its button inset 10); 16 an install step's panel (its icon tile inset
-  8); 26 a game board (16 tile + 10). Check every nested shape.
+  8). Check every nested shape.
 - **Pixels:** the logo and every icon are rounded-square pixels, 3/4 of their pitch with a 1/4 gap
   and corners at 34% (`--r-pixel`). The logo (`shared/logo.js`) is a solid 11 × 13 cent sign and
   nothing else, `--logo-w` wide. Icons (`shared/icons.js`) are 9 × 9 bitmaps (`#` lit,
@@ -419,7 +425,7 @@ style a button, header, card, sheet or menu locally.
   the flat surfaces on it (segmented control, toggle rows, cards, facts, fields) turn to glass too. A sheet that belongs to the game state (a
   start screen or a result) is docked: opened with `show()`, so the header and menu still work.
 - **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Undo, Redo, Erase,
-  Notes, Hint as labelled icon buttons over a 3×3 number pad; 2048: an Undo button); anything about
+  Notes, Hint as labelled icon buttons over a 3×3 number pad); anything about
   the whole session lives in the side menu. Boards must stay square and fully visible on an iPhone
   SE and a Pro Max in portrait and in landscape, with no page scrolling during play.
 - Respect `prefers-reduced-motion`: state changes are instant, with no blur or scale animations.
@@ -450,27 +456,6 @@ style a button, header, card, sheet or menu locally.
   hints used, and record best times per difficulty.
 - **Save:** puzzle, solution, current grid, notes, undo stack, elapsed time and difficulty.
   Resume exactly where the player left off.
-
-## Game: 2048
-
-- Implemented from scratch: 4×4 grid, a new tile after each valid move (2 at 90%, 4 at 10%).
-- **Input:** swipes on the board using pointer events with a ~30 px threshold and the
-  dominant axis winning. Arrow keys work too. Call `preventDefault` on the board so swipes
-  never scroll or trigger iOS back-swipe behaviour.
-- **Correct merge rules:** each tile merges at most once per move, merges resolve from the
-  direction of movement (`[2,2,2,2]` → `[4,4]`, `[2,2,2]` moving left → `[4,2]`), and a move
-  that changes nothing doesn't spawn a tile.
-- **Animation:** slide and merge transitions of about 100 ms using CSS transforms on
-  absolutely positioned tiles. Inputs during an animation are queued, not dropped. Use
-  instant updates under reduced motion.
-- **Game states:** reaching 2048 shows a win prompt with "Keep playing" and "New game". When
-  no moves remain, show game over.
-- **Score and best score,** plus a single-step undo.
-- **Save:** grid, score, best, won flag and undo snapshot, written after every move.
-- Use a tile colour scale of my own design from the shared tokens, not a copy of the
-  original game's palette: grey steps up to white, then ringed and inverted tiles (`--tile-*` and
-  `.t2`…`.tmax` in `styles.css`, shared with the launcher's tile art).
-- **Menu:** Resume, New game, Back to games. The win and game-over prompts are docked sheets.
 
 ## Game: Tanks
 
@@ -528,9 +513,10 @@ style a button, header, card, sheet or menu locally.
   worse on any number (a test checks), is drawn with a deep hull in its kind's colour and bright
   cleats (`art.js`), and has its kind's map letter in upper case. Night Pink (`P`) is Pink faster,
   with 5 shells and sharper dodging and lead (it plays as Violet did); Night Yellow (`Y`) lays mines
-  by plan (Hornet's behaviour); Night Red (`R`) fires both pods at once (`pair`, `TWIN_SPREAD` either
-  side) with faster missiles that follow the open way round walls to you (`path`, `waypoint()` in
-  `engine.js`); Night Lime (`L`) dodges more and walks its stream up to `walk` cells either side of
+  by plan (Hornet's behaviour); Night Red (`R`) fires its left pod then its right `PAIR_GAP` (0.25 s) later (`pair`, `TWIN_SPREAD` either
+  side) with faster missiles that follow the open way round walls to you and swerve round tanks and mines
+  (`path`; `routeTo()` in `ai.js`, `waypoint()` in `engine.js`; a pair never cancels itself), and it
+  fires round a corner along that way when you hide close by; Night Lime (`L`) dodges more and walks its stream up to `walk` cells either side of
   you; Indigo (`i`) is the laser tank, holding its beam still, and Night Indigo (`I`) turns its beam
   after you as it burns, at up to `track` rad/s. Pink spaces its 3 shells 0.6 s apart and leads you,
   rather than firing a burst. A tank dodging a shot it notices plans its way out (`escape()` in
@@ -548,7 +534,7 @@ style a button, header, card, sheet or menu locally.
   the cell they drive to, take turns by right of way, line up before narrow gaps, and back off when
   stuck, so they never jam.
 - **Art** (`art.js`, drawn by `render.js` and by the field guide): shape tells you what a tank can do
-  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods (which fire in turn, left first, each kicking back as its missile leaves: `POD`), a
+  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods in a mount fixed to the turret, its light on the turret's axis (they fire in turn, left first, and only the pod that fired slides back through the mount: `POD`), a
   mortar tube and a minigun's spinning bundle; treads or a concrete pad: moves or not; rear-deck
   discs: mines left), colour only
   which kind it is. The colour plan sits above the `--tk-*` colours in `tanks/styles.css`, and a test
@@ -568,8 +554,11 @@ style a button, header, card, sheet or menu locally.
   crates are toy crates braced with an X, one box a cell; pits are holes broken in the floor, a
   dark recess with a crack off a corner now and then. The floor has a tone per slab and dims into
   its corners. Things show weight (`render.js`, from the engine's events, which name the tank that
-  fired and the face a shot met): a barrel kicks back as it fires (`recoil`, `KICK` in `art.js`),
-  with a flame, a flash of light on the floor, smoke and sparks at the muzzle; Lime's barrels glow
+  fired and the face a shot met): as it fires, the gun slides a third of its length back into the
+  turret in 30 ms and runs out over 300 ms while the turret and hull jolt back and settle like a
+  spring, and a mortar's tube punches down and springs back (`RECOIL`/`recoilAt` in `art.js`, from
+  `fired`, the seconds since the shot; kept pictures cover it: the slide in eighths in `POSE`, the
+  jolt only where the parts are laid), with a flame, a flash of light on the floor, smoke and sparks at the muzzle; Lime's barrels glow
   orange after a long spray and cool as they run down (`heat`); a tank puffs exhaust as it pulls
   away or turns hard (never White); a shot meeting a wall or crate sparks and knocks a chip out of
   it (a pale flake, a lit pock, a fan of cracks, crumbs on the floor) that fades over 3 s; a broken
@@ -714,7 +703,7 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ```bash
 npm run build                 # node scripts/build.mjs
 npm run serve                 # node scripts/serve.mjs  (dist/ on :8080, local testing)
-npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi
+npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi, and :8080 locally
 npm run lan --stop            # stop that server, from any terminal
 npm run guide                 # rebuild the Tanks field guide into guide/out/ (then republish it)
 npm run playtest              # Tanks: a bot plays every mission (--missions 4,12  --map draft.txt)
@@ -759,7 +748,6 @@ Friends see the update within about 10 minutes, the next time they open the app 
   still plays offline.
 - Sudoku: generated puzzles always have a unique solution. Add a script test that generates
   200 puzzles per difficulty and verifies uniqueness.
-- 2048: unit-test merge rules with the edge cases listed above.
 - Tanks: `tests/tanks.test.mjs` covers the map checks on every mission (reachable enemies, no free
   shot at your start, no repeated layouts), ricochets, bank shots, cancelling shells, limits,
   fizzles, mines and chain blasts, the two minelayers (Night Yellow lays far more than Yellow, watches each
@@ -788,7 +776,9 @@ Friends see the update within about 10 minutes, the next time they open the app 
 - Downloads: `tests/sw.test.mjs` runs the built service worker against an in-memory cache and a
   fake host. The shell installs alone, games download on request and resume after a failure,
   every file is fetched as `?v=<hash>` and a stale CDN copy is refused, and updates keep the games a device has (re-fetching only those that changed), including
-  from the single cache used before packs.
+  from the single cache used before packs, and drop a game the release no longer has.
+- Saves: `tests/storage.test.mjs` checks that only the saves of games missing from the registry are
+  dropped, never the app's own keys or anything outside `gh:`.
 - Icons and logo: `tests/icons.test.mjs` checks that every `#i-<name>` a page or script uses is in
   `shared/icons.js`, that no icon lights a corner pixel, that no page carries its own sprite, and
   that the logo keeps its solid 11 × 13 mark.

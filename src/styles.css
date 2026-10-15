@@ -14,7 +14,6 @@
       5  the switch knob, inset 3 (8 - 3)
      24  a sheet, holding its close button and buttons inset 16 (8 + 16)
      18  a launcher game tile (8 art + 10), and the suggested game's panel (8 button + 10)
-     26  a game board (16 tile + 10)
    Pixels (the logo's and the icons') are rounded squares of their own: 34% of a pixel. */
 
 :root {
@@ -43,31 +42,9 @@
   --r-btn: 8px;
   --r-chip: 4px;
   --r-sheet: 24px;
-  --r-board: 26px;
-  --r-board-tile: 16px;
   --r-game-tile: 18px;
   --r-game-art: 8px;
   --r-pixel: 34%;
-
-  /* The 2048 scale (also drawn by the launcher's tile art): grey steps from the board up to
-     white, then rings, then inverted. */
-  --tile-0: #1d1d1d;
-  --tile-2: #2c2c2c;    --tile-2-ink: #cfcfcf;
-  --tile-4: #3d3d3d;    --tile-4-ink: #e6e6e6;
-  --tile-8: #545454;    --tile-8-ink: #ffffff;
-  --tile-16: #6a6a6a;   --tile-16-ink: #ffffff;
-  --tile-32: #8f8f8f;   --tile-32-ink: #0b0b0b;
-  --tile-64: #b5b5b5;   --tile-64-ink: #0b0b0b;
-  --tile-128: #d6d6d6;  --tile-128-ink: #0b0b0b;
-  --tile-256: #efefef;  --tile-256-ink: #0b0b0b;
-  --tile-512: #efefef;  --tile-512-ink: #0b0b0b;
-  --tile-512-ring: inset 0 0 0 3px #0b0b0b, inset 0 0 0 5px #efefef;
-  --tile-1024: #efefef; --tile-1024-ink: #0b0b0b;
-  --tile-1024-ring: inset 0 0 0 3px #0b0b0b, inset 0 0 0 5px #efefef, inset 0 0 0 8px #0b0b0b, inset 0 0 0 10px #efefef;
-  --tile-2048: #0b0b0b; --tile-2048-ink: #efefef;
-  --tile-2048-ring: inset 0 0 0 2px #efefef;
-  --tile-max: #0b0b0b;  --tile-max-ink: #efefef;
-  --tile-max-ring: inset 0 0 0 2px #efefef, inset 0 0 0 5px #0b0b0b, inset 0 0 0 7px #efefef;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
@@ -1101,19 +1078,12 @@ button {
   -webkit-touch-callout: none;
 }
 
-/* What sits under the board: the moves, or a hint with an action. */
+/* What sits under the board: the moves. */
 .controls {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 @media (max-height: 740px) {
@@ -1146,11 +1116,6 @@ button {
   .controls {
     flex: 0 1 340px;
     min-width: 0;
-  }
-  .controls-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
   }
 }
 
@@ -2034,20 +1999,6 @@ dialog.sheet[open] {
 
 /* ---------- Board art (shared/game-art.js) ---------- */
 
-/* The 2048 scale as classes, for the game's tiles and the launcher's art alike. */
-.t2 { --tile-bg: var(--tile-2); --tile-fg: var(--tile-2-ink); }
-.t4 { --tile-bg: var(--tile-4); --tile-fg: var(--tile-4-ink); }
-.t8 { --tile-bg: var(--tile-8); --tile-fg: var(--tile-8-ink); }
-.t16 { --tile-bg: var(--tile-16); --tile-fg: var(--tile-16-ink); }
-.t32 { --tile-bg: var(--tile-32); --tile-fg: var(--tile-32-ink); }
-.t64 { --tile-bg: var(--tile-64); --tile-fg: var(--tile-64-ink); }
-.t128 { --tile-bg: var(--tile-128); --tile-fg: var(--tile-128-ink); }
-.t256 { --tile-bg: var(--tile-256); --tile-fg: var(--tile-256-ink); }
-.t512 { --tile-bg: var(--tile-512); --tile-fg: var(--tile-512-ink); --tile-ring: var(--tile-512-ring); }
-.t1024 { --tile-bg: var(--tile-1024); --tile-fg: var(--tile-1024-ink); --tile-ring: var(--tile-1024-ring); }
-.t2048 { --tile-bg: var(--tile-2048); --tile-fg: var(--tile-2048-ink); --tile-ring: var(--tile-2048-ring); }
-.tmax { --tile-bg: var(--tile-max); --tile-fg: var(--tile-max-ink); --tile-ring: var(--tile-max-ring); }
-
 /* The art's own gaps are measured against its frame (a tile's art box or the hero), and what is
    inside the art against the art. */
 .game-tile-art,
@@ -2103,26 +2054,6 @@ dialog.sheet[open] {
   color: var(--ink);
   font-weight: 800;
 }
-
-.art-2048 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  gap: 4cqi;
-  aspect-ratio: 1;
-}
-
-/* 5.3% of the art: 8px on a tile, so the corner cells sit concentric in the tile's 18. */
-.art-2048 > span {
-  border-radius: 5.3cqi;
-  background: var(--tile-bg, var(--tile-0));
-  box-shadow: var(--tile-ring, none);
-  color: var(--tile-fg, var(--ink));
-  font: 800 10cqi/1 var(--font-sans);
-  letter-spacing: -0.03em;
-}
-
-.art-2048 > span[data-len="3"] { font-size: 8cqi; }
-.art-2048 > span[data-len="4"] { font-size: 6.4cqi; }
 
 .art-tanks {
   place-items: center;

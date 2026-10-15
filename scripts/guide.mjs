@@ -123,6 +123,7 @@ export async function buildGuide() {
     laserCharge: R.LASER_CHARGE,
     laserBeam: R.LASER_BEAM,
     twinSpread: R.TWIN_SPREAD,
+    pairGap: R.PAIR_GAP,
   };
   const text = enemyText({ T: R.TYPES, kinds, R: consts, name: (k) => english(`tanks.type.${k}`), note: english });
   const info = {};
