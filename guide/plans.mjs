@@ -13,7 +13,7 @@ export const PROPOSED = {
   green: { aim: { level: 3, name: 'Bank ×2, leads', detail: 'leads its shots, as Teal does' } },
   yellow: { tactics: SEEK },
   pink: { tactics: { level: 2, name: 'Seeks a bank line', detail: 'drives to a spot it can bounce a shot in from' } },
-  violet: {
+  pinkNight: {
     defence: { level: 3, name: 'Shoots shells down', detail: 'and sidesteps the rest' },
     tactics: { level: 3, name: 'Seeks, takes cover', detail: 'fires, then ducks behind a wall to reload' },
   },
@@ -33,7 +33,7 @@ export const PROPOSED = {
  * Measured 2026-10-14: the share of its time each kind spends at its distance from you with no
  * line on you, with you hiding (20 missions, 3 seeds, 30 s each). In that state it has no goal.
  */
-export const AIMLESS = { marine: 67, ash: 63, red: 47, pink: 46, yellow: 36, black: 32, white: 29, violet: 17 };
+export const AIMLESS = { marine: 67, ash: 63, red: 47, pink: 46, yellow: 36, black: 32, white: 29, pinkNight: 17 };
 
 /** The additions, one card each: the axis it raises, what it does, who gets it and why. */
 export const ADDITIONS = [
@@ -49,15 +49,15 @@ export const ADDITIONS = [
     axis: 'defence',
     name: 'Shoot shells down',
     what: 'Of the shells it notices coming at it, it fires at some instead of only stepping aside, aiming at where the shell will be. Shells that meet already cancel out, so this needs only the aiming.',
-    who: ['violet', 'white', 'black'],
+    who: ['pinkNight', 'white', 'black'],
     why: 'The top level of Defence. The expert playtest bot already plays this way, and it is the hardest thing to beat.',
   },
   {
     axis: 'tactics',
     name: 'Fire, then take cover',
     what: 'After a shot it steps back behind the nearest wall until it has reloaded, then comes out again.',
-    who: ['violet', 'white'],
-    why: 'Gives the Pink line’s V2 a Tactics level its V1 doesn’t have: today Violet and White roam just like Pink.',
+    who: ['pinkNight', 'white'],
+    why: 'Gives Night Pink a Tactics level Pink doesn’t have: today Night Pink and White roam just like Pink.',
   },
   {
     axis: 'mines',
@@ -71,6 +71,6 @@ export const ADDITIONS = [
     name: 'Lead for Green',
     what: 'Green aims ahead of you as Teal does (Teal leads 50%), on top of its two-bounce shots.',
     who: ['green'],
-    why: 'Green is the Teal line’s V2 but loses Teal’s lead, so on Aim it isn’t a clean upgrade yet.',
+    why: 'Green out-banks Teal but doesn’t lead its shots as Teal does (50%), so its aim misses a moving target that Teal’s wouldn’t.',
   },
 ];

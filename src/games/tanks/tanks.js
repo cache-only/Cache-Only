@@ -7,10 +7,11 @@ import { tapTarget } from './ai.js';
 import { drawBadge, drawGround } from './art.js';
 import { createAudio } from './audio.js';
 import { createWorld, isWorld, parseLevel, step, survivors } from './engine.js';
-import { MAP_CELLS, MAX_ENEMIES, NAME_MAX, blankMap, cellsOnLine, mapReport, mapWorld, paintCell, readMaps } from './maps.js';
+import { MAP_CELLS, MAX_ENEMIES, NAME_MAX, blankMap, cellsOnLine, mapReport, mapScale, mapWorld, paintCell, readMaps, resizeMap } from './maps.js';
+import { generateMap } from './mapgen.js';
 import { BONUS_AFTER, CHECKPOINTS, MISSIONS, TEST_MAX, testMap } from './missions.js';
 import { createRenderer } from './render.js';
-import { COLS, CRATE, ENEMY_KINDS, FLOOR, HOLE, ROWS, SPAWN_CODES, STEP, TYPES, WALL, owned } from './rules.js';
+import { COLS, CRATE, ENEMY_KINDS, FLOOR, HOLE, ROWS, SCALE, SCALES, SPAWN_CODES, STEP, TYPES, WALL, gridSize, owned, sizeAt } from './rules.js';
 
 const SCHEMA = 1;
 const MAPS_SCHEMA = 1;
@@ -37,8 +38,14 @@ const audio = createAudio();
 /* ---------- Saved data ---------- */
 
 // test: what the test range was last set to. map: the map of yours last picked. kind: the
-// enemy the map editor places. mirror: the editor paints both flanks at once.
-const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, map: null, kind: ENEMY_KINDS[0], mirror: false, ...(store.load('prefs', 1) || {}) };
+// enemy the map editor places. mirror: the editor paints both flanks at once. scale: the size
+// (SCALES) last picked for a map, which a new map starts at.
+const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, map: null, kind: ENEMY_KINDS[0], mirror: false, scale: SCALE, ...(store.load('prefs', 1) || {}) };
+if (!SCALES.includes(prefs.scale)) prefs.scale = SCALE;
+// Kinds since retired: Violet became Night Pink, Hornet Night Yellow.
+const RETIRED = { violet: 'pinkNight', hornet: 'yellowNight' };
+if (RETIRED[prefs.test?.kind]) prefs.test.kind = RETIRED[prefs.test.kind];
+if (RETIRED[prefs.kind]) prefs.kind = RETIRED[prefs.kind];
 if (!ENEMY_KINDS.includes(prefs.test?.kind) || !(prefs.test.count >= 1 && prefs.test.count <= TEST_MAX)) {
   prefs.test = { kind: ENEMY_KINDS.at(-1), count: 1 };
 }
@@ -67,10 +74,12 @@ let test = null;
 // nothing and is never saved, and it ends back where it was started from.
 let custom = null;
 // The map being drawn: { map (its entry in maps.list), history (earlier rows, for undo),
-// stroke (the finger or mouse painting), hover (the cell under the mouse), report }.
+// stroke (the finger or mouse painting), hover (the cell under the mouse), report, made (what
+// Generate last made: { rows, lead, theme }) }.
 let editor = null;
 let world = null; // the mission (or test) being played
 let backdrop = null; // a world drawn, frozen, behind the menu and results
+let fitted = ''; // the arena size the field is laid out for, as "cols,rows" (a map of yours can be any)
 let phase = 'menu'; // menu | brief | play | paused | ending | over | edit
 let phaseT = 0;
 let briefS = BRIEF_S;
@@ -477,6 +486,7 @@ document.addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && key === 'z') undoEdit();
     else if (event.metaKey || event.ctrlKey || event.altKey) return;
     else if (key === 'Escape') menu.open();
+    else if (key.length === 1 && MAP_CELLS.includes(event.key)) pickBrush(event.key); // P: Night Pink
     else if (key.length === 1 && MAP_CELLS.includes(key)) pickBrush(key);
     else return;
     event.preventDefault();
@@ -612,7 +622,11 @@ function paintBadge(el) {
 
 // Kinds whose arrival the mission banner warns about.
 const NOTES = {
-  hornet: 'tanks.note.hornet',
+  yellowNight: 'tanks.note.yellowNight',
+  redNight: 'tanks.note.redNight',
+  limeNight: 'tanks.note.limeNight',
+  indigo: 'tanks.note.indigo',
+  indigoNight: 'tanks.note.indigoNight',
   red: 'tanks.note.red',
   white: 'tanks.note.white',
   olive: 'tanks.note.olive',
@@ -742,6 +756,8 @@ function draw() {
   renderAmmo();
   const s = world || backdrop;
   if (!s) return;
+  // A map of your own can be another size: the field is laid out again for it.
+  if (String(gridSize(s.grid)) !== fitted) return fit();
   const playing = phase === 'play';
   const aim = playing && input.guide ? currentAim() ?? s.tanks[0].turret : null;
   let beacon = 0;
@@ -761,6 +777,10 @@ function onEvents(events) {
         break;
       case 'spin':
         audio.play('spin', e.dur);
+        break;
+      case 'charge':
+      case 'beam':
+        audio.play(e.type, e.dur);
         break;
       case 'lob':
         audio.play('lob', e.flight);
@@ -1019,6 +1039,8 @@ const kindGrid = $('kindGrid');
 const brushTools = [...document.querySelectorAll('#editBrushes [data-brush]')];
 const kindSheet = setupSheet($('kindSheet'));
 const renameSheet = setupSheet($('renameSheet'));
+const sizeSheet = setupSheet($('sizeSheet'));
+const sizeGrid = $('sizeGrid');
 const UNDO_MAX = 100;
 const SWATCH = 32;
 const BLOCK_OF = { '#': WALL, x: CRATE, o: HOLE };
@@ -1083,7 +1105,7 @@ function renderMaps() {
 function newMap() {
   let n = 1;
   while (maps.list.some((m) => m.name === t('tanks.mapN', { n }))) n++;
-  const map = { id: maps.next++, name: t('tanks.mapN', { n }), rows: blankMap() };
+  const map = { id: maps.next++, name: t('tanks.mapN', { n }), rows: blankMap(prefs.scale) };
   maps.list.push(map);
   mapsSaver.flush();
   editMap(map);
@@ -1094,7 +1116,7 @@ function editMap(map) {
   if (!map) return;
   prefs.map = map.id;
   savePrefs();
-  if (editor?.map !== map) editor = { map, history: [], stroke: null, hover: null, report: null };
+  if (editor?.map !== map) editor = { map, history: [], stroke: null, hover: null, report: null, made: null };
   test = null;
   custom = null;
   world = null;
@@ -1108,9 +1130,13 @@ function editMap(map) {
 
 /** The editor's state: its line about the map, Play, the tools and the map itself. */
 function renderEditor() {
-  const { map } = editor;
+  const { map, made } = editor;
   editor.report = mapReport(map.rows);
-  $('editNote').textContent = reportText(editor.report);
+  // A map just generated says what it was made for, until it is changed.
+  const fresh = made?.rows === map.rows && !editor.report.problems.length;
+  $('editNote').textContent = fresh
+    ? t('tanks.made', { kind: t(`tanks.type.${made.lead}`), theme: t(`tanks.theme.${made.theme}`) })
+    : reportText(editor.report);
   $('playMapBtn').disabled = !editor.report.ready;
   renderTools();
   showMap(map.rows);
@@ -1188,6 +1214,51 @@ function undoEdit() {
   editChanged();
 }
 
+/** Replaces the whole map (Generate, a new size) as one step to undo. */
+function replaceRows(rows) {
+  editor.history.push(editor.map.rows);
+  if (editor.history.length > UNDO_MAX) editor.history.shift();
+  editor.map.rows = rows;
+  editChanged();
+}
+
+/** Generate: a new map at this map's size, its enemies picked at random and its blocks made to suit them (mapgen.js). */
+function generate() {
+  if (!editor || editor.stroke) return;
+  const made = generateMap({ scale: mapScale(editor.map.rows), seed: Math.floor(Math.random() * 2 ** 31) });
+  editor.made = made;
+  replaceRows(made.rows);
+}
+
+/** Map size: a modal sheet with every size, this map's picked. A pick resizes the map round its middle. */
+function openSizes() {
+  if (!editor) return;
+  menu.close();
+  if (!sizeGrid.children.length) {
+    sizeGrid.append(
+      ...SCALES.map((k) => {
+        const [cols, rows] = sizeAt(k);
+        return choice({ 'data-scale': k, 'aria-label': t('tanks.sizeOf', { cols, rows }) }, `${cols} × ${rows}`);
+      }),
+    );
+  }
+  renderSizes();
+  openSheet(sizeSheet);
+}
+
+function renderSizes() {
+  const scale = editor ? mapScale(editor.map.rows) : prefs.scale;
+  for (const b of sizeGrid.children) b.setAttribute('aria-pressed', String(Number(b.dataset.scale) === scale));
+}
+
+function pickSize(scale) {
+  if (!editor || scale === mapScale(editor.map.rows)) return;
+  prefs.scale = scale;
+  savePrefs();
+  replaceRows(resizeMap(editor.map.rows, scale));
+  renderSizes();
+}
+
 /** The map cell under a pointer, as [col, row]; it may be off the map. */
 function cellUnder(event) {
   const box = canvas.getBoundingClientRect();
@@ -1195,7 +1266,7 @@ function cellUnder(event) {
   return [Math.floor(p.x), Math.floor(p.y)];
 }
 
-const onMap = ([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS;
+const onMap = ([c, r]) => c >= 0 && r >= 0 && c < editor.map.rows[0].length && r < editor.map.rows.length;
 const isTank = (ch) => ch === '@' || !!SPAWN_CODES[ch];
 
 /**
@@ -1204,7 +1275,7 @@ const isTank = (ch) => ch === '@' || !!SPAWN_CODES[ch];
  */
 function strokeTo(cell) {
   const s = editor.stroke;
-  const [c, r] = [Math.max(0, Math.min(COLS - 1, cell[0])), Math.max(0, Math.min(ROWS - 1, cell[1]))];
+  const [c, r] = [Math.max(0, Math.min(editor.map.rows[0].length - 1, cell[0])), Math.max(0, Math.min(editor.map.rows.length - 1, cell[1]))];
   const mirror = prefs.mirror;
   let rows;
   if (isTank(s.ch)) {
@@ -1398,6 +1469,13 @@ kindGrid.addEventListener('click', (event) => {
   closeSheet(kindSheet);
 });
 $('kindClose').addEventListener('click', () => closeSheet(kindSheet));
+$('generateBtn').addEventListener('click', generate);
+$('sizeBtn').addEventListener('click', openSizes);
+$('sizeClose').addEventListener('click', () => closeSheet(sizeSheet));
+sizeGrid.addEventListener('click', (event) => {
+  const b = event.target.closest('button');
+  if (b) pickSize(Number(b.dataset.scale));
+});
 $('renameClose').addEventListener('click', () => closeSheet(renameSheet));
 $('renameForm').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1460,13 +1538,15 @@ window.addEventListener('blur', () => {
 // Sizing: the arena's canvas covers the screen, and the field goes as big as the play area
 // allows, turned upright on a tall screen. The touch controls float over it, so they take no room.
 function fit() {
+  const shown = world || backdrop;
+  const [cols, rows] = shown ? gridSize(shown.grid) : [COLS, ROWS];
+  // The editor's upright field with its skirts and walls, (rows + 1) x (cols + 4) cells (styles.css).
+  document.body.style.setProperty('--field-aspect', `${rows + 1} / ${cols + 4}`);
   if (!wrap.clientWidth || !wrap.clientHeight) return;
+  fitted = String([cols, rows]);
   const screen = document.body.getBoundingClientRect();
   const box = wrap.getBoundingClientRect();
-  const arena = renderer.layout(screen.width, screen.height, { x: box.left - screen.left, y: box.top - screen.top, w: box.width, h: box.height });
-  // Where the two cells of wall round the field start and end, for the blurred edges past them.
-  const edges = { top: arena.top, bottom: screen.height - arena.bottom, left: arena.left, right: screen.width - arena.right };
-  for (const [side, px] of Object.entries(edges)) document.body.style.setProperty(`--wall-${side}`, `${Math.max(0, px)}px`);
+  renderer.layout(screen.width, screen.height, { x: box.left - screen.left, y: box.top - screen.top, w: box.width, h: box.height }, [cols, rows]);
   draw();
 }
 

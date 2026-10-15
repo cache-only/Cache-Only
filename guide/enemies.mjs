@@ -1,7 +1,7 @@
 // What the Tanks field guide says about each enemy kind, and the little scene drawn on its
 // card. Every number is read from TYPES and the constants in rules.js, so a stat change
 // reaches the prose on the next `npm run guide`. Behaviour that lives in ai.js (sweep
-// timing, the bank-shot search, how Yellow and Hornet lay mines and when Hornet shoots one, lead, the
+// timing, the bank-shot search, how Yellow and Night Yellow lay mines and when Night Yellow shoots one, lead, the
 // mortar's aim, the minigun's spray) and render.js (the white tank's fade) is written out by
 // hand: update it here when that code changes.
 // scripts/guide.mjs fails if an enemy kind has no entry.
@@ -56,7 +56,7 @@ export function enemyText({ T, kinds, R, name, note }) {
       desc: `The first enemy that drives. It moves at ${pace(t)}, aims straight at you and tries to stay ${t.range[0]} to ${t.range[1]} cells away along the route. ${t.bullets === 1 ? 'One shell at a time' : `${t.bullets} shells at a time`}, ${num(t.reload)} s between shots.`,
       perks: ['Direct aim', `Keeps ${range(t)} cells away`, `Dodges ${pct(t.dodge)}`],
       weak: `${t.bullets === 1 ? 'It can’t fire again until its one shell is gone, and it' : 'It'} notices only ${pct(t.dodge)} of the shells headed its way.`,
-      scene: 'A grey tank driving across the floor and firing straight ahead.',
+      scene: 'A cream tank driving across the floor and firing straight ahead.',
     }),
     marine: (t) => ({
       role: 'Rocket sniper',
@@ -75,11 +75,11 @@ export function enemyText({ T, kinds, R, name, note }) {
       scene: 'A yellow tank driving away from a mine it has dropped, with one disc left on its deck.',
     }),
     pink: (t) => ({
-      role: 'Burst gunner',
-      desc: `Keeps ${t.bullets} shells in the air with only ${num(t.reload)} s between shots, so it fires in bursts. It aims with bank shots: if a wall can bounce a shell into you, it will find that angle.`,
-      perks: [`${t.bullets} shells at once`, `Reload ${num(t.reload)} s`, 'Bank shots', `Keeps ${range(t)} cells away`],
-      weak: `A slow body at ${sp(t.speed)} cells a second. After a burst it has to wait for its shells to land.`,
-      scene: 'A pink tank firing a burst of three shells that bounce off a wall over a block of cover.',
+      role: 'Bank shooter',
+      desc: `It aims with bank shots: if a wall can bounce a shell into you, it will find that angle, and it ${leads(t)}. Up to ${t.bullets} shells in the air, ${num(t.reload)} s apart, so it spaces its shots instead of firing a burst. It moves at ${pace(t)}, keeps ${t.range[0]} to ${t.range[1]} cells away and sidesteps ${pct(t.dodge)} of the shells headed its way.`,
+      perks: ['Bank shots', t.lead ? `Leads ${pct(t.lead)}` : 'Direct aim', `${t.bullets} shells at once`, `Dodges ${pct(t.dodge)}`],
+      weak: `Slower than you at ${sp(t.speed)} cells a second, and it can’t fire again until one of its ${t.bullets} shells is gone. A bank shot needs a wall in the right place: in open floor it can only shoot straight.`,
+      scene: 'A pink tank firing shells that bounce off a wall over a block of cover.',
     }),
     green: (t) => ({
       role: 'Trick-shot turret',
@@ -88,25 +88,25 @@ export function enemyText({ T, kinds, R, name, note }) {
       weak: `It can’t move, dodge or run from mines, and it holds only ${plural(t.bullets, 'rocket', 'rockets')} at a time.`,
       scene: 'A green tank on its pad firing a rocket that bounces between two walls.',
     }),
-    violet: (t) => ({
+    pinkNight: (t) => ({
       role: 'Mirror tank',
-      desc: `Carries nearly your loadout, ${t.bullets} shells with ${plural(t.bounces, 'ricochet', 'ricochets')} but no mines, and moves at ${pace(t)}. It uses bank shots, ${leads(t)}, thinks every ${num(t.think)} s and sidesteps ${pct(t.dodge)} of the shells headed its way.`,
+      desc: `Pink at night, stronger everywhere. It carries nearly your loadout, ${t.bullets} shells with ${plural(t.bounces, 'ricochet', 'ricochets')} but no mines, and moves at ${pace(t)}. It uses bank shots, ${leads(t)}, thinks every ${num(t.think)} s and sidesteps ${pct(t.dodge)} of the shells headed its way.`,
       perks: [`${t.bullets} shells at once`, 'Bank shots', t.lead ? `Leads ${pct(t.lead)}` : 'Direct aim', `Dodges ${pct(t.dodge)}`],
       weak: 'It decides once per shell whether it noticed it. A shell it missed stays unseen all the way in.',
-      scene: 'A violet tank firing shells that bank off a wall.',
+      scene: 'A night pink tank firing shells that bank off a wall.',
     }),
     red: (t) => ({
       role: 'Missile tank',
-      desc: `Fires guided missiles at ${sp(t.shot)} cells a second, ${vsShell(t)}. Each one turns toward you at up to ${degs(R.missileTurn)}° a second for its first ${num(R.missileFuel)} s, but only while you are within ${degs(R.lock)}° of its nose: once it has passed you it flies straight on. It fires only down a clear straight line, one missile at a time, and keeps ${t.range[0]} to ${t.range[1]} cells away. The light on its turret is lit while a missile is in the air.`,
+      desc: `Fires guided missiles from its two pods in turn, left then right, at ${sp(t.shot)} cells a second, ${vsShell(t)}. Each one turns toward you at up to ${degs(R.missileTurn)}° a second for its first ${num(R.missileFuel)} s, but only while you are within ${degs(R.lock)}° of its nose: once it has passed you it flies straight on. It fires only down a clear straight line, one missile at a time, and keeps ${t.range[0]} to ${t.range[1]} cells away. The light on its turret is lit while a missile is in the air.`,
       perks: ['Guided missiles', `Turns ${degs(R.missileTurn)}°/s`, ricochets(t), `Keeps ${range(t)} cells away`],
       weak: `A missile can’t turn tighter than a circle ${num(t.shot / R.missileTurn)} cells in radius, so a late sidestep makes it overshoot. It dies on the first wall it touches, and a shell that meets it head-on cancels both.`,
       scene: 'A red tank whose missile curves after you as you sidestep, its light lit.',
     }),
     white: (t) => ({
       role: 'Ghost',
-      desc: `Built like Violet, except it fades out during the first 1.2 s of a mission. Its tread marks and shells stay visible, and the mission banner warns you: “${note('tanks.note.white')}”`,
+      desc: `Built like Night Pink, except it fades out during the first 1.2 s of a mission. Its tread marks and shells stay visible, and the mission banner warns you: “${note('tanks.note.white')}”`,
       perks: ['Invisible', `${t.bullets} shells at once`, 'Bank shots'],
-      weak: `Follow the fresh tread marks. It notices ${pct(t.dodge)} of shells${T.violet ? ` (Violet: ${pct(T.violet.dodge)})` : ''}.`,
+      weak: `Follow the fresh tread marks. It notices ${pct(t.dodge)} of shells${T.pinkNight ? ` (Night Pink: ${pct(T.pinkNight.dodge)})` : ''}.`,
       scene: 'A nearly invisible white tank, given away by its tread marks and its shell.',
     }),
     black: (t) => ({
@@ -129,15 +129,43 @@ export function enemyText({ T, kinds, R, name, note }) {
       role: 'Minigun',
       desc: `Carries a minigun: six barrels that take ${num(R.spinUp)} s to spin up from rest, whining as they go. It starts them as soon as it has a line on you. At full speed it fires a round every ${num(t.reload)} s for as long as its line passes within ${num(R.sprayR)} cells of you, each within ±${spread(t.spread)}° of its aim, up to ${t.bullets} in the air. Rounds fly at ${sp(t.shot)} cells a second and never ricochet, and like any shot they cancel out with whatever they meet. It drives at ${pace(t)} and keeps ${t.range[0]} to ${t.range[1]} cells away.`,
       perks: ['Minigun', `Spin-up ${num(R.spinUp)} s`, `${Math.round(1 / t.reload)} rounds a second`, `Spray ±${spread(t.spread)}°`, ricochets(t)],
-      weak: `Its turret drags as the barrels speed up, from ${degs(t.turret)}° a second down to ${degs(R.sprayTurn)}° at full speed, so up close you can circle it faster than it turns. A shell fired back down its stream meets a round and cancels out, so hit it while the barrels are still spinning up, or from the side. Break its line and the barrels take ${num(R.spinDown)} s to run down: come back from another side before it swings round.`,
-      scene: 'A lime tank, its six barrels spinning, spraying a stream of tracer rounds past a wall.',
+      weak: `Its turret drags as the barrels speed up, from ${degs(t.turret)}° a second down to ${degs(R.sprayTurn)}° at full speed, so up close you can circle it faster than it turns. A shell fired back down its stream meets a round and cancels out, so hit it while the barrels are still spinning up, or from the side. Break its line and the barrels take ${num(R.spinDown)} s to run down: come back from another side before it swings round. After a long spray they glow orange and cool as they run down: once they are dark, it needs the full ${num(R.spinUp)} s spin-up again.`,
+      scene: 'A lime tank, its six barrels spinning and glowing hot, spraying a stream of tracer rounds past a wall.',
     }),
-    hornet: (t) => ({
+    yellowNight: (t) => ({
       role: 'Trap layer',
-      desc: `Yellow’s smarter cousin, in cream, with ${plural(t.mines, 'mine', 'mines')} to Yellow’s ${T.yellow.mines}. It lays them by plan: on your shortest way to it, in a narrow way when it can, at a cell it reaches at least two steps ahead of you. Then it drives to a lookout no nearer you than the mine, with a clear line to it, and waits. When you pass close to a mine it can see, yours included, it shoots the mine instead of you. Within 3 steps of you it drops one where it stands and gets clear. It moves at ${pace(t)}, keeps ${t.range[0]} to ${t.range[1]} cells away, and works among its side’s mines, which only go off when driven onto; when one is about to blow, it drives out of reach. The mission banner warns you: “${note('tanks.note.hornet')}”`,
+      desc: `Yellow at night, with ${plural(t.mines, 'mine', 'mines')} to Yellow’s ${T.yellow.mines}. It lays them by plan: on your shortest way to it, in a narrow way when it can, at a cell it reaches at least two steps ahead of you. Then it drives to a lookout no nearer you than the mine, with a clear line to it, and waits. When you pass close to a mine it can see, yours included, it shoots the mine instead of you. Within 3 steps of you it drops one where it stands and gets clear. It moves at ${pace(t)}, keeps ${t.range[0]} to ${t.range[1]} cells away, and works among its side’s mines, which only go off when driven onto; when one is about to blow, it drives out of reach. The mission banner warns you: “${note('tanks.note.yellowNight')}”`,
       perks: [plural(t.mines, 'mine', 'mines'), 'Lays traps', 'Shoots mines', `Dodges ${pct(t.dodge)}`],
       weak: `It never sets off a mine whose blast would reach another enemy or itself, and its mines go off when you shoot them too: a shell at a mine it has just laid can catch it before it is clear. Its traps are on your shortest way to it, so another way round leaves them behind you.`,
-      scene: 'A hornet watching its mines from a lookout, firing into the one you are beside.',
+      scene: 'A night yellow tank watching its mines from a lookout, firing into the one you are beside.',
+    }),
+    redNight: (t) => ({
+      role: 'Missile pair',
+      desc: `Red at night. It fires both pods at once, ${degs(R.twinSpread)}° either side of its aim, so two missiles come at you from two sides and close in. They fly at ${sp(t.shot)} cells a second (${vsShell(t)}), turn at up to ${degs(t.missileTurn)}° a second for ${num(t.fuel)} s, and keep after you wherever you go: duck behind a wall and they follow the open way round it to you. It still fires only down a clear straight line, and each missile dies on the first wall it touches.`,
+      perks: ['Two at once', 'Finds its way', `Turns ${degs(t.missileTurn)}°/s`, `Fuel ${num(t.fuel)} s`],
+      weak: `A shell that meets a missile cancels it, so two shells stop the pair. They can't turn tighter than a circle ${num(t.shot / t.missileTurn)} cells in radius: cut a corner fine and they still hit the wall.`,
+      scene: 'A night red tank firing a missile that curves after you, its light lit.',
+    }),
+    limeNight: (t) => ({
+      role: 'Walking minigun',
+      desc: `Lime at night. It drives at ${pace(t)}, notices ${pct(t.dodge)} of the shells headed its way and re-plans every ${num(t.think)} s. Its stream doesn't sit on you: it walks it from side to side, up to ${plural(t.walk, 'cell', 'cells')} either side of you, so a sidestep runs into rounds. Barrels, spin-up and spread are Lime's.`,
+      perks: ['Minigun', 'Walks its stream', `Dodges ${pct(t.dodge)}`, `Speed ${sp(t.speed)}`],
+      weak: `Its turret still drags at full spin, down to ${degs(R.sprayTurn)}° a second: up close, circle it. Its stream is on you only part of the time, so break its line rather than outrun it.`,
+      scene: 'A night lime tank walking its stream of rounds from side to side across a lane.',
+    }),
+    indigo: (t) => ({
+      role: 'Laser',
+      desc: `Fires a laser. First it stops and shows a thin red line for ${num(R.laserCharge)} s: exactly where it will fire. Then it burns down that line for ${num(R.laserBeam)} s, through every tank and shot on it, until a wall or crate stops it; a mine on the line goes off. It holds the line while it burns, and never fires with an ally anywhere on it. It drives at ${pace(t)}, keeps ${t.range[0]} to ${t.range[1]} cells away, and can fire again ${num(t.reload)} s after a beam ends.`,
+      perks: ['Laser', 'Pierces', `Warns ${num(R.laserCharge)} s`, `Keeps ${range(t)} cells away`],
+      weak: 'The red line is your warning: get off it. It stands still while it charges and burns, so that is the moment to shoot it, and a wall between you stops the beam.',
+      scene: 'An indigo tank showing the red line it is about to fire down.',
+    }),
+    indigoNight: (t) => ({
+      role: 'Sweeping laser',
+      desc: `Indigo at night: the same red line and beam, but as the beam burns it turns after you at up to ${degs(t.track)}° a second. From far off you can still outrun it sideways; up close you can't, so put a wall between you. It drives at ${pace(t)} and notices ${pct(t.dodge)} of shells.`,
+      perks: ['Laser', 'Beam follows you', `Turns ${degs(t.track)}°/s`, `Dodges ${pct(t.dodge)}`],
+      weak: `Its beam turns slower than you can run round it from about ${num(P.speed / t.track)} cells out. Like Indigo, it stands still while it charges and burns.`,
+      scene: 'A night indigo tank whose beam is swinging after you.',
     }),
   };
 }
@@ -151,29 +179,43 @@ export function enemyText({ T, kinds, R, name, note }) {
  * tank sits; blast: a mine whose blast reach is ringed; seek: where a
  * missile is steering to (its path is simulated with the game's turn rate); lob: where a
  * bomb will land and how far through its flight it is; spray: minigun rounds as [distance
- * from the muzzle, angle off the turret]; roll: how far a minigun's barrels have turned.
+ * from the muzzle, angle off the turret]; roll: how far a minigun's barrels have turned; heat:
+ * how hot they are (0-1); laser: 'charge' draws a laser's red warning line, 'fire' its beam.
  */
 export const SCENES = {
   brown: { walls: [[6, 0, 1, 2]], at: [2.2, 2.6], turret: -0.35, sweep: [-0.15, 0.75], shots: [2.4] },
   ash: { walls: [[6, 3, 2, 1]], tracks: [[0.2, 4.3], [1.2, 3.7], [2.4, 3.0], [3.4, 2.6]], turret: -0.18, shots: [2.2] },
   marine: { walls: [[7, 3, 1, 2]], tracks: [[0.3, 0.6], [1.0, 1.5], [1.8, 2.2], [2.4, 2.4]], turret: -0.1, shots: [3.4] },
   yellow: { walls: [[7, 0, 1, 1]], tracks: [[0.2, 1.0], [1.2, 1.8], [2.2, 2.1], [3.2, 2.7], [4.3, 3.1], [5.3, 2.9]], mines: [[2.2, 2.1]], laid: 1, turret: -0.7, shots: [1.2] },
-  pink: { walls: [[3, 0, 5, 1], [4, 3, 1, 2]], tracks: [[0, 3.7], [0.7, 3.4], [1.4, 3.2]], turret: -0.55, bank: 1, top: 1.09, shots: [2.0, 3.0, 4.3] },
+  pink: { walls: [[3, 0, 5, 1], [4, 3, 1, 2]], tracks: [[0, 3.7], [0.7, 3.4], [1.4, 3.2]], turret: -0.55, bank: 1, top: 1.09, shots: [2.0, 4.3] },
   green: { walls: [[2, 0, 6, 1], [2, 4, 6, 1], [4, 3, 1, 1]], at: [1.3, 2.5], turret: -0.7, bank: 2, top: 1.09, bottom: 3.91, shots: [3.3] },
-  violet: { walls: [[4, 0, 4, 1]], tracks: [[0.3, 4.6], [1.2, 3.9], [2.0, 3.5], [2.6, 3.3]], turret: -0.6, bank: 1, top: 1.09, shots: [1.6, 4.3] },
+  pinkNight: { walls: [[4, 0, 4, 1]], tracks: [[0.3, 4.6], [1.2, 3.9], [2.0, 3.5], [2.6, 3.3]], turret: -0.6, bank: 1, top: 1.09, shots: [1.6, 4.3] },
   red: { walls: [[4, 0, 1, 1], [7, 4, 1, 1]], tracks: [[0.2, 4.4], [0.9, 3.9], [1.5, 3.6]], turret: -0.45, seek: [6.6, 3.6], shots: [3.1] },
   white: { walls: [[6, 3, 2, 2]], tracks: [[0.2, 0.8], [1.4, 1.6], [2.6, 2.5], [3.8, 2.9], [5.0, 2.8]], turret: -0.35, ghost: 0.13, shots: [1.3] },
   black: { walls: [[7, 0, 1, 1]], tracks: [[0.1, 4.4], [1.4, 3.8], [2.6, 3.0], [3.6, 2.6]], turret: -0.15, shots: [1.2, 3.0] },
   olive: { walls: [[4, 1, 1, 3]], at: [1.6, 2.6], turret: 0.05, lob: { to: [6.4, 2.9], k: 0.55 }, shots: [] },
+  redNight: { walls: [[4, 0, 1, 1], [7, 4, 1, 1]], tracks: [[0.2, 4.4], [0.9, 3.9], [1.5, 3.6]], turret: -0.45, seek: [6.6, 3.6], shots: [3.1] },
+  limeNight: {
+    walls: [[5, 0, 1, 2], [6, 4, 2, 1]],
+    tracks: [[0.2, 4.2], [0.9, 3.5], [1.6, 3.0], [2.2, 2.8]],
+    turret: -0.08,
+    roll: 0.45,
+    heat: 0.85,
+    spray: [[0.25, 0.04], [0.9, -0.12], [1.55, 0.15], [2.2, -0.06], [2.85, 0.13], [3.5, -0.15], [4.15, 0.09], [4.8, -0.11]],
+    shots: [],
+  },
+  indigo: { walls: [[7, 1, 1, 3]], tracks: [[0.2, 4.2], [0.9, 3.6], [1.5, 3.0]], turret: -0.14, laser: 'charge', you: [5.2, 2.5], shots: [] },
+  indigoNight: { walls: [[7, 0, 1, 2], [7, 3, 1, 2]], tracks: [[0.2, 0.8], [0.9, 1.4], [1.5, 1.8]], turret: 0.2, laser: 'fire', you: [5.6, 3.4], shots: [] },
   lime: {
     walls: [[5, 0, 1, 2], [6, 4, 2, 1]],
     tracks: [[0.2, 4.2], [0.9, 3.5], [1.6, 3.0], [2.2, 2.8]],
     turret: -0.08,
     roll: 0.45,
+    heat: 0.85,
     spray: [[0.25, 0.01], [0.9, -0.06], [1.55, 0.07], [2.2, -0.02], [2.85, 0.05], [3.5, -0.08], [4.15, 0.03], [4.8, -0.04]],
     shots: [],
   },
-  hornet: {
+  yellowNight: {
     walls: [[3, 0, 2, 1]],
     tracks: [[1.4, 3.4], [2.6, 2.7], [4.0, 2.3], [5.4, 2.3], [6.4, 2.5]],
     mines: [[1.5, 3.35], [3.2, 2.5], [4.9, 2.25]],

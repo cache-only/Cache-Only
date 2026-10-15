@@ -29,25 +29,26 @@
 
   /* Tank colours only say which kind a tank is; its shape says what it can do (art.js).
      Off limits for a new kind: the player's blue family, fire orange (explosions, rocket
-     flames) and crate grey (a tank must never pass for a crate). Still free: sand, maroon
-     and navy (kept clearly apart from the player). Past about 14 kinds, reuse a colour with
-     a pattern for a variant instead of finding another hue (VARIANTS in art.js, empty today).
+     flames) and crate grey (a tank must never pass for a crate). Still free: violet, sand,
+     maroon and navy (kept clearly apart from the player). A night version has no colour of
+     its own: it wears its day kind's on a deep hull (art.js). Past about 14 kinds, reuse a
+     colour with a pattern for a variant instead of finding another hue (VARIANTS in art.js,
+     empty today).
      Every kind needs a colour here whose chip text reaches 4.5:1; tests/tanks.test.mjs
      checks the plan. */
   --tk-player: #2e8ccc;
   --tk-brown: #96673a;
-  --tk-ash: #949aa3;
+  --tk-ash: #e8d4a2; /* cream: clear of Yellow and White */
   --tk-marine: #149a90;
   --tk-yellow: #f2b705;
   --tk-pink: #ec5f9a;
   --tk-green: #3c9a3c;
-  --tk-violet: #7d52d8;
   --tk-red: #c2213a;
   --tk-white: #f7f5ef;
   --tk-black: #3a3e46;
   --tk-olive: #566426;
   --tk-lime: #9cc93a;
-  --tk-hornet: #e8d4a2; /* cream: clear of Yellow and White */
+  --tk-indigo: #5a45c8; /* the laser tank: clear of your blue and of crate grey */
 
   --stick: 112px;
   --mine-btn: 68px;
@@ -90,35 +91,11 @@
 
 /* Past the two cells of wall round the field, the screen's edges blur the wall (deep): in portrait
    at the top and bottom, fading into the page like the launcher's top edge; in landscape at the
-   sides, the blur alone. tanks.js sets --wall-top, --wall-bottom, --wall-left and --wall-right from
-   where those two cells of wall start and end. Over the arena, under the rest of the page. */
-.page-tanks :is(.edge-top, .edge-bottom, .edge-left, .edge-right) {
-  z-index: 1;
-}
-
-.page-tanks .edge-top {
-  height: var(--wall-top, 0px);
-}
-
-.page-tanks .edge-bottom {
-  height: var(--wall-bottom, 0px);
-}
-
-.page-tanks .edge-left {
-  width: var(--wall-left, 0px);
-}
-
-.page-tanks .edge-right {
-  width: var(--wall-right, 0px);
-}
+   sides, the blur alone. PERFORMANCE: render.js bakes that into the arena's floor canvas once per
+   layout (blurEdges, with .pblur-deep's layers and shade from /styles.css). Backdrop-filter layers
+   over the canvas, as they were, are blurred again by iOS on every frame of play. */
 
 @media (orientation: landscape) {
-  .page-tanks :is(.edge-top, .edge-bottom) {
-    display: none;
-  }
-  .page-tanks :is(.edge-left, .edge-right) {
-    display: block;
-  }
   /* The field fills the height, centred between the gutters that hold home and the stats. */
   .page-tanks .play-tanks {
     padding: 0 calc(var(--safe-r) + var(--side-w)) 0 calc(var(--safe-l) + var(--side-w));
@@ -369,8 +346,8 @@
 
 /* ---------- Map editor (your own maps) ---------- */
 
-/* tanks.js sets .is-editing on the page while a map is being drawn: the header holds only home
-   and Play, and the tools sit right under the arena (portrait) or beside it (landscape), like
+/* tanks.js sets .is-editing on the page while a map is being drawn: the header holds only home,
+   Generate and Play, and the tools sit right under the arena (portrait) or beside it (landscape), like
    the moves under a board, with a line about the map's state over them. */
 .page-tanks:not(.is-editing) :is(.edit-tools, .edit-play),
 .page-tanks.is-editing .bar-stats > :not(.edit-play) {
@@ -404,7 +381,9 @@
 @media (orientation: portrait) {
   .page-tanks.is-editing .play-tanks > .tanks-wrap {
     flex: 0 1 auto;
-    aspect-ratio: 16 / 24; /* the upright field with its skirts and walls, (15 + 1) x (20 + 4) cells */
+    /* The upright field with its skirts and walls, (rows + 1) x (cols + 4) cells: tanks.js sets it
+       for the map's size, (15 + 1) x (20 + 4) for a mission's. */
+    aspect-ratio: var(--field-aspect, 16 / 24);
   }
 }
 

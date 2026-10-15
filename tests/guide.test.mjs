@@ -17,7 +17,8 @@ test('the field guide builds from the game and covers every enemy kind', async (
   assert.equal(data.missions.length, MISSIONS.length);
   assert.equal(data.names.length, MISSIONS.length);
   assert.ok(data.names.every(Boolean) && data.briefs.every(Boolean), 'every mission has a name and a briefing');
-  for (const k of ['player', ...ENEMY_KINDS]) assert.match(html, new RegExp(`--tk-${k}:\\s*#`), `colour for ${k}`);
+  // A night version wears its day kind's colour.
+  for (const k of ['player', ...ENEMY_KINDS]) assert.match(html, new RegExp(`--tk-${TYPES[k]?.base || k}:\\s*#`), `colour for ${k}`);
   assert.doesNotMatch(html, /__DATA__|\/\*__MODULES__\*\/|\/\*TK_(LIGHT|DARK)\*\/|\{\{\w+\}\}/);
   assert.ok(html.indexOf('<title>') < 8192, 'the title is in the first 8 KB');
   const script = html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>'));

@@ -2,8 +2,9 @@
 // the bottom of the screen when the arena is turned upright on a phone. Each mission has
 // one idea; its name and briefing are tanks.name.<n> and tanks.brief.<n> in i18n.js.
 //   .  floor      #  wall      x  crate (a blast clears it)      o  hole
-//   @  player     enemies: b brown, a grey, m teal, y yellow, p pink, g green,
-//                          v violet, r red, w white, k black, d olive, l lime
+//   @  player     enemies: b brown, a cream, m teal, y yellow, p pink, g green,
+//                          r red, w white, k black, d olive, l lime;
+//                          a night version in upper case: P night pink, Y night yellow
 // A bonus tank is awarded after missions 5, 10 and 15, and each of those is a checkpoint.
 // guide/mapcheck.mjs holds the rules every map must pass; the field guide has an editor.
 // Below the missions: the test range, where any one kind can be tried out.
@@ -180,7 +181,7 @@ export const MISSIONS = [
     '....................',
     '##.......##.......##',
     '##..##...##...##..##',
-    '....##........##..v.',
+    '....##........##..P.',
     '.......#....#.......',
     '..#....#....#....#..',
     '..#..............#..',
@@ -188,7 +189,7 @@ export const MISSIONS = [
     '..#..............#..',
     '..#....#....#....#..',
     '.......#....#.......',
-    '....##........##..v.',
+    '....##........##..P.',
     '##..##...##...##..##',
     '##.......##.......##',
     '....................',
@@ -310,7 +311,7 @@ export const MISSIONS = [
     '.....#....#......#..',
     '..........#..g...#..',
     '..##......x..##..#..',
-    '..@.......#..##..x.v',
+    '..@.......#..##..x.P',
     '..##......#..##..#..',
     '..........#....g.#..',
     '..........#......#..',
@@ -324,7 +325,7 @@ export const MISSIONS = [
     '....................',
     '...####.#...#####..w',
     '...#....#.......#...',
-    '...#.......v....#...',
+    '...#.......P....#...',
     '.......####.........',
     '..#.........#####...',
     '..#..####...#.......',
@@ -332,7 +333,7 @@ export const MISSIONS = [
     '........#.......###.',
     '.####...#####.......',
     '....#...............',
-    '....#..####...##..v.',
+    '....#..####...##..P.',
     '....#.....#...#.....',
     '.@........#...#..r..',
     '....................',
@@ -361,7 +362,7 @@ export const MISSIONS = [
     '..........#....r....',
     '....###...#.........',
     '....#.........xxx...',
-    '....#....v....x.....',
+    '....#....P....x.....',
     '.......####.......k.',
     '..#..........##.....',
     '..#@..oo.....##..g..',

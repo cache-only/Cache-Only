@@ -7,13 +7,12 @@ import {
   BOMB_MAX,
   BOMB_MIN,
   BOMB_R,
-  COLS,
   HIT_R,
+  LASER_W,
   MINE_R,
   MINE_TRIGGER,
   MUZZLE,
   OPENING,
-  ROWS,
   SHELL_R,
   SPRAY_R,
   SPRAY_TURN,
@@ -22,8 +21,10 @@ import {
   TAU,
   TYPES,
   angleDiff,
+  beamLine,
   blocksShell,
   cellAt,
+  gridSize,
   hullBlocked,
   muzzleBlocked,
   nextContact,
@@ -58,7 +59,15 @@ const MINE_KILL = BLAST_R + HIT_R * 0.5; // a mine's blast destroys a tank whose
 const fields = new WeakMap();
 const faces = new WeakMap();
 
+// The size of the arena being thought about. Worlds come in several (SCALES in rules.js), so
+// every exported function that takes a world sets these from its grid before anything else;
+// the AI thinks about one world at a time.
+let COLS = 0;
+let ROWS = 0;
+const fit = (s) => ([COLS, ROWS] = gridSize(s.grid));
+
 export function initBrain(s, t) {
+  fit(s);
   const T = TYPES[t.type];
   t.ai = {
     think: rand(s) * T.think,
@@ -75,6 +84,7 @@ export function initBrain(s, t) {
     mx: 0,
     my: 0,
     dodgeT: 0,
+    dodge: null, // a way out of a shot's path being driven to: { ex, ey, id, until }
     lay: T.trap ? 0.5 + rand(s) : 2 + rand(s) * 3,
     sx: t.x, // where (and for which goal cell) the stuck check last measured from
     sy: t.y,
@@ -124,6 +134,7 @@ function flood(from, can) {
 
 /** Distance in steps from every open cell to the player's cell; -1 if unreachable. */
 export function pathField(s) {
+  fit(s);
   const p = s.tanks[0];
   const pc = Math.floor(p.y) * COLS + Math.floor(p.x);
   const hit = fields.get(s);
@@ -161,6 +172,7 @@ function reflectLines(s) {
  * starts on.
  */
 export function shotTarget(s, shooter, angle, bounces, near = 0.27) {
+  fit(s);
   if (muzzleBlocked(s.grid, shooter.x, shooter.y, angle)) return null;
   const ox = shooter.x + Math.cos(angle) * MUZZLE;
   const oy = shooter.y + Math.sin(angle) * MUZZLE;
@@ -208,6 +220,7 @@ function inSight(grid, a, b, d) {
  * Invisible tanks are skipped, so the auto-aim can't give them away. Null if there is none.
  */
 export function tapTarget(s, range = TAP_RANGE) {
+  fit(s);
   const p = s.tanks[0];
   const near = s.tanks
     .filter((t) => t.slot >= 0 && t.alive && !TYPES[t.type].invisible)
@@ -240,6 +253,7 @@ const cellOf = (x, y) => Math.floor(y) * COLS + Math.floor(x);
  * It can't drive through a wall, so the prediction stops where its hull would meet one.
  */
 export function predict(s, p, ahead) {
+  fit(s);
   const vx = p.svx || 0;
   const vy = p.svy || 0;
   const speed = Math.hypot(vx, vy);
@@ -309,8 +323,11 @@ function planAim(s, t, T, player) {
   if (T.aim === 'spray') {
     // A minigun aims straight at you, and wants its barrels turning while it has a line on you.
     // Its spin-up is its reaction time: no pause on a new angle.
-    ai.aim = Math.atan2(player.y - t.y, player.x - t.x);
-    ai.planned = shotTarget(s, t, ai.aim, 0, SPRAY_R) === player;
+    const at = Math.atan2(player.y - t.y, player.x - t.x);
+    // Night Lime walks its stream from side to side, up to walk cells either side of you, so a
+    // sidestep runs into rounds.
+    ai.aim = T.walk ? at + Math.sin(s.time * 2.4) * Math.atan2(T.walk, Math.hypot(player.x - t.x, player.y - t.y)) : at;
+    ai.planned = shotTarget(s, t, at, 0, SPRAY_R) === player;
     return;
   }
   // Aim where the player will be when the shell arrives, if this kind leads its shots.
@@ -333,6 +350,21 @@ function planAim(s, t, T, player) {
     if (T.bounces > 1 && !best) {
       const offset = rand(s) * (TAU / 160);
       for (let i = 0; i < 160; i++) consider(offset + (i * TAU) / 160, 2);
+    }
+  }
+  // A tank whose missiles find their way also fires round a corner, along the open way to you,
+  // when that way is short.
+  ai.round = false;
+  if (!best && T.path) {
+    const f = pathField(s);
+    const steps = f[cellOf(t.x, t.y)];
+    const to = routeTo(s, t.x, t.y);
+    if (!to.direct && steps >= 0 && steps <= T.range[1] + 4) {
+      if (!ai.planned) ai.wait = Math.max(ai.wait, T.react * (0.6 + 0.8 * rand(s)));
+      ai.aim = wrapAngle(Math.atan2(to.y - t.y, to.x - t.x));
+      ai.planned = true;
+      ai.round = true;
+      return;
     }
   }
   if (best) {
@@ -734,19 +766,78 @@ function dodgeShells(s, t, T) {
     if (!threat || tc < threat.tc) threat = { b, tc, px, py, speed };
   }
   if (!threat) return null;
-  // Sidestep across the shell's line, toward the side the tank already leans to.
-  let nx = -threat.b.vy / threat.speed;
-  let ny = threat.b.vx / threat.speed;
-  if (nx * -threat.px + ny * -threat.py < 0) {
-    nx = -nx;
-    ny = -ny;
+  // Already on its way out of this shot's path: keep going rather than think again, so it
+  // never swings back and forth across the line.
+  const plan = t.ai.dodge;
+  if (plan && plan.id === threat.b.id && s.time < plan.until) return plan;
+  return escape(s, t, T, threat);
+}
+
+// How far off a shot's line a tank's centre must get for the shot to pass it.
+const CLEAR = HIT_R + SHELL_R + 0.12;
+
+/**
+ * Where to go to get off an incoming shot's path. It looks round in 24 directions for the
+ * nearest spot its hull can really drive to (walls, crates, holes, tanks, mines) that is safe:
+ * far enough off the shot's line, or behind something that stops the shot first. It takes the
+ * spot it can reach soonest, counting the time to turn its hull. If none is reachable in time,
+ * it heads for the one that gets it furthest off the line, but only if that is far enough to be
+ * missed; otherwise it doesn't dodge at all, rather than park in the shot's way.
+ * { x, y, ex, ey, id, until }.
+ */
+function escape(s, t, T, { b, tc, speed }) {
+  const ux = b.vx / speed;
+  const uy = b.vy / speed;
+  const nx = -uy;
+  const ny = ux;
+  const offAt = (x, y) => (x - b.x) * nx + (y - b.y) * ny;
+  const off = offAt(t.x, t.y);
+  // The shot reaches the tank a little before its closest pass.
+  const time = Math.max(0, tc - Math.sqrt(Math.max(0, CLEAR * CLEAR - off * off)) / speed);
+  const safe = (x, y) => {
+    if (Math.abs(offAt(x, y)) >= CLEAR) return true;
+    const along = (x - b.x) * ux + (y - b.y) * uy;
+    return along > 0 && !!nextContact(s.grid, b.x, b.y, ux, uy, SHELL_R, Math.max(0, along - CLEAR));
+  };
+  let best = null;
+  let fallback = null;
+  for (let k = 0; k < 24; k++) {
+    const a = (k / 24) * TAU;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    const free = runway(s, t, dx, dy, 1.6);
+    // Driving starts once the hull has turned to within about 70 degrees of the way out.
+    let turnBy = Math.abs(angleDiff(a, t.body));
+    if (turnBy > Math.PI / 2) turnBy = Math.PI - turnBy;
+    const turn = Math.max(0, turnBy - 1.2) / T.turn;
+    let d = 0.05;
+    while (d <= free && !safe(t.x + dx * d, t.y + dy * d)) d += 0.05;
+    if (d <= free) {
+      const cost = d / T.speed + turn;
+      if (cost <= time && (!best || cost < best.cost)) best = { cost, dx, dy, go: d };
+    }
+    // How far off the line it would be when the shot comes, driving this way.
+    const reach = Math.min(free, Math.max(0, time - turn) * T.speed);
+    const far = Math.abs(offAt(t.x + dx * reach, t.y + dy * reach));
+    if (!fallback || far > fallback.far) fallback = { far, dx, dy, go: reach };
   }
-  if (!clearMove(s, t, nx, ny)) {
-    nx = -nx;
-    ny = -ny;
-    if (!clearMove(s, t, nx, ny)) return null;
+  const pick = best || (fallback && fallback.far >= HIT_R + SHELL_R + 0.02 ? fallback : null);
+  if (!pick) return null;
+  return { x: pick.dx, y: pick.dy, ex: t.x + pick.dx * pick.go, ey: t.y + pick.dy * pick.go, id: b.id, until: s.time + tc + 0.12 };
+}
+
+/** How far tank t can drive along (dx, dy), up to max cells, before its hull meets a block, a tank or a mine it would set off. */
+function runway(s, t, dx, dy, max) {
+  let d = 0;
+  while (d < max) {
+    const next = Math.min(max, d + 0.05);
+    const x = t.x + dx * next;
+    const y = t.y + dy * next;
+    if (hullBlocked(s.grid, x, y, TANK_R - 0.02) || sets(s, t, x, y)) break;
+    if (s.tanks.some((o) => o !== t && o.alive && (o.x - x) ** 2 + (o.y - y) ** 2 < (2 * TANK_R) ** 2 && (o.x - t.x) ** 2 + (o.y - t.y) ** 2 > (o.x - x) ** 2 + (o.y - y) ** 2)) break;
+    d = next;
   }
-  return { x: nx, y: ny };
+  return d;
 }
 
 /** Whether tank t would set a mine off at (x, y): one of its own only once it is armed. */
@@ -757,6 +848,108 @@ function sets(s, t, x, y) {
 /** Whether tank t can make a quick move along (ux, uy): open floor, and no mine set off on the way. */
 function clearMove(s, t, ux, uy) {
   return openAt(s.grid, t.x + ux * 0.75, t.y + uy * 0.75) && !sets(s, t, t.x + ux * 0.4, t.y + uy * 0.4) && !sets(s, t, t.x + ux * 0.75, t.y + uy * 0.75);
+}
+
+/* ---------- Finding the way (Night Red's missiles) ---------- */
+
+/**
+ * Where something at (x, y) heads to reach you along the open way: straight at you while
+ * nothing stands between, or else the furthest cell it can see along the shortest open way to you
+ * (holes count as closed, as they do for tanks). { x, y, direct }.
+ */
+export function routeTo(s, x, y) {
+  fit(s);
+  const p = s.tanks[0];
+  const clear = (tx, ty, pad) => {
+    const d = Math.hypot(tx - x, ty - y);
+    return d < 1e-6 || !nextContact(s.grid, x, y, (tx - x) / d, (ty - y) / d, SHELL_R + pad, Math.max(0, d - HIT_R));
+  };
+  if (clear(p.x, p.y, 0)) return { x: p.x, y: p.y, direct: true };
+  const f = pathField(s);
+  let c = Math.floor(x);
+  let r = Math.floor(y);
+  let to = null;
+  for (let k = 0; k < 6; k++) {
+    let next = -1;
+    let best = f[r * COLS + c] >= 0 ? f[r * COLS + c] : Infinity;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      if (!open(s.grid, c + dc, r + dr)) continue;
+      if (dc && dr && (!open(s.grid, c + dc, r) || !open(s.grid, c, r + dr))) continue;
+      const v = f[(r + dr) * COLS + c + dc];
+      if (v >= 0 && v < best) {
+        best = v;
+        next = (r + dr) * COLS + c + dc;
+      }
+    }
+    if (next < 0) break;
+    c = next % COLS;
+    r = Math.floor(next / COLS);
+    // A little wide, so it doesn't clip the corner it is turning round.
+    if (!clear(c + 0.5, r + 0.5, 0.12)) break;
+    to = { x: c + 0.5, y: r + 0.5, direct: false };
+  }
+  return to || { x: p.x, y: p.y, direct: false };
+}
+
+/**
+ * Whether a missile that finds its way can set off at `angle`: the barrel clear, the first
+ * stretch open, and no ally near it.
+ */
+function launchClear(s, t, angle) {
+  if (muzzleBlocked(s.grid, t.x, t.y, angle)) return false;
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const x0 = t.x + ux * MUZZLE;
+  const y0 = t.y + uy * MUZZLE;
+  if (nextContact(s.grid, x0, y0, ux, uy, SHELL_R + 0.1, 1.2)) return false;
+  return !s.tanks.some((o) => o !== t && o.slot >= 0 && o.alive && segmentHit(x0, y0, x0 + ux * 2, y0 + uy * 2, o.x, o.y, HIT_R + 0.4) >= 0);
+}
+
+/* ---------- Lasers ---------- */
+
+/** The laser line (charging or burning) of another tank that (x, y) is on, with pad of room; null if none. */
+function beamAt(s, t, x, y, pad) {
+  for (const o of s.tanks) {
+    if (o === t || !o.alive || !o.beam) continue;
+    const L = beamLine(s.grid, o.x, o.y, o.beam.angle);
+    if (segmentHit(L.x0, L.y0, L.x1, L.y1, x, y, TANK_R + LASER_W + pad) >= 0) return { o, L };
+  }
+  return null;
+}
+
+/** Off a laser's line: straight across it, to the side the tank is already on. */
+function fleeBeams(s, t) {
+  const hit = beamAt(s, t, t.x, t.y, 0.15);
+  if (!hit) return null;
+  const { L } = hit;
+  const len = Math.hypot(L.x1 - L.x0, L.y1 - L.y0) || 1;
+  let nx = -(L.y1 - L.y0) / len;
+  let ny = (L.x1 - L.x0) / len;
+  if (nx * (t.x - L.x0) + ny * (t.y - L.y0) < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  if (clearMove(s, t, nx, ny)) return { x: nx, y: ny };
+  if (clearMove(s, t, -nx, -ny)) return { x: -nx, y: -ny };
+  return null;
+}
+
+/**
+ * Whether a laser fired now from tank t at `angle` would burn you and no ally: the beam
+ * passes through tanks, so every ally on the whole line counts, and so does a mine on it whose
+ * blast would reach one.
+ */
+function laserClear(s, t, angle) {
+  if (muzzleBlocked(s.grid, t.x, t.y, angle)) return false;
+  const p = s.tanks[0];
+  const L = beamLine(s.grid, t.x, t.y, angle);
+  const on = (x, y, r) => segmentHit(L.x0, L.y0, L.x1, L.y1, x, y, r) >= 0;
+  if (!on(p.x, p.y, 0.3)) return false;
+  for (const o of s.tanks) if (o !== t && o.slot >= 0 && o.alive && on(o.x, o.y, HIT_R + LASER_W + 0.3)) return false;
+  for (const m of s.mines) {
+    if (on(m.x, m.y, MINE_R + LASER_W) && s.tanks.some((o) => o.slot >= 0 && o.alive && Math.hypot(o.x - m.x, o.y - m.y) < MINE_KILL)) return false;
+  }
+  return true;
 }
 
 /** The neighbouring direction that best matches (fx, fy), of those it can move along. */
@@ -901,6 +1094,7 @@ function chooseCell(s, t, T) {
     }
     score += ((dc * ai.hx + dr * ai.hy) / l) * 0.7;
     score -= mineCost(s, t, T, cx, cy);
+    if (beamAt(s, t, cx, cy, 0.2)) score -= 8; // never into a laser's line
     if (score > wantScore) {
       wantScore = score;
       want = n;
@@ -955,12 +1149,14 @@ function chooseCell(s, t, T) {
  */
 function react(s, t, T) {
   const ai = t.ai;
-  const away = (T.trap && ai.plan === 3 ? null : fleeMines(s, t, T)) || dodgeShells(s, t, T);
+  const away = (T.trap && ai.plan === 3 ? null : fleeMines(s, t, T)) || fleeBeams(s, t) || dodgeShells(s, t, T);
   if (!away) return;
   ai.mx = away.x;
   ai.my = away.y;
-  ai.dodgeT = 0.3;
   ai.goal = -1;
+  // A dodge drives to its way-out point and waits there until the shot has passed.
+  ai.dodge = away.ex != null ? away : null;
+  ai.dodgeT = ai.dodge ? ai.dodge.until - s.time : 0.3;
 }
 
 /**
@@ -1088,6 +1284,7 @@ function wantsMine(s, t, T) {
  * landing spot { x, y } or null), mine (boolean) and spin (a minigun drives its barrels).
  */
 export function updateBrain(s, t, dt) {
+  fit(s);
   const T = TYPES[t.type];
   const ai = t.ai;
   const player = s.tanks[0];
@@ -1107,7 +1304,8 @@ export function updateBrain(s, t, dt) {
   const rate = T.weapon === 'minigun' ? T.turret + (SPRAY_TURN - T.turret) * t.spin : T.turret;
   const turn = rate * dt;
   const d = angleDiff(ai.aim, t.turret);
-  t.turret = wrapAngle(t.turret + Math.max(-turn, Math.min(turn, d)));
+  // A laser's turret is held by its beam (engine.js) while it charges and burns.
+  if (!t.beam) t.turret = wrapAngle(t.turret + Math.max(-turn, Math.min(turn, d)));
 
   let mine = false;
   if (ai.think <= 0) {
@@ -1120,7 +1318,14 @@ export function updateBrain(s, t, dt) {
     if (T.speed) react(s, t, T);
   }
   if (T.speed) {
-    if (ai.dodgeT <= 0 && ai.backT <= 0) steer(s, t, T);
+    if (ai.dodgeT <= 0) ai.dodge = null;
+    if (ai.dodge) {
+      const dx = ai.dodge.ex - t.x;
+      const dy = ai.dodge.ey - t.y;
+      const d = Math.hypot(dx, dy);
+      ai.mx = d < 0.06 ? 0 : dx / d;
+      ai.my = d < 0.06 ? 0 : dy / d;
+    } else if (ai.dodgeT <= 0 && ai.backT <= 0) steer(s, t, T);
     checkStuck(s, t, T, dt);
   }
 
@@ -1137,9 +1342,13 @@ export function updateBrain(s, t, dt) {
       } else if (T.weapon === 'minigun') {
         // Once the barrels are at speed it sprays round its line for as long as that line
         // passes near you, however far the turret lags behind.
-        if (t.spin >= 1 && owned(s.bullets, t) < T.bullets && shotTarget(s, t, t.turret, 0, SPRAY_R) === player) {
+        if (t.spin >= 1 && owned(s.bullets, t) < T.bullets && shotTarget(s, t, t.turret, 0, SPRAY_R + (T.walk || 0)) === player) {
           fire = t.turret + (rand(s) - 0.5) * 2 * T.spread;
         }
+      } else if (T.weapon === 'laser') {
+        // Its spread is drawn first, so the red line it shows is always one that reaches you.
+        const a = t.turret + (rand(s) - 0.5) * 2 * T.spread;
+        if (!t.beam && laserClear(s, t, a)) fire = a;
       } else if (owned(s.bullets, t) < T.bullets) {
         // A mine it means to set off: fire once the turret lines up well with it, and the
         // blast would still catch you and no ally when the shell gets there. It aims these
@@ -1148,6 +1357,7 @@ export function updateBrain(s, t, dt) {
         const at = hit && hit.m.id === ai.mine && predict(s, player, hit.d / T.shot);
         if (at && goodBlast(s, hit.m, at.x, at.y)) fire = t.turret + (rand(s) - 0.5) * 0.5 * T.spread;
         else if (shotTarget(s, t, t.turret, T.bounces) === player) fire = t.turret + (rand(s) - 0.5) * 2 * T.spread;
+        else if (ai.round && Math.abs(angleDiff(ai.aim, t.turret)) < 0.12 && launchClear(s, t, t.turret)) fire = t.turret;
       }
     }
   }

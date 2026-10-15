@@ -272,6 +272,30 @@ export const ICONS = {
     '..#####..',
     '.........',
   ],
+  // A die showing five: Tanks' Generate, a map at random.
+  dice: [
+    '.........',
+    '.#######.',
+    '.#.###.#.',
+    '.#######.',
+    '.###.###.',
+    '.#######.',
+    '.#.###.#.',
+    '.#######.',
+    '.........',
+  ],
+  // A two-headed arrow across the corners: a map's size.
+  resize: [
+    '.........',
+    '.####....',
+    '.##......',
+    '.#.#.....',
+    '.#..#..#.',
+    '.....#.#.',
+    '......##.',
+    '....####.',
+    '.........',
+  ],
 };
 
 // Tanks' shell and mine are not pixel art: they stay smooth shapes on a 24 x 24 grid, solid while

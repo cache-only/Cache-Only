@@ -509,6 +509,11 @@ button {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+/* Six choices with longer labels (Tanks' map sizes): rows of three. */
+.segmented.is-grid.is-thirds {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* A list to pick one from (Tanks' own maps): the same control, one choice per row, its text
    starting where a side-menu row's does. */
 .segmented.is-list {
@@ -788,8 +793,10 @@ button {
 
 /* Deep, with -top, -bottom or -side: a blur that deepens all the way to the edge (each layer stays
    on once it has come in), under a shade from transparent to the background there (its <b>; leave
-   that out for the blur alone). The launcher's top edge on its home view, and the Tanks arena's
-   wall past its field: the top and bottom in portrait, the sides (blur alone) in landscape. */
+   that out for the blur alone). The launcher's top edge on its home view. The Tanks arena's wall
+   past its field has the same look, but baked into its canvas (games/tanks/render.js blurEdges,
+   which copies these layers and this shade): for performance, since iOS blurs backdrop-filter
+   layers again on every frame the canvas under them changes. */
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(1) { --b: 3px; --from: 80%; --to: 100%; }
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(2) { --b: 7px; --from: 45%; --to: 80%; }
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(3) { --b: 14px; --from: 10%; --to: 45%; }
@@ -1977,19 +1984,31 @@ dialog.sheet[open] {
   .prepare .intro-side {
     grid-area: side;
   }
-  /* The steps take the wider column, so their lines rarely wrap. */
+  /* The browser tab fits the screen with nothing to scroll, so it has no edges to blur and keeps
+     none of their room: the lockup and the steps share the whole height. The steps take the wider
+     column, so their lines rarely wrap, and the name never wraps under the logo. */
+  .launcher[data-view="install"] :is(.edge-top, .edge-bottom) {
+    display: none;
+  }
+  .launcher[data-view="install"] .home {
+    padding-top: max(var(--safe-t), 16px);
+    padding-bottom: max(var(--safe-b), 16px);
+  }
   .install {
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    grid-template-columns: minmax(max-content, 0.85fr) minmax(0, 1.15fr);
     grid-template-areas: "mark side";
     align-content: center;
     column-gap: 40px;
+    min-height: calc(100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
   }
   .install .intro-side {
     grid-area: side;
     gap: 10px;
   }
-  .install .intro-side > .t-title {
+  .install .intro-side > .t-title,
+  .install .intro-side > .install-version {
     padding-bottom: 0;
+    padding-top: 0;
   }
   .install .intro-side > .t-note {
     text-align: center;
@@ -2004,6 +2023,12 @@ dialog.sheet[open] {
   }
   .intro .logo-lg {
     --logo-w: 120px;
+  }
+  /* The browser tab's logo stays as large as in portrait while the height allows (the lockup is
+     the logo, 1.19 times as tall as wide, a 20 gap and the 52 name): the field runs on the logo's
+     grid, so a smaller logo would fill the wide screen with twice the pixels to animate. */
+  .install .logo-lg {
+    --logo-w: clamp(120px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - 72px) * 0.84), 176px);
   }
 }
 
