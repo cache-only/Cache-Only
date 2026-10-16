@@ -161,6 +161,11 @@ the plates at the front and back of the hull have rounded corners.
   recess inside with a crack off a corner now and then (`--tk-hole-rim` is gone). The floor has a
   seeded tone per slab, dims into its corners and darkens softly round every block. All of it is
   in the static floor layer, so it costs nothing a frame.
+- **Round tubes** (2026-10-16)**:** a barrel looked flat, a bar with thin lit and shaded edges. A
+  tube (a barrel, a missile pod, a laser's emitter) is now lit round across it (`tubeBands` in
+  `art.js`, and the GPU's tank shader): its sides are lit and shaded in three steps up to 0.62 of
+  its width in, as far as the light falls across it, and when it points along the light a little
+  shade runs down both sides instead, so it never reads flat. Its tip keeps a flat part's edge.
 - **Colours:** one per kind, as before. Hornet is cream (`#e8d4a2`) instead of Yellow with hazard
   stripes, so `VARIANTS` is empty; the art still draws stripes for any kind named in it.
 - Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS).
@@ -173,7 +178,7 @@ the plates at the front and back of the hull have rounded corners.
   crates built from the logo's pixels; a signal-yellow band round every pit.
 
 ### R7. Tells: see what a tank is about to do
-**Status:** idea · **Size:** M
+**Status:** in progress (Hot minigun done 2026-10-15) · **Size:** M
 
 From the Paint Study. Each one shows something the game knows but doesn't show, so each is a rule
 change as much as art: the field guide and the reduced-motion rules need them too.
@@ -181,8 +186,12 @@ change as much as art: the field guide and the reduced-motion rules need them to
 - **Muzzle tell:** an enemy's barrel tip glows for 0.2 s before it fires. Fairer dodging, above all
   against Black.
 - **Reload light:** a shell tank's hatch dims while it reloads and lights when it can fire again.
-- **Hot minigun:** Lime's barrels glow orange after a long spray and cool over its 2.5 s
-  spin-down, so you can see when it is ready again.
+- **Hot minigun** (**done** 2026-10-15)**:** Lime's barrels glow orange after a long spray and cool
+  over its 2.5 s spin-down, so you can see when it is ready again. Shipped: each round heats the
+  barrels by 1/25 (full after 2.5 s of spray); 0.2 s after the last round they cool at the
+  spin-down's rate, and the glow never outlasts the spin, so dark barrels mean a full spin-up. They
+  glow orange toward their tips, white-hot near full, and light the floor round the muzzle
+  (`heat` in `drawTank`, kept by `render.js`; the guide's Lime card shows it).
 - **Empty pods:** a missile pod shows a dark bore while its missile is out, beside the light that
   already says so.
 - **White's shimmer:** White still fades out, but a faint shimmer shows where it drives. Its tread
@@ -315,7 +324,7 @@ A machine-gun tank that sprays rounds non-stop, with a spin-up as its warning.
 
 ---
 
-### W4. Hornet: a trap layer
+### W4. Hornet: a trap layer (now Night Yellow, N1)
 **Status:** done 2026-10-14 · **Size:** L
 
 Yellow with a plan: it mines your way to it, watches each mine, and sets it off as you pass.
@@ -354,12 +363,38 @@ Yellow with a plan: it mines your way to it, watches each mine, and sets it off 
 - **In no mission yet:** the test range only. Playtest bots keep 2 cells from every mine, so none
   shows how often a person gets caught by the mine shot: try it on a phone first (M7).
 
+### W5. Laser tank
+**Status:** done 2026-10-15 · **Size:** L
+
+Kind `indigo` (`i`, colour `--tk-indigo` #5a45c8, "Anyil" in Catalan), weapon `laser`. It stops and
+shows a thin red line for `LASER_CHARGE` (0.9 s), its turret locked on it, then burns down the line for
+`LASER_BEAM` (1 s): every tank and shot within `LASER_W` of the line goes, a mine on it goes off, and a
+wall or crate stops it (holes don't). Reload (2.6 s) counts from the end of the beam. It never fires
+with an ally anywhere on its line (`laserClear`), and every mover keeps off a line that is charging or
+burning (`fleeBeams`, and `chooseCell` scores such cells down). **Night Indigo** (`indigoNight`, `I`)
+turns its beam after you as it burns, at up to `track` (0.4 rad/s): from about 4.75 cells out you
+can outrun it sideways, closer you need a wall. Banner notes for both. Not in a mission yet: the
+test range and the editor only.
+
 ---
 
 ## N. Night versions
 
 ### N1. Night versions instead of lines
-**Status:** planned, design only (decided 2026-10-15) · **Size:** L
+**Status:** done 2026-10-15 · **Size:** L
+
+**Built:** the lines are gone (`upgrade` and `twin` left `TYPES`; Grey and Green stand alone).
+`NIGHT` in `rules.js` lays only what changes over the day kind, as `TYPES.pinkNight` and
+`TYPES.yellowNight` (`base`, `night: true`). Violet became **Night Pink** (`P`, the same numbers
+Violet had) and Hornet became **Night Yellow** (`Y`, Hornet's numbers and its trap-laying plan).
+Grey took Hornet's cream and is now called **Cream** / Crema (key `ash` kept). Pink itself got
+Violet's way of fighting at its own pace: 3 shells spaced 0.6 s apart instead of a burst, 20% lead
+and 40% dodging (casual bot on M7 Bank shots: 8/8 wins before, 6/8 after; expert 8/8). The night
+test holds every night number to its day kind's. Names are one string per kind ("Night Pink" /
+"Rosa de nit"), and night versions sit in the test range's kind grid rather than behind a Night
+switch. Saved maps with the old letters `v` and `h` load as `P` and `Y`; saved prefs move too.
+
+The design as planned:
 
 Lines (A5) grouped kinds as a first version and its upgrade (Brown → Grey and so on). They go.
 Every kind stands alone, told apart by its own colour, as on the field today: Grey, Green, Violet,
@@ -398,7 +433,16 @@ its **night version**.
   section follows.
 
 ### N2. Night Red: twin missiles that find their way
-**Status:** idea, design only · **Size:** M · **Needs:** N1
+**Status:** done 2026-10-15 · **Size:** M · **Needs:** N1
+
+**Built:** kind `redNight` (`R`). Fires its left pod, then its right `PAIR_GAP` (0.25 s) later (`pair`,
+`t.salvo`; at first both fired together, changed the same day), each 10° to its side of its aim
+(`TWIN_SPREAD`), needing room for both (2 in the air). Missiles fly at 3.8, turn at 3.2 rad/s for
+5 s, and steer for the furthest visible cell on the shortest open way to you (`path`, `routeTo()` in
+`ai.js`), so they follow you round a wall, swerving round any tank or mine ahead (`waypoint()` in
+`engine.js`). The two of a pair never cancel each other out (`pair`): they used to clash just after
+launch. It also fires round a corner along the open way when you hide within its range + 4 steps
+(`launchClear` checks the first stretch and allies). Each pod kicks back on its own shot.
 
 Red already has two launch pods. At night it uses both.
 
@@ -428,7 +472,11 @@ Red already has two launch pods. At night it uses both.
 - **To tune:** if a pair is too much, fire them 0.3 s apart instead of together.
 
 ### N3. Night Lime: a minigun that moves
-**Status:** idea, design only · **Size:** M · **Needs:** N1, and day Lime tuned first (W3, M6)
+**Status:** done 2026-10-15 (two of the ideas) · **Size:** M · **Needs:** N1, and day Lime tuned first (W3, M6)
+
+**Built:** kind `limeNight` (`L`): dodges faster (50%, re-plans every 0.12 s, speed 1.4) and walks its
+stream from side to side up to a cell either side of you (`walk`), firing while its line passes
+within `SPRAY_R + walk`. Not built: bouncing rounds and firing from your blind side.
 
 Ideas to pick from, not all at once: three day Limes already play harder than three Blacks.
 
@@ -448,6 +496,19 @@ Ideas to pick from, not all at once: three day Limes already play harder than th
 ---
 
 ## A. AI
+
+### A6. Dodging that doesn't swing back and forth
+**Status:** done 2026-10-15 · **Size:** M
+
+A noticed shot made a tank step across its line for a fixed 0.3 s, checking only that the cell 0.75
+ahead was open, then its route pulled it back and the next think tick dodged again: against a wall it
+shuffled in place and died. Now `escape()` looks in 24 directions for the nearest spot the hull can
+really reach in time (walls, crates, holes, tanks, mines, and the time to turn) that is off the
+shot's line or behind something that stops it, drives there and waits until the shot has passed
+(`ai.dodge`); with no way clear it doesn't dodge. Measured over every mission against the expert bot:
+reversals near a shell 41.6 → 10.2 a minute; over 909 wall-side cases, dying 25 → 4 and swinging back
+and forth 36% → 12%. The casual bot's M7 went 6/8 → 4/8 (same deaths per run); expert ≥ 7/8
+everywhere.
 
 ### A1. Tanks jam in narrow gaps and shove each other
 **Status:** done 2026-10-13 · **Size:** M
@@ -563,7 +624,7 @@ Violet, White and Black carried 2 mines each, and Yellow laid its 4 only now and
 - **Mine discs:** Yellow's rear deck holds 2, Hornet's 4, in one row as before.
 
 ### A5. Lines (V1 → V2) and five axes of intelligence
-**Status:** lines done 2026-10-14, to be dropped (N1, decided 2026-10-15); behaviours planned ·
+**Status:** lines done 2026-10-14, dropped 2026-10-15 (N1: Violet is Night Pink, Hornet Night Yellow); behaviours planned ·
 **Size:** L
 
 **2026-10-15:** the lines go (N1). Every kind stands alone in its own colour, and the stronger
@@ -740,7 +801,7 @@ Lime only plays on the test range so far. Give it a mission with its one idea (c
 break line of sight behind, room to circle it), or add it to a late mission, then run
 `npm run playtest` and keep the expert bot at 6 wins in 8.
 
-### M7. Put Hornet in the campaign
+### M7. Put Hornet (now Night Yellow, `Y`) in the campaign
 **Status:** idea · **Size:** M · **Needs:** W4
 
 Hornet plays on the test range only. Try it on a phone first, then give it a mission whose idea is
@@ -788,6 +849,63 @@ From the Paint Study: the arena goes dark and the light comes from the field (fl
 missile lights, burning wrecks). Needs a rule for what the AI can see in the dark; today every
 enemy knows where you are, through walls. Not the same thing as night versions (N1), though they
 would suit each other.
+
+### M11. Fewer one-cell gaps
+**Status:** idea · **Size:** S (the check) + M (the maps)
+
+The campaign has too many places a tank can only squeeze through. Measured as *tight spots*
+(groups of floor cells that no 2 × 2 square of drivable floor covers, the arena's edge counting
+as wall): today's maps average 5.6 each (up to 12 in Night shift), the Alpha maps 3.0. Pol
+prefers the older, more open maps; a one-cell gap is good now and then, not everywhere. Tight
+spots are also where tanks jam (A1).
+
+- In `mapcheck.js`, replace the "more than 75% open" nudge (it pushes toward denser maps, which
+  is how the gaps crept in) with a nudge for more than about 2 tight spots, ringing each one.
+  The measure is there already: `tightSpots` (M13).
+- Rework the worst maps with the editor, then `npm run playtest`.
+
+### M12. Random battles: generated maps that suit their enemies
+**Status:** idea · **Size:** L · **Needs:** M13 (done: the generator and the sizes)
+
+A mode beside Play, Test and Maps: battle after battle, each with a roster and a map made for it
+from a seed, so a battle can be shared as a short code (or a daily seed everyone plays).
+
+- **Shape of a map:** pieces (pillars, 2 × 2 blocks, bars, Ls, Ts, bays, crate lines, pits)
+  placed one by one, each kept only if the map still has at most the theme's 0 to 2 tight spots
+  and every floor cell can be reached. Pieces keep apart unless they join on purpose, so blocks
+  read as shapes. Symmetry varies (none, top to bottom, turned 180°), and so does your start.
+- **Themes from the roster:** banks (Pink, Green, White: long straight faces), open
+  (Lime, Black, Olive: room to circle and dodge, a few things to break sight), corners (Red, Cream:
+  short walls a missile breaks on), lanes (Yellow and its night version: two-wide routes where a
+  mine counts), pockets (Brown: turrets dug in). The lead kind picks the theme (`themeOf` in
+  `mapgen.js`, from what the kind does, so a new kind gets one too).
+- **Every map winnable:** `checkMap`, then the expert bot (moved from `scripts/playtest.mjs` into
+  the game folder, DOM-free) must win it; otherwise try the next seed. Make the next battle in a
+  worker while this one plays.
+- **Difficulty:** a threat budget per battle buys the roster, calibrated against the casual bot.
+  The same roster can be easy or hard depending on the map, so measure, don't guess.
+- **Prototype (2026-10-15, scratch):** 12 maps over the five themes at 20 × 15, 2 to 8 ms each,
+  0 to 2 tight spots (0.8 on average), 85% open, expert bot 8/8 on 11 of them (5/8 on one).
+  The casual bot won anywhere from 0/8 to 8/8, which is why difficulty needs its own step.
+- **Arena size:** any of M13's sizes. Try them on a phone in the editor first: a cell is about
+  23 pt on an iPhone SE in portrait at 20 × 15, about 15 pt at 32 × 24.
+- **Generated maps today (M13, 8 seeds a size, 3 runs each):** the expert bot won 132 of 144
+  (20 to 24 of 24 at every size); the casual bot 20 of 24 at 12 × 9, down to 6 of 24 at 28 × 21
+  and 32 × 24, which get 5 or 6 enemies. Its hardest maps: three or four Limes at 20 × 15, four
+  Blacks with two Reds at 32 × 24.
+
+### M13. Map sizes and a Generate button in the editor
+**Status:** done 2026-10-15 · **Size:** M
+
+Maps of your own come in six 4:3 sizes, 12 × 9 to 32 × 24 (`SCALES` in `rules.js`); missions
+stay 20 × 15. A world's grid says its own size (`gridSize`): `cellAt`, the engine, the AI (`fit`
+at every exported function), the renderer (laid out again when the size shown changes), the
+editor, `mapcheck.js` and the playtest bot all read it from there. In the editor, the side menu's
+Map size resizes a map round its middle (one undo step; you are never cut off), and a new map
+starts at the size last picked. Generate (a die, beside Play) makes a map at the current size
+with `mapgen.js`: the M12 generator, with a lead kind at random, a kind or two beside it, and the
+line under the arena saying what the map was made for ("Made for Green: long walls to bank shots
+off."). `tests/mapgen.test.mjs` covers both.
 
 ## C. Controls and screen
 
@@ -844,8 +962,8 @@ a close icon only repeated it (dropped 2026-10-14). The list holds Resume, Quit 
 while a mission is on. Since 2026-10-14 Resume is always there, the list has no title, the arena
 fades out and blurs behind it instead of a blur from the left edge, holding the home button goes
 straight back to the games, and Sound is one switch for the whole app in Settings. Leaving the app opens it, so a killed app reopens with it open. The menu
-is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku and 2048
-can switch to it too.
+is shared (`.side-menu` in `styles.css`, `setupSideMenu` in `shared/ui.js`), so Sudoku can switch
+to it too.
 
 ### C5. A tap that doesn't waste its shot on a wall
 **Status:** done 2026-10-14 · **Size:** S
@@ -914,18 +1032,47 @@ outside the map wall).
 A first version (same day) kept floor past the field, blurred toward the edges in the canvas, with
 a single wall only on the sides facing the header or the gutters; it went for wall all round.
 
+### C10. Sticks that come along, and auto aim you can switch off
+**Status:** done 2026-10-16 · **Size:** S
+
+- A stick dragged past its rim comes along under the thumb, as in Brawl Stars: its middle moves
+  so the thumb stays on the rim, and a drive or an aim keeps its direction however far the thumb
+  wanders. Back toward the stick's new middle, the aim cancels as before.
+- The side menu has two switches, on touch screens only and never in the editor, both on until
+  switched off and kept in `prefs` (`follow`, `autoAim`): "Sticks follow your thumb" and "Auto
+  aim". With auto aim off, the aim stick never shines, the turret never turns to an enemy by
+  itself, and a tap fires where you last aimed.
+- In landscape the mine button sits just above the screen's middle (it was centred on it, where
+  the sticks start), so an aiming thumb never lands on it.
+
 ## P. Polish
 
 Art only: none of it changes what a player can learn or do. From the Paint Study, under R6's
 light. Time each on an iPhone (a 3x screen).
 
 ### P1. Tanks with weight
-**Status:** idea · **Size:** M
+**Status:** in progress (Recoil and Exhaust puffs done 2026-10-15) · **Size:** M
 
-- **Recoil:** the barrel kicks back about 0.06 cells as it fires and eases out over 150 ms. One
-  number per tank.
-- **Exhaust puffs:** two small puffs from the rear as a tank pulls away or turns hard, from the
-  smoke the game already draws.
+- **Recoil** (**done** 2026-10-15)**:** the barrel kicks back about 0.06 cells as it fires and eases
+  out over 150 ms. One number per tank. Shipped, then redone the same day because 0.06 cells (about
+  1.4 px on a phone) couldn't be seen: `drawTank` takes `fired` (seconds since the shot, world time,
+  so it holds while paused) and `recoilAt` in `art.js` works out the rest from `RECOIL`. The gun
+  slides back in 30 ms, holds a beat and runs out over about 300 ms (shell 0.15 cells, a third of
+  its visible barrel; rocket 0.17; missile pod 0.12; minigun 0.04 a round, so it shudders while it
+  sprays). The turret jolts back 0.035 to 0.05 cells (the hull a third of that, a pad not at all)
+  and settles like a spring, about 15% past rest and back. A mortar's tube punches down 32% of its
+  size on the same spring and its turret gives a little; dust bursts out from under the pad.
+  Everything is at rest by 0.85 s. Kept pictures cover it (the slide in eighths in `POSE`, the jolt
+  as where the parts are laid), and a test holds the timing.
+- **Red's launcher** (**done** 2026-10-15, from a bug report)**:** its pods looked as if they swung
+  round the turret's edge instead of turning about its centre: the bright light sat behind the
+  centre and circled as the turret turned, and two parallel pods offset sideways slide round the
+  rim. The light is now on the turret's axis and the pods sit in a mount fixed to the turret; they
+  still fire in turn, and only the pod that fired slides back through the mount.
+- **Exhaust puffs** (**done** 2026-10-15)**:** two small puffs from the rear as a tank pulls away or
+  turns hard, from the smoke the game already draws. Shipped: on moving after 0.3 s still, or after
+  turning 0.8 rad at over 60% of its turn rate, at most every 0.5 s. Never from White, which they
+  would give away.
 - **Sprockets:** a wheel at each end of each tread, turning with the cleats, so a tank turning on
   the spot shows it.
 - **Suspension:** the hull rides a hair up and down over its treads while it drives.
@@ -934,10 +1081,29 @@ light. Time each on an iPhone (a 3x screen).
 - **A toy's shine:** a small soft highlight on every turret toward the light.
 
 ### P2. Shots
-**Status:** idea · **Size:** S
+**Status:** in progress (Ricochet sparks and a muzzle done 2026-10-15) · **Size:** S
 
-- **Ricochet sparks:** a short spark and a pale chip on the wall face where a shell bounces,
-  fading in a second. It teaches the bank shots the AI makes.
+- **Ricochet sparks** (**done** 2026-10-15)**:** a short spark and a pale chip on the wall face where
+  a shell bounces, fading in a second. It teaches the bank shots the AI makes. Shipped: `bounce`
+  and `pop` events carry the face's normal and the weapon, so sparks fly off the face (white and a
+  few orange streaks), with a flash and a puff of the block's dust; the chip is P3's Wall wear,
+  held a second and faded over two, so it stays long enough to read a bank line.
+- **Muzzle** (**done** 2026-10-15, added on the way)**:** a flame along the shot, white-hot at its
+  root (a rocket's muzzle brake also blows out of its sides), a flash of its light on the floor,
+  smoke pushed out after it and a few sparks. A missile's backblast blows smoke out behind the
+  tank; a minigun round gets a small flame and its casing.
+- **A laser's emitter** (**done** 2026-10-16, asked for)**:** the laser tanks' slim barrel with two
+  cooling rings read as a cannon. Now no barrel: a squat housing with two vents holds out a ruby
+  rod between two prongs, its point at the muzzle, dark red at rest and lit red with a white-hot
+  ridge while it charges and burns (`EMITTER`, `PRONG`, `ROD` in `art.js`). At the rod
+  (`lensAt`), from one function both renderers draw with (`drawLasers`): as it charges, a glow
+  growing on it and the floor, blinking with the line, two rings closing on it faster as it nears
+  firing, and sparks drawn in to it (`emitter`); as the beam lights, a 0.06-cell thump back
+  (`RECOIL.laser`), a flash, a ring and sparks off its point; as it burns, the beam flares where it
+  leaves the rod (a soft glow, a glare across it, its red light on the floor round the tank) and
+  sparks spit off either side; once it stops, a puff and a spark or two, and the rod cools from
+  white-hot to a dull red over 1.4 s. Under reduced motion: steady glows, no sparks drawn in or
+  rings.
 - **Trails by owner:** a rocket's smoke takes a hint of its owner's colour.
 - **Drawn, then left out:** a rocket's flame lighting the floor; a band in the owner's colour on
   rockets and rounds.
@@ -947,10 +1113,63 @@ light. Time each on an iPhone (a 3x screen).
 
 - **Wrecks:** a destroyed tank leaves its hull, dark and without its turret, on its scorch mark for
   the rest of the mission. Decoration only; it never blocks.
-- **Crate rubble:** a broken crate leaves a few splinters where it stood.
-- **Wall wear:** a ricochet leaves a pale chip on the wall that fades in a few seconds.
-- **Soft scorch:** scorch marks as soft dark stains, darkest in the middle, in place of today's
-  crossed strokes.
+- **Crate rubble** (**done** 2026-10-15)**:** a broken crate leaves a few splinters where it stood.
+  Shipped: four to six slivers and two chunks in the crate's greys, each over a small shadow along
+  the light, on the static floor for the rest of the mission (`drawRubble`).
+- **Wall wear** (**done** 2026-10-15)**:** a ricochet leaves a pale chip on the wall that fades in a
+  few seconds. Shipped (`chip` and `drawChips` in `render.js`): on the block, a soft bloom of dust
+  along the face; a pale flake spalled off the edge with a thin shadow under its rim toward the
+  light; a dark pock in it whose far rim catches the light; a short fan of tapering cracks into the
+  block; and crumbs on the floor in front. A shot that dies on the face leaves a bigger one with
+  more cracks, scorched by a rocket or missile; a minigun round, a small one with no cracks for
+  1.5 s. Clipped to the blocks, gone with a crate, at most 90. A first version (a pale blob with
+  hooked black cracks) looked cheap and was redrawn the same day.
+- **Dents that stay** (**done** 2026-10-16, from playing)**:** the dent stays for the mission,
+  painted into the floor once (`addDent`, so it costs nothing a frame); only the crumbs and the
+  bloom of dust fade. A square hit pocks a wall; a glancing one scrapes it lengthwise (`bounce` and
+  `pop` events now carry the shot's velocity). A crate, a toy, takes a shallow nick instead of a
+  stone spall: dark inside, its rim lit and shaded like the crate's own edges, its paint scuffed
+  either side. A hit beside a dent roughens that dent instead of adding another, growing it a
+  third at most: dents are paint, and blocks never wear away. Dents follow a wall's rounded
+  corners, and sit anywhere along a wall, not pushed apart at the joins between its cells. First
+  tries that were changed the same day: crate dents as pale flakes (they read as stone), then as a
+  deep bite (it read as the crate being eaten); evenly spaced blast pocks (rows of dots).
+- **Blast marks** (**done** 2026-10-16)**:** a mine or bomb leaves a scattered soot burn on the
+  floor (`blastBurn`: an uneven heart of soft blots, a spray of specks thinning outward, some
+  streaked the way they flew, fine grit; floor cells only), and peppers every wall face turned
+  toward it that it can see (`blastScars`): a soot stain on the faces close by, fragments' scores
+  across the block's top the way they flew, and 4 to 18 pits and scrapes a face, spread over the
+  edge and up to a fifth of a cell in, bigger and sooty close in; they never merge. First tries:
+  a star of sharp rays on the floor (it read as points), then too few, too small scars, and the
+  wall round the field left unscarred (blastScars skipped every cell past the map).
+- **Laser burns** (**done** 2026-10-16)**:** where a laser's beam meets a wall or crate it
+  scorches it for good (`laserBurn`): ragged char with pits and a hairline crack or two, in a wide
+  stain of soot reaching about half a cell into the block, in clouds, and streaked outward round a
+  spot where the beam was held; the heat's brown tint lies between the char and the soot. The spot
+  glows white-hot to red as it burns and cools over 2.5 s after. A beam that turns as it burns
+  (Night Indigo) drags one scorched streak along the face, charred deepest where it burned worst.
+  First tries: a thin black line in a faint stain (it read as a line, not a burn), then evenly
+  spaced cracks along a streak (a comb) and thick ones round a spot (a spider). Then (same day,
+  from playing) its soot came in all at once when the beam stopped: now it is laid as the beam
+  burns (`sear`, every 0.05 s), as much as how long the beam has stayed about there (`SEAR_SPREAD`:
+  what it laid counts a third as much 0.15 cells on), so a beam held still grows a wide dark stain
+  with streaks over its second, and Night Indigo's, turning, leaves a thin trail along the face.
+  The char goes in once the beam stops or moves on, as before.
+- **Lasting tracks** (**done** 2026-10-16)**:** tread marks fade over 9 s to a faint trace that
+  stays (`TRAIL_A`). With the GPU renderer the trace is a texture the floor is laid through, where
+  marks that overlap are no darker than one, so a path driven over and over doesn't turn black.
+- **Soft scorch** (**done** 2026-10-16)**:** a soft dark stain under the crossed strokes a destroyed
+  tank leaves. Shipped: a tank blowing up leaves what a landing bomb does (`blastMarks`, radius
+  `BOMB_R`): the Blast marks' soot burn on the floor, its X kept on top, and its shrapnel's scars
+  on every wall and crate face round it that it can see. Paint only: the explosion harms nothing
+  round it. The X is two crossed gouges torn into the floor (`drawX`), so it reads on the burn's
+  black: a ragged rim of ash, broken in places, and soft smudges of it round them; inside each, the
+  near wall in shadow, the charred bottom crazed into small plates with grit on it, and the far
+  wall lit by `LIGHT` as much as it faces it; pale chips spalled off the rims, the heat's brown
+  along them, a hairline crack or two near the ends and flecks of ash. On floor cells only, like
+  the burn. First tries: the burn in place of the X (the X stays); the old X, black on the black
+  burn; tapered gouges (a four-pointed star) with cracks off the tips (thorns); the lit walls in
+  strips (a comb); a ring of ash all round (a sticker).
 - **Spawn marks:** faint corner brackets where each enemy and you start, so a retry shows which
   ones come back.
 - **A tray:** the arena's frame drawn as a wall under the same light, so the tanks sit in a tray.
@@ -962,16 +1181,33 @@ light. Time each on an iPhone (a 3x screen).
   five missions (concrete, packed earth, steel deck, a dark hangar, all dark enough that the kind
   colours still lead), and the light moving from morning to evening across the campaign.
 
-### P4. Sprites per angle
-**Status:** idea · **Size:** M
+### P4. A GPU renderer
+**Status:** done 2026-10-16 · **Size:** L
 
-Only if soft tanks cost too much on a phone: draw each kind's lit hull and turret once at 64
-angles and reuse them, with cleats and moving parts drawn over.
+Was "Sprites per angle". Tanks looked pixelated on an iPhone 16 Pro Max and the game ran warm.
+Measured in the iPhone 16 Pro Max simulator (mission 20, eight tanks): the 2D renderer drew at 2x
+(the screen stretched it by 1.5, and its kept pictures landed on whole canvas pixels, so moving
+tanks shimmered) and repainted about five kept pictures every frame (a picture per kind, pose and
+degree never keeps up with tanks turning), with the WebKit GPU process at about 48% of a core and
+only about 47 fps. Raising it to 3x thinned the hard light's bands to 0.9 pt and made it worse.
+On the real phone a big 2D canvas on the screen also showed blurred on opening, until a rotation.
+
+Shipped: `gl.js` draws the arena with WebGL2 at the screen's own pixel ratio. A tank is painted
+once per look, unlit, cut into hull, gun and head with masks of their parts (`tankPlanes`), and the
+GPU lights it on every frame at its exact angle and position with `paintHard`'s bands and drop
+shadows (no band thinner than at 2x, in CSS px), lays its floor shadow from blurred masks, rolls its
+cleats and glows a minigun's barrels. Every look a tank can show is painted while the banner is up.
+Mines and bombs are drawn from their numbers, effects are shapes, tread marks are laid on the GPU
+once each, and the floor, built off the screen with a 2D context, is laid from a texture (a broken
+crate sends only its patch again). The 2D renderer stays as the fallback (no WebGL2, Lockdown
+Mode). Mission 20 now: about 1 ms of JavaScript a frame, most of it the simulation; the GPU process
+at about 13%; 60 fps at 3x. Shots, mines, bombs and effects match the 2D renderer to within about
+half a level of 255 on a test scene; the field guide is pixel for pixel the same.
 
 ## Suggested order
 
 Every entry has shipped (the last, M8, on 2026-10-14) except A3, M5, M6, M7 and the ideas added
-on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P4). Next:
+on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P3; P4 shipped 2026-10-16). Next:
 
 1. **C1 and C2 on a real iPhone:** the floating home button and stats in landscape, the stick
    size, the cancel zone and the 20% opacity.

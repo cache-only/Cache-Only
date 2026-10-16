@@ -24,9 +24,14 @@
         <svg class="icon"><use href="#i-home"/></svg>
       </button>
       <div class="bar-stats">
-        <div class="stat">
+        <div class="stat" id="levelStat">
           <span class="stat-label" id="levelLabel">&nbsp;</span>
           <span class="stat-value" id="timer">00:00</span>
+        </div>
+        <div class="lives bar-center" id="lives" role="img">
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
         </div>
       </div>
     </header>
@@ -38,15 +43,9 @@
       </div>
 
       <div class="controls">
-        <div class="tools">
-          <button type="button" class="tool" id="undoBtn"><span class="icon-btn"><svg class="icon"><use href="#i-undo"/></svg></span><span data-i18n="common.undo"></span></button>
-          <button type="button" class="tool" id="redoBtn"><span class="icon-btn"><svg class="icon"><use href="#i-redo"/></svg></span><span data-i18n="common.redo"></span></button>
-          <button type="button" class="tool" id="eraseBtn"><span class="icon-btn"><svg class="icon"><use href="#i-erase"/></svg></span><span data-i18n="sudoku.erase"></span></button>
-          <button type="button" class="tool" id="notesBtn" aria-pressed="false"><span class="icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span data-i18n="sudoku.notes"></span></button>
-          <button type="button" class="tool" id="hintBtn"><span class="icon-btn"><svg class="icon"><use href="#i-hint"/></svg></span><span data-i18n="sudoku.hint"></span></button>
-        </div>
-
-        <div class="keypad" id="pad">
+        <div class="keypad has-tools" id="pad">
+          <button type="button" class="key key-tool" id="notesBtn" aria-pressed="false"><svg class="icon"><use href="#i-pen"/></svg><span data-i18n="sudoku.notes"></span></button>
+          <button type="button" class="key key-tool" id="eraseBtn"><svg class="icon"><use href="#i-backspace"/></svg><span data-i18n="sudoku.erase"></span></button>
           <button type="button" class="key" data-d="1">1</button>
           <button type="button" class="key" data-d="2">2</button>
           <button type="button" class="key" data-d="3">3</button>
@@ -56,6 +55,19 @@
           <button type="button" class="key" data-d="7">7</button>
           <button type="button" class="key" data-d="8">8</button>
           <button type="button" class="key" data-d="9">9</button>
+        </div>
+
+        <!-- Before a puzzle: its difficulty, picked on a slider while the board shows where its
+             numbers will be. It takes the moves' place, so the board never moves. -->
+        <div class="chooser" id="chooser" role="group" aria-labelledby="pickName" hidden>
+          <div class="chooser-head">
+            <h2 class="t-title" id="pickName">&nbsp;</h2>
+            <p class="eyebrow" id="pickBest"></p>
+          </div>
+          <div class="slider" id="levelSlider" data-i18n-label="sudoku.difficulty"></div>
+          <div class="chooser-actions">
+            <button type="button" class="btn btn-primary" id="startBtn" data-i18n="sudoku.start"></button>
+          </div>
         </div>
       </div>
     </main>
@@ -67,42 +79,14 @@
       <button type="button" class="side-item" id="resumeBtn">
         <svg class="icon"><use href="#i-play"/></svg><span data-i18n="sudoku.resume"></span>
       </button>
-      <button type="button" class="side-item" id="menuNewBtn">
-        <svg class="icon"><use href="#i-new"/></svg><span data-i18n="sudoku.newPuzzle"></span>
+      <button type="button" class="side-item" id="quitBtn">
+        <svg class="icon"><use href="#i-flag"/></svg><span data-i18n="sudoku.quit"></span>
       </button>
-      <button type="button" class="side-item" id="menuEnterBtn">
-        <svg class="icon"><use href="#i-enter"/></svg><span data-i18n="sudoku.enter"></span>
-      </button>
-      <button type="button" class="side-item" id="shareBtn">
-        <svg class="icon"><use href="#i-share"/></svg><span data-i18n="sudoku.share"></span>
-      </button>
-      <label class="side-item">
-        <svg class="icon"><use href="#i-warn"/></svg><span data-i18n="sudoku.showConflicts"></span>
-        <input type="checkbox" class="switch" id="conflictsToggle" role="switch">
-      </label>
       <a class="side-item is-exit" href="/">
         <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
       </a>
     </nav>
   </div>
-
-  <dialog class="sheet" id="newSheet" aria-labelledby="newTitle">
-    <form method="dialog" class="sheet-inner">
-      <div class="sheet-head">
-        <h2 class="t-title" id="newTitle" data-i18n="sudoku.newPuzzle"></h2>
-        <button class="icon-btn" value="close" id="newClose" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
-      </div>
-      <section class="sheet-section">
-        <h3 class="eyebrow" data-i18n="sudoku.difficulty"></h3>
-        <div class="segmented" role="group" id="levels" data-i18n-label="sudoku.difficulty"></div>
-        <p class="t-note" id="levelInfo"></p>
-      </section>
-      <div class="sheet-actions">
-        <button type="button" class="btn" id="newEnterBtn" data-i18n="sudoku.enter"></button>
-        <button type="button" class="btn btn-primary" id="startBtn" data-i18n="sudoku.start"></button>
-      </div>
-    </form>
-  </dialog>
 
   <dialog class="sheet" id="doneSheet" aria-labelledby="doneTitle">
     <form method="dialog" class="sheet-inner">
@@ -113,38 +97,24 @@
       <dl class="facts">
         <dt data-i18n="sudoku.difficulty"></dt><dd id="doneLevel"></dd>
         <dt data-i18n="sudoku.time"></dt><dd class="is-num" id="doneTime"></dd>
-        <dt data-i18n="sudoku.hints"></dt><dd class="is-num" id="doneHints"></dd>
       </dl>
       <button type="button" class="btn btn-primary" id="doneNewBtn" data-i18n="sudoku.newPuzzle"></button>
     </form>
   </dialog>
 
-  <dialog class="sheet" id="enterSheet" aria-labelledby="enterTitle">
-    <form method="dialog" class="sheet-inner" id="enterForm">
+  <dialog class="sheet" id="lostSheet" aria-labelledby="lostTitle">
+    <form method="dialog" class="sheet-inner">
       <div class="sheet-head">
-        <h2 class="t-title" id="enterTitle" data-i18n="sudoku.enter"></h2>
-        <button class="icon-btn" value="close" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
+        <h2 class="t-title" id="lostTitle" data-i18n="sudoku.lost"></h2>
       </div>
-      <p class="t-body" data-i18n="sudoku.enterHelp"></p>
-      <textarea id="enterText" class="field" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
-      <p class="msg" id="enterMsg" role="status"></p>
-      <button type="button" class="btn btn-primary" id="enterGo" data-i18n="sudoku.enterPlay"></button>
+      <p class="t-body" data-i18n="sudoku.lostNote"></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="retryBtn" data-i18n="sudoku.retry"></button>
+        <button type="button" class="btn btn-primary" id="lostNewBtn" data-i18n="sudoku.newPuzzle"></button>
+      </div>
     </form>
   </dialog>
 
-  <dialog class="sheet" id="shareSheet" aria-labelledby="shareTitle">
-    <form method="dialog" class="sheet-inner">
-      <div class="sheet-head">
-        <h2 class="t-title" id="shareTitle" data-i18n="sudoku.share"></h2>
-        <button class="icon-btn" value="close" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
-      </div>
-      <p class="t-body" data-i18n="sudoku.shareHelp"></p>
-      <p class="field is-code" id="shareCode"></p>
-      <div class="sheet-actions">
-        <button type="button" class="btn" id="copyBtn"><svg class="icon"><use href="#i-copy"/></svg><span data-i18n="common.copy"></span></button>
-        <button type="button" class="btn btn-primary" id="sendBtn"><svg class="icon"><use href="#i-share"/></svg><span data-i18n="common.share"></span></button>
-      </div>
-    </form>
-  </dialog>
+  <p class="visually-hidden" id="announce" role="status" aria-live="polite"></p>
 </body>
 </html>

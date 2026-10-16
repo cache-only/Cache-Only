@@ -12,13 +12,19 @@
 // A tank's shape tells you what it can do; its colour only tells you which kind it is:
 //   barrel    the weapon: thin for shells, a muzzle brake (a wide double block across the
 //             tip) for rockets, twin launch pods and a red light for missiles, a wide round
-//             tube for mortar bombs, and a bundle of six barrels on a motor housing, which
-//             spins up before it fires, for a minigun
+//             tube for mortar bombs, a bundle of six barrels on a motor housing, which
+//             spins up before it fires, for a minigun, and for a laser no barrel at all: a
+//             ruby rod held out between two prongs, lit red while it fires. As it fires the gun slides back into
+//             the turret and runs out again while the turret and hull jolt back and settle (a
+//             mortar's tube punches down instead), and a minigun's barrels glow orange after a
+//             long spray
 //   treads    it moves; a bolted concrete pad instead means it never moves
 //   rear deck one disc per mine it can lay, gone while that mine is on the ground
 // Past about 14 colours, a kind can reuse another's colour with a pattern on its hull
 // (VARIANTS): hazard stripes, the rear deck left plain so its mine discs still read.
-import { BOMB_R, CRATE, FLOOR, HOLE, MUZZLE, TAU, TYPES, WALL } from './rules.js';
+// A night version (NIGHT in rules.js) wears its day kind's colour on a deep hull, with bright
+// cleats on its treads; turret and weapon stay as by day.
+import { BOMB_R, CRATE, FLOOR, HOLE, MUZZLE, POD, TAU, TYPES, WALL } from './rules.js';
 
 export const ART = 1.1; // tanks are drawn a little larger than their hit circle, like toys
 /** The screen angle the light travels at: from the top left, down and to the right. */
@@ -41,7 +47,6 @@ export const TOKENS = {
   crateDark: '--tk-crate-dark',
   hole: '--tk-hole',
   track: '--tk-track',
-  scorch: '--tk-scorch',
   shell: '--tk-shell',
   aim: '--tk-aim',
   ink: '--tk-ink',
@@ -76,23 +81,33 @@ export function shade(col, amount) {
 }
 
 const withAlpha = (col, a) => `rgba(${rgbOf(col).join(', ')}, ${a})`;
+/** Colour a mixed toward colour b by k (0-1), as #rrggbb. */
+function mix(a, b, k) {
+  const B = rgbOf(b);
+  return `#${rgbOf(a).map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('')}`;
+}
 const tonesOf = (base) => ({ base, dark: shade(base, -0.32), light: shade(base, 0.22), deep: shade(base, -0.55) });
+/** A night version's tones: its day kind's, with a deep hull and bright cleats. */
+const nightTonesOf = (base) => ({ ...tonesOf(base), hull: shade(base, -0.5), hullDark: shade(base, -0.66), cleat: shade(base, 0.35) });
 
 /**
  * The palette, read through get(name) -> CSS value, with four tones per tank kind (from the
- * --tk-<kind> colours).
+ * --tk-<kind> colours; a night version's from its day kind's, plus its hull and cleats).
  */
 export function makePalette(get) {
   const pal = {};
   for (const [key, name] of Object.entries(TOKENS)) pal[key] = get(name);
   pal.tanks = {};
-  for (const type of Object.keys(TYPES)) pal.tanks[type] = tonesOf(get(`--tk-${type}`) || '#888888');
+  for (const [type, T] of Object.entries(TYPES)) {
+    const col = get(`--tk-${T.base || type}`) || '#888888';
+    pal.tanks[type] = T.night ? nightTonesOf(col) : tonesOf(col);
+  }
   return pal;
 }
 
 /** Spare canvases for the soft light, made with create() (the caller's, so art.js has no DOM). */
 export function makeKit(create) {
-  return { scratch: create(), field: create(), floor: create(), small: create(), lit: create(), shade: create(), drop: create(), soft: create() };
+  return { scratch: create(), field: create(), floor: create(), steps: [create(), create()], lit: create(), shade: create(), drop: create(), soft: create() };
 }
 
 /* ---------- The light ---------- */
@@ -104,6 +119,17 @@ const LIT_STEP = 'rgba(255, 255, 255, 0.24)';
 const SHADE_STEP = 'rgba(0, 0, 0, 0.27)';
 const DROP_STEP = 'rgba(0, 0, 0, 0.26)';
 const BAND = 0.032; // cells: how far a lit or shaded edge reaches in
+// A tube (a barrel, a missile pod) is round across: its sides are lit and shaded
+// much further in than a flat part's edges, as far as reach of its width when the light falls
+// straight across it, less as it turns toward or away from the light, in steps so it reads as a
+// curve; and a little shade runs down both its sides, most when it points along the light (limb,
+// of its width), so it never looks flat. Its tip keeps a flat part's edge.
+const TUBE = { reach: 0.62, limb: 0.2 };
+const TUBE_STEPS = [1 / 3, 2 / 3, 1];
+const TUBE_LIT = 'rgba(255, 255, 255, 0.13)';
+const TUBE_SHADE = 'rgba(0, 0, 0, 0.17)';
+const LIMB_STEPS = [0.5, 1];
+const TUBE_LIMB = 'rgba(0, 0, 0, 0.12)';
 // Device px: no edge or layer shadow is ever narrower, or a phone-sized tank's light can't be seen.
 const BAND_MIN = 2.6;
 const DROP_MIN = 2.2;
@@ -184,7 +210,7 @@ function softShadow(c, build, col, d, blur, L) {
 }
 
 /** Light given off onto whatever is under it: added, so it brightens and never darkens. */
-function glow(c, x, y, r, col, a) {
+export function glow(c, x, y, r, col, a) {
   const g = c.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, withAlpha(col, a));
   g.addColorStop(1, withAlpha(col, 0));
@@ -225,14 +251,48 @@ function corners(c, x0, y0, x1, y1, tl, tr, br, bl) {
 }
 
 // A part's path carries its bounding box (x, y, w, h), so the frame that lights its edges can
-// hug it.
-const bound = (path, x, y, w, h) => Object.assign(path, { bounds: [x, y, w, h] });
-const rr = (x, y, w, h, r) => bound((c) => rrPath(c, x, y, w, h, r), x, y, w, h);
-const box = (x, y, w, h) => bound((c) => c.rect(x, y, w, h), x, y, w, h);
+// hug it, and grow(d): the same shape with its edge moved out by d (in by -d), or null once it
+// is gone, for shadows drawn as shapes (shadowsShaped, which the game uses for performance).
+const bound = (path, x, y, w, h, grow) => Object.assign(path, { bounds: [x, y, w, h], grow });
+const rr = (x, y, w, h, r) =>
+  bound((c) => rrPath(c, x, y, w, h, r), x, y, w, h, (d) => (w + 2 * d > 0 && h + 2 * d > 0 ? rr(x - d, y - d, w + 2 * d, h + 2 * d, Math.max(0, r + d)) : null));
+const box = (x, y, w, h) =>
+  bound((c) => c.rect(x, y, w, h), x, y, w, h, (d) => (w + 2 * d <= 0 || h + 2 * d <= 0 ? null : d > 0 ? rr(x - d, y - d, w + 2 * d, h + 2 * d, d) : box(x - d, y - d, w + 2 * d, h + 2 * d)));
 const disc = (x, y, r) => bound((c) => {
   c.moveTo(x + r, y);
   c.arc(x, y, r, 0, TAU);
-}, x - r, y - r, 2 * r, 2 * r);
+}, x - r, y - r, 2 * r, 2 * r, (d) => (r + d > 0 ? disc(x, y, r + d) : null));
+/** A convex polygon through points ([x, y] each, clockwise); grown, each edge moves out along its normal, the corners mitred. */
+const poly = (pts) => {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs);
+  const y0 = Math.min(...ys);
+  return bound((c) => {
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.closePath();
+  }, x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0, (d) => {
+    const n = pts.length;
+    const N = pts.map((p, i) => {
+      const q = pts[(i + 1) % n];
+      const l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      return [(q[1] - p[1]) / l, (p[0] - q[0]) / l];
+    });
+    const out = pts.map((p, i) => {
+      const a = N[(i + n - 1) % n];
+      const b = N[i];
+      const k = d / (1 + a[0] * b[0] + a[1] * b[1]);
+      return [p[0] + (a[0] + b[0]) * k, p[1] + (a[1] + b[1]) * k];
+    });
+    // Gone once shrinking turns an edge round.
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      if ((out[j][0] - out[i][0]) * (pts[j][0] - pts[i][0]) + (out[j][1] - out[i][1]) * (pts[j][1] - pts[i][1]) <= 0) return null;
+    }
+    return poly(out);
+  });
+};
 /** A square of half-size h with its corners cut by k: a stationary tank's pad. */
 const chamfer = (h, k) => bound((c) => {
   c.moveTo(-h + k, -h);
@@ -244,7 +304,7 @@ const chamfer = (h, k) => bound((c) => {
   c.lineTo(-h, h - k);
   c.lineTo(-h, -h + k);
   c.closePath();
-}, -h, -h, 2 * h, 2 * h);
+}, -h, -h, 2 * h, 2 * h, (d) => (h + d > 0 ? chamfer(h + d, Math.max(0, k + d * (2 - Math.SQRT2))) : null));
 
 function dot(c, x, y, r, fill) {
   c.fillStyle = fill;
@@ -271,8 +331,20 @@ function hash(a, b) {
 
 const RAD = 0.08; // the outside corners of walls, crates and pits
 const GAP = 0.04; // floor round each crate: crates are boxes, one a cell
+/** A crate's box in its cell: the floor left round it (gap) and its corners' radius, cells. */
+export const CRATE_BOX = { gap: GAP, radius: 0.07 };
 const WALL_CAST = 0.3; // how high walls and crates stand, as their shadows tell it
 const CRATE_CAST = 0.2;
+
+/**
+ * Adds wall cell (col, r) to c's path as drawGround draws it: a square whose outside corners are
+ * rounded where neither cell beside the corner is wall. kindAt(c, r): as drawGround takes it.
+ */
+export function wallCell(c, kindAt, col, r) {
+  const s = (dx, dy) => kindAt(col + dx, r + dy) === WALL;
+  const k = (sx, sy) => (!s(sx, 0) && !s(0, sy) ? RAD : 0);
+  corners(c, col, r, col + 1, r + 1, k(-1, -1), k(1, -1), k(1, 1), k(-1, 1));
+}
 
 /**
  * Floor, pits, shadows, walls and crates for a cols x rows patch under the light. kindAt(c, r)
@@ -399,12 +471,8 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT, area = [
   c.fill();
 
   // Walls: cells of wall as one shape, outside corners rounded. Crates: one box a cell.
-  const walls = (cc) => each(WALL, (col, r) => {
-    const s = (dx, dy) => is(WALL, col + dx, r + dy);
-    const k = (sx, sy) => (!s(sx, 0) && !s(0, sy) ? RAD : 0);
-    corners(cc, col, r, col + 1, r + 1, k(-1, -1), k(1, -1), k(1, 1), k(-1, 1));
-  });
-  const crates = (k = 0, rad = 0.07) => (cc) => each(CRATE, (col, r) => {
+  const walls = (cc) => each(WALL, (col, r) => wallCell(cc, kindAt, col, r));
+  const crates = (k = 0, rad = CRATE_BOX.radius) => (cc) => each(CRATE, (col, r) => {
     corners(cc, col + GAP + k, r + GAP + k, col + 1 - GAP - k, r + 1 - GAP - k, rad, rad, rad, rad);
   });
 
@@ -486,11 +554,31 @@ export function drawGround(c, pal, { cols, rows, kindAt, light = LIGHT, area = [
 /* ---------- Tanks ---------- */
 
 const TREADS = [rr(-0.43, -0.39, 0.86, 0.21, 0.05), rr(-0.43, 0.18, 0.86, 0.21, 0.05)];
+/**
+ * The cleats across each tread, hull units: one every `pitch`, from `from` (moved on by how far
+ * the tread has rolled) to before `to`, each `width` across, edge to edge of the tread. The GPU
+ * renderer (gl.js) draws them from these numbers too.
+ */
+export const CLEATS = { pitch: 0.14, width: 0.035, from: -0.42, to: 0.46 };
+const CLEAT = CLEATS.pitch; // how far apart the cleats on a tread are, hull units
+/**
+ * A hot minigun's glow along its barrels, turret units: from `from` (with the barrels' recoil),
+ * at `a1` of its strength by `mid` of the way to the muzzle, and `a2` at the muzzle, where it
+ * turns from fire toward white hot. gl.js draws it from these numbers too.
+ */
+export const HEAT = { from: 0.22, mid: 0.45, a1: 0.55, a2: 0.85 };
 const PAD = chamfer(0.44, 0.13);
 const HULL = rr(-0.37, -0.26, 0.74, 0.52, 0.09);
 const FRONT = rr(0.22, -0.2, 0.08, 0.4, 0.03);
 const REAR = rr(-0.3, -0.2, 0.08, 0.4, 0.03);
 const TURRET_R = 0.2 * ART;
+// A laser's emitter, turret units, along +x: a squat housing out of the turret, two prongs from
+// its front (the one on +y; the other is its mirror) and between them the ruby rod, its point at
+// the muzzle. LENS is the rod's middle, where render.js makes it glow.
+const EMITTER = rr(0.1, -0.125, 0.24, 0.25, 0.05);
+const PRONG = [[0.28, 0.05], [0.585, 0.05], [0.585, 0.07], [0.55, 0.108], [0.28, 0.108]];
+const ROD = [[0.36, 0], [0.395, -0.038], [0.51, -0.038], [0.55, 0], [0.51, 0.038], [0.395, 0.038]];
+export const LENS = 0.455;
 
 /** A variant's hazard stripes across the hull, slanting back from the nose, the rear deck plain. */
 function stripes(c, pal) {
@@ -517,42 +605,95 @@ function discSpots(n) {
   return Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * gap);
 }
 
+// Recoil, per weapon. The gun slides back `slide` cells in `back` seconds, holds for `hold`, and
+// runs out again over `out`; the turret jolts back `jolt` cells (the hull a third of that, unless
+// it sits on a pad) and settles like a spring, a little past rest and back. A mortar's tube
+// punches down by `sink` of its size on the same spring instead. A minigun's barrels shudder
+// round by round. A laser's emitter gives a small thump as its beam lights.
+const RECOIL = {
+  shell: { slide: 0.15, jolt: 0.04, back: 0.03, hold: 0.04, out: 0.3 },
+  rocket: { slide: 0.17, jolt: 0.05, back: 0.03, hold: 0.05, out: 0.34 },
+  missile: { slide: 0.12, jolt: 0.035, back: 0.03, hold: 0.04, out: 0.3 },
+  minigun: { slide: 0.04, jolt: 0.01, back: 0.012, hold: 0, out: 0.07 },
+  bomb: { sink: 0.32, jolt: 0, back: 0.03, hold: 0, out: 0.4 },
+  laser: { slide: 0.06, jolt: 0.025, back: 0.03, hold: 0.06, out: 0.32 },
+};
+const REST = { slide: 0, jolt: 0, side: 0 };
+
+/**
+ * Where a weapon's recoil is, age seconds after it fired (Infinity, or nothing fired: at rest):
+ * slide (0-1), the gun's travel back, and jolt (about -0.15 to 1), the spring the turret and a
+ * mortar's tube ride. Both are 0 again by back + hold + 2 out.
+ */
+export function recoilAt(weapon, age) {
+  const R = RECOIL[weapon];
+  if (!R || !(age >= 0) || age > R.back + R.hold + R.out * 2) return REST;
+  let slide = 0;
+  if (age < R.back) slide = 1 - (1 - age / R.back) ** 2;
+  else if (age < R.back + R.hold) slide = 1;
+  else if (age < R.back + R.hold + R.out) {
+    const x = (age - R.back - R.hold) / R.out;
+    slide = 1 - x * x * (3 - 2 * x);
+  }
+  let jolt;
+  if (age < R.back) jolt = age / R.back;
+  else {
+    const a = age - R.back;
+    jolt = Math.exp(-a / (R.out * 0.3)) * Math.cos((a / R.out) * Math.PI * 1.6);
+  }
+  return { slide, jolt, side: 0 };
+}
+
+/**
+ * Tank t as it sits mid-recoil (r, from recoilAt): moved back along its aim by the hull's share
+ * of the jolt, with its turret moved back the rest of it (kick, in its own frame).
+ */
+function posed(t, r) {
+  const R = RECOIL[TYPES[t.type].weapon];
+  if (!R || !r.jolt || !R.jolt) return t;
+  const back = R.jolt * r.jolt;
+  const hull = TYPES[t.type].speed ? back / 3 : 0;
+  return { ...t, x: t.x - Math.cos(t.turret) * hull, y: t.y - Math.sin(t.turret) * hull, kick: back - hull };
+}
+
 /**
  * A tank as a stack of layers, bottom first. Each layer: frame ('body' turns with the hull,
  * 'turret' with the turret), h (the height of its top, cells), drop (how far its shadow falls
  * on what is under it), solids ({ path, fill, decal?, bevel? }: a decal is drawn on its solid,
- * clipped to it, before the solid is lit) and decals (drawn on top, unlit).
+ * clipped to it, before the solid is lit) and decals (drawn on top, unlit). recoil is where its
+ * recoil is ({ slide, jolt }, from recoilAt) and side which of a missile tank's two pods fired
+ * (-1 left, 1 right; 0 both); heat (0-1) how hot a minigun's barrels are.
  */
-function model(pal, t, { phase = 0, mines, lit = false, roll = 0 }) {
+function model(pal, t, { phase = 0, mines, lit = false, roll = 0, recoil = REST, heat = 0, cleats: withCleats = true }) {
   const T = TYPES[t.type];
   const tone = pal.tanks[t.type] || pal.tanks.player;
   const left = mines ?? T.mines;
   const layers = [];
 
   // Base: treads with cleats that run edge to edge and roll as it drives, or a concrete pad
-  // bolted to the floor.
+  // bolted to the floor. (gl.js paints the treads bare, withCleats false, and rolls the cleats itself.)
   if (T.speed) {
-    const cleats = (y0) => (c) => {
-      c.fillStyle = tone.deep;
-      for (let k = -0.42 + (phase % 0.14); k < 0.46; k += 0.14) c.fillRect(k - 0.0175, y0, 0.035, 0.21);
-    };
+    const cleats = (y0) => withCleats ? (c) => {
+      c.fillStyle = tone.cleat || tone.deep;
+      for (let k = CLEATS.from + (phase % CLEAT); k < CLEATS.to; k += CLEAT) c.fillRect(k - CLEATS.width / 2, y0, CLEATS.width, 0.21);
+    } : undefined;
     layers.push({ frame: 'body', h: 0.1, solids: [
       { path: TREADS[0], fill: pal.tread, decal: cleats(-0.39) },
       { path: TREADS[1], fill: pal.tread, decal: cleats(0.18) },
     ], decals: [] });
   } else {
     layers.push({ frame: 'body', h: 0.08, solids: [{ path: PAD, fill: pal.plate, decal: (c) => {
-      for (const bx of [-0.33, 0.33]) for (const by of [-0.33, 0.33]) dot(c, bx, by, 0.045, pal.ink);
+      for (const bx of [-0.33, 0.33]) for (const by of [-0.33, 0.33]) dot(c, bx, by, 0.045, tone.cleat || pal.ink);
     } }], decals: [] });
   }
 
   // Hull: a variant's stripes, plates with rounded corners at the front and back, or mine discs
   // on the rear deck, one each, a socket for each one laid.
-  layers.push({ frame: 'body', h: 0.18, drop: 0.045, solids: [{ path: HULL, fill: tone.base, decal: (c) => {
+  layers.push({ frame: 'body', h: 0.18, drop: 0.045, solids: [{ path: HULL, fill: tone.hull || tone.base, decal: (c) => {
     if (VARIANTS[t.type]) stripes(c, pal);
-    fillPath(c, FRONT, tone.dark);
+    fillPath(c, FRONT, tone.hullDark || tone.dark);
     if (!T.mines) {
-      fillPath(c, REAR, tone.dark);
+      fillPath(c, REAR, tone.hullDark || tone.dark);
       return;
     }
     discSpots(T.mines).forEach((y, i) => {
@@ -566,51 +707,99 @@ function model(pal, t, { phase = 0, mines, lit = false, roll = 0 }) {
     });
   } }], decals: [] });
 
-  // Weapon, under the turret. A barrel reaches the real muzzle, where shots appear.
+  // Weapon, under the turret. A barrel reaches the real muzzle, where shots appear, less its
+  // recoil: it slides back into the turret as it fires and out again.
   const weapon = { frame: 'turret', h: 0.24, drop: 0.06, solids: [], decals: [] };
   const metal = (path, extra) => ({ path, fill: tone.dark, ...extra });
-  if (T.weapon === 'shell') weapon.solids.push(metal(box(0.08, -0.065, MUZZLE - 0.08, 0.13)));
+  const back = (RECOIL[T.weapon]?.slide || 0) * recoil.slide;
+  const gun = (x, y, w, h) => box(x - back, y, w, h);
+  if (T.weapon === 'shell') weapon.solids.push(metal(gun(0.08, -0.065, MUZZLE - 0.08, 0.13), { tube: 0.13 }));
   else if (T.weapon === 'rocket') {
     // A heavy barrel ending in a muzzle brake: two wide baffles across the tip, so the gun
     // reads as a hammerhead, wide at the end where a shell barrel stays thin.
-    weapon.solids.push(metal(box(0.08, -0.075, MUZZLE - 0.08, 0.15)));
-    for (const x of [MUZZLE - 0.15, MUZZLE - 0.065]) weapon.solids.push(metal(box(x, -0.14, 0.065, 0.28)));
+    weapon.solids.push(metal(gun(0.08, -0.075, MUZZLE - 0.08, 0.15), { tube: 0.15 }));
+    for (const x of [MUZZLE - 0.15, MUZZLE - 0.065]) weapon.solids.push(metal(gun(x, -0.14, 0.065, 0.28)));
   } else if (T.weapon === 'missile') {
-    for (const side of [-1, 1]) weapon.solids.push(metal(box(0.02, side * 0.11 - 0.065, 0.44, 0.13)));
+    // A launcher: two pods side by side in a mount fixed to the turret where they leave it, so
+    // the pair reads as one piece that turns with the turret. They fire in turn, and only the pod
+    // that fired slides back through the mount (both, when they fire together).
+    const kick = (pod) => (!recoil.side || recoil.side === pod ? back : 0);
+    for (const pod of [-1, 1]) weapon.solids.push(metal(box(0.02 - kick(pod), pod * POD - 0.065, 0.44, 0.13), { tube: 0.13 }));
+    weapon.solids.push(metal(box(0.16, -POD - 0.09, 0.12, 2 * POD + 0.18), { fill: tone.deep }));
     weapon.decals.push((c) => {
-      for (const side of [-1, 1]) dot(c, 0.4, side * 0.11, 0.035, pal.ink);
+      for (const pod of [-1, 1]) dot(c, 0.4 - kick(pod), pod * POD, 0.035, pal.ink);
     });
   } else if (T.weapon === 'minigun') {
     // Six barrels bound by a clamp. roll turns the bundle on its axis: seen from above, the
-    // barrels slide across each other as it spins, the nearest drawn last and lightest.
+    // barrels slide across each other as it spins, the nearest drawn last and lightest. Hot,
+    // they glow orange toward their tips, the nearest brightest, and white-hot at the end.
+    const hot = Math.max(0, Math.min(1, heat));
+    const tip = mix(pal.fire, pal.flash, Math.max(0, hot - 0.5) * 1.6);
+    const glowing = hot > 0.01 && ((c, near) => {
+      const k = hot * (0.7 + 0.3 * near);
+      const g = c.createLinearGradient(HEAT.from - back, 0, MUZZLE - back, 0);
+      g.addColorStop(0, withAlpha(pal.fire, 0));
+      g.addColorStop(HEAT.mid, withAlpha(pal.fire, HEAT.a1 * k));
+      g.addColorStop(1, withAlpha(tip, HEAT.a2 * k));
+      c.fillStyle = g;
+      c.fillRect(0.2 - back, -0.2, MUZZLE - 0.2, 0.4);
+    });
     Array.from({ length: 6 }, (_, i) => roll + (i * TAU) / 6)
       .map((a) => ({ y: 0.075 * Math.sin(a), near: Math.cos(a) }))
       .sort((a, b) => a.near - b.near)
       .forEach((b) => {
         const fill = b.near > 0.5 ? tone.base : b.near > -0.5 ? tone.dark : tone.deep;
-        weapon.solids.push({ path: box(0.2, b.y - 0.027, MUZZLE - 0.2, 0.054), fill, bevel: false });
+        const decal = glowing ? (c) => glowing(c, b.near) : undefined;
+        // near: how much of the glow this barrel shows (gl.js glows the barrels itself).
+        weapon.solids.push({ path: gun(0.2, b.y - 0.027, MUZZLE - 0.2, 0.054), fill, bevel: false, decal, near: b.near });
       });
-    weapon.solids.push(metal(box(0.42, -0.125, 0.045, 0.25), { bevel: false }));
+    weapon.solids.push(metal(gun(0.42, -0.125, 0.045, 0.25), { bevel: false }));
+  } else if (T.weapon === 'laser') {
+    // No barrel, since nothing comes out of it but light: a squat housing with two vents across
+    // it holds out a ruby rod between two prongs, its point at the muzzle (EMITTER, PRONG, ROD).
+    // The rod is dark at rest, its ridge catching a little light, and lit red with a white-hot
+    // ridge while the laser charges and burns (lit); render.js makes it glow as it charges and
+    // cool after (lensAt).
+    const at = (pts) => pts.map(([x, y]) => [x - back, y]);
+    const [hx, hy, hw, hh] = EMITTER.bounds;
+    weapon.solids.push(metal(rr(hx - back, hy, hw, hh, 0.05), { decal: (c) => {
+      c.fillStyle = tone.deep;
+      for (const x of [0.25, 0.29]) c.fillRect(x - back, -0.085, 0.02, 0.17);
+    } }));
+    weapon.solids.push(metal(poly(at(PRONG.map(([x, y]) => [x, -y]).reverse()))));
+    weapon.solids.push(metal(poly(at(PRONG))));
+    weapon.solids.push({ path: poly(at(ROD)), fill: lit ? pal.alarm : shade(pal.alarm, -0.42), decal: (c) => {
+      c.strokeStyle = lit ? pal.flash : shade(pal.alarm, 0.25);
+      c.lineWidth = 0.016;
+      c.beginPath();
+      c.moveTo(ROD[0][0] + 0.02 - back, 0);
+      c.lineTo(ROD[3][0] - 0.02 - back, 0);
+      c.stroke();
+    } });
   }
 
-  // On top of the turret: a mortar tube leaning a little toward its aim, the minigun's motor
-  // housing, a missile tank's light (lit while one of its missiles is in the air), or a hatch.
+  // On top of the turret: a mortar tube leaning a little toward its aim (it punches down into
+  // the turret as it lobs and springs back up), the minigun's motor housing, a missile tank's
+  // light on the turret's axis (lit while one of its missiles is in the air), or a hatch.
   const top = { frame: 'turret', h: 0.31, drop: 0.035, solids: [], decals: [] };
+  const sink = T.weapon === 'bomb' ? 1 - RECOIL.bomb.sink * recoil.jolt : 1;
   if (T.weapon === 'bomb') {
-    top.solids.push({ path: disc(0.035, 0, 0.15), fill: tone.deep, decal: (c) => dot(c, 0.045, 0, 0.095, pal.ink) });
+    top.solids.push({ path: disc(0.035 * sink, 0, 0.15 * sink), fill: tone.deep, decal: (c) => dot(c, 0.045 * sink, 0, 0.095 * sink, pal.ink) });
   } else if (T.weapon === 'minigun') {
     top.solids.push({ path: rr(-0.08, -0.14, 0.36, 0.28, 0.06), fill: tone.dark, decal: (c) => {
       for (const y of [-0.075, 0.075]) dot(c, -0.01, y, 0.03, pal.ink);
     } });
   } else if (T.weapon === 'missile') {
     top.decals.push((c) => {
-      dot(c, -0.05 * ART, 0, 0.085, lit ? pal.flash : tone.deep);
-      dot(c, -0.05 * ART, 0, 0.055, lit ? pal.alarm : pal.ink);
+      dot(c, 0, 0, 0.085, lit ? pal.flash : tone.deep);
+      dot(c, 0, 0, 0.055, lit ? pal.alarm : pal.ink);
     });
   } else top.decals.push((c) => dot(c, -0.05 * ART, 0, 0.065 * ART, tone.dark));
 
   layers.push(weapon);
-  layers.push({ frame: 'turret', h: 0.27, drop: 0.06, solids: [{ path: disc(0, 0, TURRET_R), fill: tone.light }], decals: [] });
+  // A mortar's turret gives a little under its tube.
+  const ring = TURRET_R * (1 - (1 - sink) * 0.2);
+  layers.push({ frame: 'turret', h: 0.27, drop: 0.06, solids: [{ path: disc(0, 0, ring), fill: tone.light }], decals: [] });
   layers.push(top);
   return layers;
 }
@@ -627,7 +816,10 @@ function enter(c, t, frame) {
   if (frame === 'body') {
     c.scale(ART, ART);
     c.rotate(t.body);
-  } else c.rotate(t.turret);
+  } else {
+    c.rotate(t.turret);
+    if (t.kick) c.translate(-t.kick, 0);
+  }
 }
 
 function union(c, solids) {
@@ -664,6 +856,26 @@ function edgeBand(c, path, dx, dy, fill) {
   c.fillStyle = fill;
   c.fill('evenodd');
   c.restore();
+}
+
+/**
+ * Tube s's light across it (TUBE), in the frame c's transform is in, the tube along its x axis:
+ * band(dx, dy, fill) lays each of its bands as edgeBand does (dx, dy in device px).
+ */
+function tubeBands(c, s, L, band) {
+  const M = c.getTransform();
+  const k = Math.hypot(M.c, M.d); // device px a frame unit, across the tube
+  const ax = M.c / k;
+  const ay = M.d / k;
+  const across = L.x * ax + L.y * ay; // how much of the light falls across it, -1 to 1
+  const reach = TUBE.reach * s.tube * k * across;
+  for (const f of TUBE_STEPS) {
+    band(ax * reach * f, ay * reach * f, TUBE_LIT);
+    band(-ax * reach * f, -ay * reach * f, TUBE_SHADE);
+  }
+  const limb = TUBE.limb * s.tube * k * (1 - Math.abs(across));
+  if (limb < 0.25) return;
+  for (const f of LIMB_STEPS) for (const side of [1, -1]) band(ax * limb * f * side, ay * limb * f * side, TUBE_LIMB);
 }
 
 /**
@@ -705,41 +917,54 @@ function paintHard(c, t, layers, L) {
         edgeBand(c, s.path, L.x * band * k, L.y * band * k, LIT_STEP);
         edgeBand(c, s.path, -L.x * band * k, -L.y * band * k, SHADE_STEP);
       }
+      if (s.tube) tubeBands(c, s, L, (dx, dy, fill) => edgeBand(c, s.path, dx, dy, fill));
     }
     for (const d of layer.decals) d(c);
     c.restore();
   });
 }
 
+/** Draws the fw x fh corner of canvas from into the tw x th corner of canvas to, cleared first. */
+function rescale(from, fw, fh, to, tw, th) {
+  // One pixel more is cleared, so smoothing at the far edge never picks up an older picture.
+  const cw = Math.ceil(tw) + 1;
+  const ch = Math.ceil(th) + 1;
+  if (to.width < cw || to.height < ch) {
+    to.width = Math.max(to.width, cw);
+    to.height = Math.max(to.height, ch);
+  }
+  const c = to.getContext('2d');
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, cw, ch);
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'low';
+  c.drawImage(from, 0, 0, fw, fh, 0, 0, tw, th);
+  return c;
+}
+
 /**
- * Blurs the w x h corner of canvas src into canvas out, painted in col: drawn down to a small
- * canvas and back up, smoothing as it scales, about blur device px. No canvas shadows, which some
- * iPhones drop when one canvas is drawn onto another.
+ * Blurs the w x h corner of canvas src into canvas out, painted in col, by about blur device px:
+ * halved again and again (each step a plain average of 2 x 2 pixels) to about 1/blur of its size,
+ * the nearest power of two, then doubled back up the same way, smoothing as it scales. Only ever
+ * by exactly 2 in one draw: shrunk by more, iPhones sample the source rather than average it
+ * (whatever imageSmoothingQuality says), and by less, they weigh its pixels unevenly, so a thin
+ * edge drops out or turns into a block and a moving tank's light and shadow jump and flicker:
+ * it looks pixelated. steps: two spare canvases the steps are drawn on in turn. No canvas
+ * shadows, which some iPhones drop when one canvas is drawn onto another.
  */
-function soften(small, src, out, w, h, blur, col) {
-  const f = Math.max(1, Math.round(blur));
-  const sw = Math.max(1, Math.ceil(w / f));
-  const sh = Math.max(1, Math.ceil(h / f));
-  if (small.width < sw || small.height < sh) {
-    small.width = Math.max(small.width, sw);
-    small.height = Math.max(small.height, sh);
+function soften(steps, src, out, w, h, blur, col) {
+  const n = Math.max(0, Math.round(Math.log2(Math.max(1, blur))));
+  const at = (k) => [w / 2 ** k, h / 2 ** k]; // the size after k steps down
+  let from = src;
+  for (let k = 1; k <= n; k++) {
+    rescale(from, ...at(k - 1), steps[k % 2], ...at(k));
+    from = steps[k % 2];
   }
-  if (out.width < w || out.height < h) {
-    out.width = Math.max(out.width, w);
-    out.height = Math.max(out.height, h);
+  for (let k = n - 1; k >= 1; k--) {
+    rescale(from, ...at(k + 1), steps[k % 2], ...at(k));
+    from = steps[k % 2];
   }
-  const s = small.getContext('2d');
-  s.setTransform(1, 0, 0, 1, 0, 0);
-  s.clearRect(0, 0, sw, sh);
-  s.imageSmoothingEnabled = true;
-  s.imageSmoothingQuality = 'high';
-  s.drawImage(src, 0, 0, w, h, 0, 0, w / f, h / f);
-  const o = out.getContext('2d');
-  o.setTransform(1, 0, 0, 1, 0, 0);
-  o.clearRect(0, 0, w, h);
-  o.imageSmoothingEnabled = true;
-  o.imageSmoothingQuality = 'high';
-  o.drawImage(small, 0, 0, w / f, h / f, 0, 0, w, h);
+  const o = rescale(from, ...at(Math.min(n, 1)), out, w, h);
   o.globalCompositeOperation = 'source-in';
   o.fillStyle = col;
   o.fillRect(0, 0, w, h);
@@ -794,6 +1019,15 @@ function paintSoft(c, t, layers, L, kit, size) {
         fillIn(mk.lit, layer.frame, one, L.x * band, L.y * band, 'destination-out');
         fillIn(mk.shade, layer.frame, one);
         fillIn(mk.shade, layer.frame, one, -L.x * band, -L.y * band, 'destination-out');
+        if (s.tube) {
+          // Into the masks as strong as its steps are against the soft light's own.
+          for (const m of [mk.lit, mk.shade]) {
+            m.setTransform(base);
+            enter(m, t, layer.frame);
+          }
+          const soft = (fill) => `rgba(0, 0, 0, ${alphaOf(fill) / alphaOf(fill === TUBE_LIT ? LIT : SHADE)})`;
+          tubeBands(c, s, L, (dx, dy, fill) => edgeBand(fill === TUBE_LIT ? mk.lit : mk.shade, s.path, dx, dy, soft(fill)));
+        }
       } else {
         fillIn(mk.lit, layer.frame, one, 0, 0, 'destination-out');
         fillIn(mk.shade, layer.frame, one, 0, 0, 'destination-out');
@@ -804,7 +1038,7 @@ function paintSoft(c, t, layers, L, kit, size) {
   });
   // Blur each mask, then lay it on the tank, only where the tank is painted.
   for (const [m, col, blur] of [[mk.lit, LIT, EDGE_BLUR], [mk.shade, SHADE, EDGE_BLUR], [mk.drop, DROP, DROP_BLUR]]) {
-    const soft = soften(kit.small, m.canvas, kit.soft, size, size, L.soft * blur * u, col);
+    const soft = soften(kit.steps, m.canvas, kit.soft, size, size, L.soft * blur * u, col);
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'source-atop';
@@ -837,37 +1071,54 @@ function stage(cv, M, t, unit) {
  * A tank at (t.x, t.y), hull turned to t.body, turret to t.turret. opts: phase (how far its
  * tread cleats have rolled), mines (discs still on the rear deck; the rest are laid), lit (a
  * missile tank's light: one of its missiles is in the air), roll (how far a minigun's barrels
- * have turned on their axis), alpha, light (the screen angle it travels at), kit (makeKit's
- * canvases: the tank is painted on one and laid down at once, so a fading tank fades as one
- * piece, and it gets the soft light; without one it is painted straight on c, lit hard).
+ * have turned on their axis), fired (seconds since it last fired, for its recoil), side (which of
+ * a missile tank's pods that was: -1 left, 1 right, 0 both), heat (0-1: how
+ * hot a minigun's barrels are; they glow, and light the floor round their tips), alpha, light
+ * (the screen angle it travels at), kit (makeKit's canvases: the tank is painted on one and laid
+ * down at once, so a fading tank fades as one piece, and it gets the soft light; without one it
+ * is painted straight on c, lit hard), sprites (makeSprites' kept pictures, the game's way: lit
+ * hard like a badge, and painted only when it looks different; see drawKept).
  */
-export function drawTank(c, pal, t, { phase = 0, mines, lit = false, roll = 0, alpha = 1, light = LIGHT, kit = null } = {}) {
+export function drawTank(c, pal, at, { phase = 0, mines, lit = false, roll = 0, fired = Infinity, side = 0, heat = 0, alpha = 1, light = LIGHT, kit = null, sprites = null } = {}) {
   const M = c.getTransform();
   const L = lightOf(M, light);
-  const layers = model(pal, t, { phase, mines, lit, roll });
-  if (!kit) {
+  const recoil = { ...recoilAt(TYPES[at.type].weapon, fired), side };
+  const t = posed(at, recoil);
+  const pose = { phase, mines, lit, roll, recoil, heat };
+  if (sprites) drawKept(c, pal, t, pose, alpha, M, L, light, sprites);
+  else if (!kit) {
     c.save();
     c.globalAlpha *= alpha;
-    paintHard(c, t, layers, L);
+    paintHard(c, t, model(pal, t, pose), L);
     c.restore();
-    return;
+  } else {
+    const layers = model(pal, t, pose);
+    const { s, S, ox, oy } = stage(kit.scratch, M, t, L.unit);
+    if (EDGE_BLUR * L.unit < SOFT_FROM) paintHard(s, t, layers, L);
+    else paintSoft(s, t, layers, L, kit, S);
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha *= alpha;
+    c.drawImage(kit.scratch, 0, 0, S, S, ox, oy, S, S);
+    c.restore();
   }
-  const { s, S, ox, oy } = stage(kit.scratch, M, t, L.unit);
-  if (EDGE_BLUR * L.unit < SOFT_FROM) paintHard(s, t, layers, L);
-  else paintSoft(s, t, layers, L, kit, S);
-  c.save();
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  c.globalAlpha *= alpha;
-  c.drawImage(kit.scratch, 0, 0, S, S, ox, oy, S, S);
-  c.restore();
+  if (heat > 0.01 && TYPES[t.type].weapon === 'minigun') {
+    const d = MUZZLE - 0.08 - RECOIL.minigun.slide * recoil.slide - (t.kick || 0);
+    glow(c, t.x + Math.cos(t.turret) * d, t.y + Math.sin(t.turret) * d, 0.42, pal.fire, 0.3 * Math.min(1, heat) * alpha);
+  }
 }
 
-/** Fills tank t's parts into mask m (transform at), each moved along the light by its height. */
-function castInto(m, at, M, pal, t, alpha, L) {
+/**
+ * Fills tank t's parts into mask m (transform at), each moved along the light by its height, as
+ * it sits fired seconds after its last shot (side: the pod that fired).
+ */
+function castInto(m, at, M, pal, tank, alpha, L, fired, side = 0) {
   const w = toWorld(M, L.x, L.y);
+  const recoil = { ...recoilAt(TYPES[tank.type].weapon, fired), side };
+  const t = posed(tank, recoil);
   m.globalAlpha = alpha;
   m.fillStyle = '#000';
-  for (const layer of model(pal, t, {})) {
+  for (const layer of model(pal, t, { recoil })) {
     if (!layer.solids.length) continue;
     const k = layer.h * CAST * L.unit;
     m.setTransform(at);
@@ -881,21 +1132,27 @@ function castInto(m, at, M, pal, t, alpha, L) {
 
 /**
  * Tanks' shadows on the floor: every part of each, moved along the light by its height, all
- * filled into one mask the size of c, blurred once by scaling and laid down. tanks: [{ t, alpha }]. Draw
+ * filled into one mask the size of c, blurred once by scaling and laid down. tanks: [{ t, alpha,
+ * fired, side }] (fired and side as drawTank takes them, for its recoil). Draw
  * them all before any tank, so no tank's shadow falls on another tank. Without a kit, each part
- * is laid down as it is, hard.
+ * is laid down as it is, hard. shaped (the game's way): soft, but drawn as shapes, with no mask
+ * and no spare canvas at all (shadowsShaped).
  */
-export function drawShadows(c, pal, tanks, { light = LIGHT, kit = null } = {}) {
+export function drawShadows(c, pal, tanks, { light = LIGHT, kit = null, shaped = false } = {}) {
   if (!tanks.length) return;
   const M = c.getTransform();
   const L = lightOf(M, light);
+  if (shaped) {
+    shadowsShaped(c, pal, tanks, M, L);
+    return;
+  }
   if (!kit) {
     c.save();
-    for (const { t, alpha = 1 } of tanks) {
+    for (const { t, alpha = 1, fired, side } of tanks) {
       c.setTransform(M);
       c.globalAlpha = alpha * 0.6;
       c.fillStyle = pal.shadow;
-      castInto(c, M, M, pal, t, alpha * 0.6, L);
+      castInto(c, M, M, pal, t, alpha * 0.6, L, fired, side);
     }
     c.restore();
     return;
@@ -910,8 +1167,8 @@ export function drawShadows(c, pal, tanks, { light = LIGHT, kit = null } = {}) {
   const m = field.getContext('2d');
   m.setTransform(1, 0, 0, 1, 0, 0);
   m.clearRect(0, 0, W, H);
-  for (const { t, alpha = 1 } of tanks) castInto(m, M, M, pal, t, alpha, L);
-  const soft = soften(kit.small, field, kit.floor, W, H, CAST_BLUR * L.unit, pal.shadow);
+  for (const { t, alpha = 1, fired, side } of tanks) castInto(m, M, M, pal, t, alpha, L, fired, side);
+  const soft = soften(kit.steps, field, kit.floor, W, H, CAST_BLUR * L.unit, pal.shadow);
   c.save();
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.drawImage(soft, 0, 0, W, H, 0, 0, W, H);
@@ -935,6 +1192,416 @@ export function drawBadge(c, pal, kind, w, h, kit = null) {
   c.restore();
 }
 
+/* ---------- The game's tanks and shadows, for performance ---------- */
+
+// PERFORMANCE. A lit tank takes dozens of clipped fills to paint, and the game used to paint
+// every tank that way on every frame, and blur a mask the size of the screen for their shadows:
+// about 7 ms a tank and 12 ms for seven shadows in the iPhone simulator, against 0.2 ms a tank
+// in release 0.1.0, which drained the battery. So in game:
+// - each tank is cut into the two parts that turn apart, its hull (the 'body' layers) and its
+//   turret (the 'turret' layers), and each part is painted once for each way it can look and
+//   kept, by its kind, its angle to the nearest degree and its pose (POSE). A frame lays the
+//   kept pictures straight on the screen's canvas (drawKept).
+// - shadows are drawn as shapes, straight on the screen's canvas (shadowsShaped).
+// Nothing is drawn on a spare canvas and laid down in the same frame, but for a tank fading in
+// or out: in WebKit that costs about a millisecond each time (it waits for the spare canvas to
+// be finished), where laying down a picture that has not changed costs next to nothing.
+// Tanks are lit hard here, exactly as a badge is, so the game's tanks look like the menu's.
+
+const ANGLE_STEP = TAU / 360; // a kept part is painted at its angle to the nearest degree
+const MAX_KEPT = 480; // pictures kept, the least recently used dropped first: about 15 MB on a phone
+
+/**
+ * PERFORMANCE: what makes a kept part look different, besides its kind and its angle: every
+ * input model() reads, under the part it changes, rounded to steps too small to see. moving: a
+ * pose that changes from frame to frame (a kick, hot barrels), painted fresh each frame and
+ * never kept. A new input to model() must be added here, or a kept picture keeps showing the
+ * old look.
+ */
+const POSE = {
+  body(T, o) {
+    // The cleats repeat every CLEAT, in eighths (under half a point each on a phone).
+    const step = CLEAT / 8;
+    const phase = T.speed ? (Math.round((((o.phase % CLEAT) + CLEAT) % CLEAT) / step) % 8) * step : 0;
+    return { phase, mines: T.mines ? (o.mines ?? T.mines) : 0, moving: false };
+  },
+  turret(T, o) {
+    // Recoil is kept too: the gun's slide in eighths (half a point a step on a phone), which pod
+    // slid, and the spring only for a mortar's tube (it moves everyone else's turret, which
+    // drawKept lays down at an offset instead).
+    const r = o.recoil || REST;
+    const slide = Math.round(r.slide * 8) / 8;
+    const jolt = T.weapon === 'bomb' ? Math.round(r.jolt * 8) / 8 : 0;
+    const recoil = { slide, jolt, side: slide > 0 ? r.side || 0 : 0 };
+    const heat = T.weapon === 'minigun' && o.heat > 0.01 ? o.heat : 0;
+    // Six barrels look the same every sixth of a turn: in eighths of that.
+    const pitch = TAU / 6;
+    const roll = T.weapon === 'minigun' ? (Math.round((((o.roll % pitch) + pitch) % pitch) / (pitch / 8)) % 8) * (pitch / 8) : 0;
+    return { recoil, heat, roll, lit: (T.weapon === 'missile' || T.weapon === 'laser') && !!o.lit, moving: heat > 0 };
+  },
+};
+
+// A kept picture is a square with the tank's centre at its middle, device px for a cell of
+// unit: room for a part, its light, and the turret's shadow on the hull.
+const partSize = (unit) => 2 * Math.ceil(0.8 * unit + 2);
+
+/**
+ * The game's kept pictures, for one canvas (render.js makes one), with create() making the
+ * canvases (so art.js has no DOM). PERFORMANCE: see the section's note above.
+ */
+export function makeSprites(create) {
+  return { create, pal: null, sig: '', kept: new Map(), spare: [], fade: create() };
+}
+
+/** Drops every kept picture when what they were painted for changes: the palette, the scale, the arena's turn or the light. */
+function keepFor(sp, pal, M, light) {
+  const sig = `${[M.a, M.b, M.c, M.d].map((v) => v.toFixed(4)).join()}:${light}`;
+  if (sp.pal === pal && sp.sig === sig) return;
+  for (const cv of sp.kept.values()) sp.spare.push(cv);
+  sp.kept.clear();
+  sp.pal = pal;
+  sp.sig = sig;
+}
+
+/** Makes canvas cv at least size x size and clears that much. */
+function blank(cv, size) {
+  if (cv.width < size || cv.height < size) {
+    cv.width = Math.max(cv.width, size);
+    cv.height = Math.max(cv.height, size);
+  }
+  const g = cv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, size, size);
+  return g;
+}
+
+/** The kept picture under key, painted by paint(g) on a cleared size x size canvas the first time it is asked for. */
+function kept(sp, key, size, paint) {
+  let cv = sp.kept.get(key);
+  if (cv) {
+    // The most recently used goes last, so the first is always the one to drop.
+    sp.kept.delete(key);
+    sp.kept.set(key, cv);
+    return cv;
+  }
+  if (sp.kept.size >= MAX_KEPT) {
+    const [oldest, old] = sp.kept.entries().next().value;
+    sp.kept.delete(oldest);
+    cv = old;
+  } else cv = sp.spare.pop() || sp.create();
+  paint(blank(cv, size));
+  sp.kept.set(key, cv);
+  return cv;
+}
+
+/** Paints a part's layers on g, lit hard (as a badge is), with the tank's centre at (cx, cy) device px. */
+function paintPart(g, M, cx, cy, t, layers, L) {
+  g.setTransform(M.a, M.b, M.c, M.d, cx, cy);
+  paintHard(g, t, layers, L);
+}
+
+/**
+ * The turret's shadow on the hull under it, the tank's centre at (cx, cy): each of the turret's
+ * layers, moved along the light, in the two steps paintHard lays a layer's shadow in. drawKept
+ * lays it only where the hull is; the turret's layers' shadows on each other are in the
+ * turret's own picture.
+ */
+function paintDrop(g, M, cx, cy, t, layers, L) {
+  g.fillStyle = DROP_STEP;
+  for (const layer of layers) {
+    if (!layer.solids.length) continue;
+    const drop = Math.max(layer.drop * L.unit, DROP_MIN);
+    for (const k of [0.5, 1]) {
+      g.setTransform(M.a, M.b, M.c, M.d, cx + L.x * drop * k, cy + L.y * drop * k);
+      enter(g, t, layer.frame);
+      union(g, layer.solids);
+      g.fill();
+    }
+  }
+}
+
+const turn = (q) => ((q % 360) + 360) % 360;
+
+/**
+ * PERFORMANCE: drawTank for the game. The hull, the turret's shadow on it and the turret come
+ * from kept pictures and are laid straight on c: three drawImages and one clip (the turret's
+ * shadow lands only on the hull). A turret whose pose moves (POSE) is painted straight on c
+ * instead. Recoil keeps its pictures: the gun's slide is part of the turret's pose (in eighths),
+ * and the jolt only moves where the parts are laid (t comes posed, its turret's share in t.kick). A tank fading in or out (White) is first laid together on a spare canvas, so it fades
+ * as one piece: that costs more, but only for the second it fades. The tank's centre goes on the
+ * nearest device pixel (at most half a pixel off), so its pictures are copied, never resampled,
+ * and stay as sharp as they were painted.
+ */
+function drawKept(c, pal, t, o, alpha, M, L, light, sp) {
+  keepFor(sp, pal, M, light);
+  const T = TYPES[t.type];
+  const size = partSize(L.unit);
+  const half = size / 2;
+  const qb = Math.round(t.body / ANGLE_STEP);
+  const qt = Math.round(t.turret / ANGLE_STEP);
+  const at = { type: t.type, x: 0, y: 0, body: qb * ANGLE_STEP, turret: qt * ANGLE_STEP };
+  const hull = POSE.body(T, o);
+  const gun = POSE.turret(T, o);
+  const hullParts = model(pal, at, hull).filter((l) => l.frame === 'body');
+  const gunParts = () => model(pal, at, gun).filter((l) => l.frame === 'turret');
+  const body = kept(sp, `hull ${t.type} ${turn(qb)} ${hull.phase} ${hull.mines}`, size, (g) => paintPart(g, M, half, half, at, hullParts, L));
+  const gunKey = `${t.type} ${turn(qt)} ${gun.roll} ${gun.lit} ${gun.recoil.slide} ${gun.recoil.jolt} ${gun.recoil.side}`;
+  const top = gun.moving ? null : kept(sp, `turret ${gunKey}`, size, (g) => paintPart(g, M, half, half, at, gunParts(), L));
+  const drop = gun.moving ? null : kept(sp, `drop ${gunKey}`, size, (g) => paintDrop(g, M, half, half, at, gunParts(), L));
+  // Where the tank's centre lands, on the nearest device pixel.
+  const cx = Math.round(M.a * t.x + M.c * t.y + M.e);
+  const cy = Math.round(M.b * t.x + M.d * t.y + M.f);
+  // Mid-recoil (t is posed), the turret's share of the jolt: its pictures are laid that far back
+  // along its aim, so the kept ones still serve.
+  const kick = t.kick || 0;
+  const kx = Math.round(-(M.a * Math.cos(t.turret) + M.c * Math.sin(t.turret)) * kick);
+  const ky = Math.round(-(M.b * Math.cos(t.turret) + M.d * Math.sin(t.turret)) * kick);
+  const fading = alpha < 1;
+  const g = fading ? blank(sp.fade, size) : c;
+  const ox = fading ? half : cx; // the centre on g
+  const oy = fading ? half : cy;
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.drawImage(body, 0, 0, size, size, ox - half, oy - half, size, size);
+  // The turret's shadow, only where the hull is.
+  g.save();
+  g.setTransform(M.a, M.b, M.c, M.d, ox, oy);
+  enter(g, at, 'body');
+  union(g, hullParts.flatMap((l) => l.solids));
+  g.clip();
+  if (drop) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(drop, 0, 0, size, size, ox - half + kx, oy - half + ky, size, size);
+  } else paintDrop(g, M, ox + kx, oy + ky, at, gunParts(), L);
+  g.restore();
+  if (top) g.drawImage(top, 0, 0, size, size, ox - half + kx, oy - half + ky, size, size);
+  else paintPart(g, M, ox + kx, oy + ky, at, gunParts(), L);
+  g.restore();
+  if (!fading) return;
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha *= alpha;
+  c.drawImage(sp.fade, 0, 0, size, size, cx - half, cy - half, size, size);
+  c.restore();
+}
+
+/** The alpha of a colour: 1 unless it is rgba(). */
+function alphaOf(col) {
+  const m = /rgba\([^)]*,\s*([\d.]+)\s*\)/.exec(String(col));
+  return m ? Number(m[1]) : 1;
+}
+
+// A shadow drawn as shapes fades in over this many outlines, from CAST_BLUR cells outside its
+// edge to CAST_BLUR inside.
+const SHADOW_STEPS = 8;
+
+/**
+ * PERFORMANCE: drawShadows for the game, straight on c, with no mask and no spare canvas. Every
+ * part of every tank, moved along the light by its height (as castInto moves it), is filled
+ * SHADOW_STEPS times, its outline grown from CAST_BLUR cells out to CAST_BLUR in (path grow()),
+ * each time a little: together they make a soft edge about as wide as the blur it replaces, and
+ * the shadow's full strength inside. Each step is one fill of all the tanks' parts together, so
+ * where shadows overlap the floor darkens once, as in one mask. A part whose path can't grow is
+ * filled as it is. Tanks fading in or out are filled apart, at their own strength.
+ */
+function shadowsShaped(c, pal, tanks, M, L) {
+  const w = toWorld(M, L.x, L.y);
+  const strength = alphaOf(pal.shadow);
+  const each = 1 - (1 - strength) ** (1 / SHADOW_STEPS); // SHADOW_STEPS fills of this make strength
+  const byAlpha = new Map();
+  for (const one of tanks) {
+    const alpha = one.alpha ?? 1;
+    if (!byAlpha.has(alpha)) byAlpha.set(alpha, []);
+    byAlpha.get(alpha).push(one);
+  }
+  c.save();
+  c.fillStyle = `rgb(${rgbOf(pal.shadow).join(', ')})`;
+  for (const [alpha, list] of byAlpha) {
+    // Each tank as it sits mid-recoil, as drawTank draws it.
+    const parts = list.flatMap(({ t: tank, fired, side = 0 }) => {
+      const recoil = { ...recoilAt(TYPES[tank.type].weapon, fired), side };
+      const t = posed(tank, recoil);
+      return model(pal, t, { recoil }).filter((l) => l.solids.length).map((layer) => ({ t, layer }));
+    });
+    c.globalAlpha = each * alpha;
+    for (let i = 0; i < SHADOW_STEPS; i++) {
+      const d = CAST_BLUR * (1 - (2 * i + 1) / SHADOW_STEPS); // cells: outside the edge first, then inside
+      c.beginPath();
+      for (const { t, layer } of parts) {
+        const k = layer.h * CAST * L.unit;
+        c.setTransform(M.a, M.b, M.c, M.d, M.e, M.f);
+        c.translate(w.x * k, w.y * k);
+        enter(c, t, layer.frame);
+        const scale = layer.frame === 'body' ? ART : 1; // the hull's parts are drawn ART times their size
+        for (const s of layer.solids) {
+          const p = s.path.grow ? s.path.grow(d / scale) : s.path;
+          if (p) p(c);
+        }
+      }
+      c.fill();
+    }
+  }
+  c.restore();
+}
+
+/* ---------- The GPU renderer's tanks (gl.js) ---------- */
+
+// PERFORMANCE. Where it can, the game draws the arena with WebGL (gl.js). There a tank is cut in
+// three pictures: its hull (treads or pad, and hull), its gun (the weapon layer, which recoils on
+// its own) and its head (turret, and what sits on it). Each is painted once per look, unlit and
+// facing right, never once per angle, with masks of its parts; the GPU lights all three at any
+// angle on every frame with the light paintHard gives a badge (the same bands, the same shadow
+// from each layer onto the ones under it) and lays the floor shadow shadowsShaped lays.
+
+/**
+ * The hard light's numbers, for gl.js: band (cells) and bandMin (device px at a pixel ratio of 2,
+ * which gl.js scales to the screen's), the same for each layer's drop shadow, the strength of
+ * each of the two steps, the floor shadow's reach (of a part's height) and blur (cells), and a
+ * tube's light across it (TUBE: reach and limb of its width, each band's steps and strength).
+ */
+export const HARD_LIGHT = {
+  band: BAND,
+  bandMin: BAND_MIN,
+  dropMin: DROP_MIN,
+  lit: alphaOf(LIT_STEP),
+  shade: alphaOf(SHADE_STEP),
+  drop: alphaOf(DROP_STEP),
+  cast: CAST,
+  castBlur: CAST_BLUR,
+  tube: { reach: TUBE.reach, limb: TUBE.limb, steps: TUBE_STEPS, lit: alphaOf(TUBE_LIT), shade: alphaOf(TUBE_SHADE), limbSteps: LIMB_STEPS, limbShade: alphaOf(TUBE_LIMB) },
+};
+
+const overlaps = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+
+/**
+ * Tank kind `type` in a pose, cut for gl.js into hull, gun and head (gun is null for a tank with
+ * no weapon solids, the mortar). Each plane gives albedo(c), its solids and their decals unlit;
+ * overlay(c), the decals laid on top of its light; and masks, the shapes it is lit from, each to
+ * be filled by the caller. All face right at the origin in their frame's units (the hull's are
+ * ART cells). Masks: hull [base layer, hull layer]; gun [first run, second run, every solid]; head
+ * [turret ring, top]. A gun's lit solids come in runs of solids that never overlap, so a run is
+ * lit as one mask, and the second run covers the first's light, as it is painted after it. A
+ * minigun's emission(c) paints each barrel as strongly as it glows when hot, and tube is how wide
+ * the first run's tubes are (cells; 0: it has none), lit round across them. heights: each
+ * layer's (base, hull, weapon, ring, top); drops: how far each one's shadow falls (hull, weapon,
+ * ring, top). pose: as model takes it; gl.js rolls the cleats and glows the barrels itself.
+ */
+export function tankPlanes(pal, type, pose = {}) {
+  const [base, hull, weapon, ring, top] = model(pal, { type, x: 0, y: 0, body: 0, turret: 0 }, { ...pose, heat: 0, cleats: false });
+  const paint = (layers) => (c) => {
+    for (const l of layers) for (const s of l.solids) solid(c, s);
+  };
+  const decals = (layers) => (c) => {
+    for (const l of layers) for (const d of l.decals) d(c);
+  };
+  const shape = (solids) => (c) => union(c, solids);
+  const runs = [[], []];
+  let run = 0;
+  for (const s of weapon.solids) {
+    if (s.bevel === false) continue;
+    if (runs[run].some((o) => overlaps(o.path.bounds, s.path.bounds))) run++;
+    if (run > 1) throw new Error(`tankPlanes: ${type}'s gun needs a third run of lit solids`);
+    runs[run].push(s);
+  }
+  const minigun = TYPES[type].weapon === 'minigun';
+  // gl.js lights the first run round across (tubeBands), so a gun's tubes are its first run, all
+  // one width, and nothing else is.
+  const tube = runs[0][0]?.tube || 0;
+  if (runs[0].some((s) => s.tube !== runs[0][0].tube) || runs[1].some((s) => s.tube)) throw new Error(`tankPlanes: ${type}'s tubes must be its gun's first run, all one width`);
+  return {
+    treads: !!TYPES[type].speed,
+    heights: [base.h, hull.h, weapon.h, ring.h, top.h],
+    drops: [hull.drop, weapon.drop, ring.drop, top.drop],
+    body: { albedo: paint([base, hull]), masks: [shape(base.solids), shape(hull.solids)] },
+    gun: weapon.solids.length
+      ? {
+          albedo: paint([weapon]),
+          overlay: decals([weapon]),
+          masks: [shape(runs[0]), shape(runs[1]), shape(weapon.solids)],
+          tube,
+          emission: minigun
+            ? (c) => {
+                for (const s of weapon.solids) {
+                  const k = Math.round(255 * (s.near === undefined ? 0 : 0.7 + 0.3 * s.near));
+                  fillPath(c, s.path, `rgb(${k}, ${k}, ${k})`);
+                }
+              }
+            : null,
+        }
+      : null,
+    head: { albedo: paint([ring, top]), overlay: decals([ring, top]), masks: [shape(ring.solids), shape(top.solids)] },
+  };
+}
+
+/**
+ * Which pictures tank kind `type` shows in pose o (what drawTank takes, with recoil from
+ * tankPose), for gl.js: for each plane a key and the pose to paint it in, rounded to steps too
+ * small to see, and for the gun how far it slides back (cells), which gl.js lays its picture at
+ * rather than painting another. A missile's two pods slide apart, so its gun is painted per slide.
+ */
+export function planePose(type, o) {
+  const T = TYPES[type];
+  const r = o.recoil || REST;
+  const mines = T.mines ? (o.mines ?? T.mines) : 0;
+  const lit = (T.weapon === 'missile' || T.weapon === 'laser') && !!o.lit;
+  const gun = { key: type, pose: {}, slide: (RECOIL[T.weapon]?.slide || 0) * (r.slide || 0) };
+  if (T.weapon === 'missile') {
+    const slide = Math.round((r.slide || 0) * 8) / 8;
+    const side = slide > 0 ? r.side || 0 : 0;
+    Object.assign(gun, { key: `${type} ${slide} ${side}`, pose: { recoil: { slide, jolt: 0, side } }, slide: 0 });
+  } else if (T.weapon === 'minigun') {
+    // Six barrels look the same every sixth of a turn: in eighths of that.
+    const pitch = TAU / 6;
+    const roll = (Math.round(((((o.roll || 0) % pitch) + pitch) % pitch) / (pitch / 8)) % 8) * (pitch / 8);
+    Object.assign(gun, { key: `${type} ${roll.toFixed(4)}`, pose: { roll } });
+  } else if (T.weapon === 'laser') Object.assign(gun, { key: `${type} ${lit}`, pose: { lit } });
+  const head = { key: type, pose: {} };
+  if (T.weapon === 'bomb') {
+    // The mortar's tube punches down into the turret: in eighths.
+    const jolt = Math.round((r.jolt || 0) * 8) / 8;
+    Object.assign(head, { key: `${type} ${jolt}`, pose: { recoil: { slide: 0, jolt, side: 0 } } });
+  } else if (T.weapon === 'missile') Object.assign(head, { key: `${type} ${lit}`, pose: { lit } });
+  return { body: { key: `${type} ${mines}`, pose: { mines } }, gun, head };
+}
+
+/** Every look planePose can give tank kind `type`, as poses, so gl.js can paint them all before they are needed. */
+export function planeVariants(type) {
+  const T = TYPES[type];
+  const poses = [{}];
+  for (let m = 0; m <= (T.mines || 0); m++) poses.push({ mines: m });
+  for (const lit of [false, true]) poses.push({ lit });
+  if (T.weapon === 'missile') for (let k = 1; k <= 8; k++) for (const side of [-1, 0, 1]) poses.push({ recoil: { slide: k / 8, jolt: 0, side } });
+  if (T.weapon === 'minigun') for (let k = 0; k < 8; k++) poses.push({ roll: (k * TAU) / 48 });
+  // A mortar's spring dips to about -0.15 before it settles (recoilAt).
+  if (T.weapon === 'bomb') for (let k = -1; k <= 8; k++) poses.push({ recoil: { slide: 0, jolt: k / 8, side: 0 } });
+  return poses;
+}
+
+/**
+ * Tank `at` as it sits `fired` seconds after its last shot (side: the pod that fired), as
+ * drawTank draws it: { t, recoil }, t moved back by its hull's share of the jolt, with its
+ * turret's share in t.kick.
+ */
+export function tankPose(at, fired = Infinity, side = 0) {
+  const recoil = { ...recoilAt(TYPES[at.type].weapon, fired), side };
+  return { t: posed(at, recoil), recoil };
+}
+
+/**
+ * Where laser tank `at`'s ruby rod is, `fired` seconds after its beam lit, as drawTank lays it:
+ * (x, y) its middle (LENS), where it glows, and (tx, ty) its point, where the beam leaves it.
+ */
+export function lensAt(at, fired = Infinity) {
+  const { t, recoil } = tankPose(at, fired);
+  const d = LENS - RECOIL.laser.slide * recoil.slide - (t.kick || 0);
+  const ux = Math.cos(t.turret);
+  const uy = Math.sin(t.turret);
+  const tip = d + ROD[3][0] - LENS;
+  return { x: t.x + ux * d, y: t.y + uy * d, tx: t.x + ux * tip, ty: t.y + uy * tip };
+}
+
 /* ---------- Mines, shells, missiles and bombs ---------- */
 
 /**
@@ -946,24 +1613,45 @@ export function drawBadge(c, pal, kind, w, h, kit = null) {
 export function drawMine(c, pal, m, kind, state, { light = LIGHT } = {}) {
   const L = lightOf(c.getTransform(), light);
   const u = L.unit;
+  const K = MINE;
   const tone = pal.tanks[kind] || pal.tanks.player;
   const ring = (r) => (cc) => {
     cc.moveTo(m.x + r, m.y);
     cc.arc(m.x, m.y, r, 0, TAU);
   };
   const near = [m.x - 1, m.y - 1, 2, 2];
-  softShadow(c, ring(0.24), pal.shadow, 0.06 * u, 0.07 * u, L);
-  if (state !== 'off') glow(c, m.x, m.y, state === 'urgent' ? 0.85 : 0.5, state === 'urgent' ? pal.alarm : pal.signal, state === 'urgent' ? 0.32 : 0.16);
-  fillPath(c, ring(0.24), pal.ink);
-  innerLight(c, ring(0.24), 'rgba(255, 255, 255, 0.22)', null, 0.03 * u, 0.03 * u, L, near);
-  softShadow(c, ring(0.16), 'rgba(0, 0, 0, 0.6)', 0.025 * u, 0.03 * u, L);
-  fillPath(c, ring(0.16), tone.base);
-  innerLight(c, ring(0.16), LIT, SHADE, 0.025 * u, 0.025 * u, L, near);
+  softShadow(c, ring(K.casing), pal.shadow, K.shadow.d * u, K.shadow.blur * u, L);
   if (state !== 'off') {
-    dot(c, m.x, m.y, 0.07, state === 'urgent' ? pal.alarm : pal.signal);
-    dot(c, m.x - 0.018, m.y - 0.018, 0.025, pal.flash);
-  } else dot(c, m.x, m.y, 0.07, tone.deep);
+    const g = K.glow[state === 'urgent' ? 'urgent' : 'on'];
+    glow(c, m.x, m.y, g.r, pal[g.color], g.a);
+  }
+  fillPath(c, ring(K.casing), pal.ink);
+  innerLight(c, ring(K.casing), `rgba(255, 255, 255, ${K.rim.a})`, null, K.rim.d * u, K.rim.blur * u, L, near);
+  softShadow(c, ring(K.cap), `rgba(0, 0, 0, ${K.capShadow.a})`, K.capShadow.d * u, K.capShadow.blur * u, L);
+  fillPath(c, ring(K.cap), tone.base);
+  innerLight(c, ring(K.cap), LIT, SHADE, K.capLight.d * u, K.capLight.blur * u, L, near);
+  if (state !== 'off') {
+    dot(c, m.x, m.y, K.light, state === 'urgent' ? pal.alarm : pal.signal);
+    dot(c, m.x + K.spark.at, m.y + K.spark.at, K.spark.r, pal.flash);
+  } else dot(c, m.x, m.y, K.light, tone.deep);
 }
+
+/**
+ * A mine's numbers (cells): its casing and cap, its light and the spark on it, its shadow on the
+ * floor, the light on its casing's rim, the cap's shadow on the casing and the light on the cap
+ * (d: how far along the light; blur), and the glow its light gives off. gl.js draws it from these too.
+ */
+export const MINE = {
+  casing: 0.24,
+  cap: 0.16,
+  light: 0.07,
+  spark: { at: -0.018, r: 0.025 },
+  shadow: { d: 0.06, blur: 0.07 },
+  rim: { a: 0.22, d: 0.03, blur: 0.03 },
+  capShadow: { a: 0.6, d: 0.025, blur: 0.03 },
+  capLight: { d: 0.025, blur: 0.025, lit: alphaOf(LIT), shade: alphaOf(SHADE) },
+  glow: { on: { r: 0.5, color: 'signal', a: 0.16 }, urgent: { r: 0.85, color: 'alarm', a: 0.32 } },
+};
 
 // Shot shapes, pointing along +x, clockwise.
 const SHELL = (c) => {
@@ -991,6 +1679,66 @@ const MISSILE = (c) => rrPath(c, -0.17, -0.06, 0.34, 0.12, 0.06);
 const SLUG = (c) => rrPath(c, -0.07, -0.035, 0.16, 0.07, 0.035);
 const SHOT_H = { shell: 0.2, rocket: 0.22, missile: 0.24, minigun: 0.16 }; // cells above the floor
 const SHOT_BOUNDS = [-0.5, -0.5, 1, 1];
+/**
+ * A shot's light (cells): its shadow on the floor (a: strength, blur) and the shaded edge away
+ * from the light (a, d: how far in, blur). gl.js draws it from these too.
+ */
+export const SHOT_LIGHT = { shadow: { a: 0.5, blur: 0.025 }, shade: { a: 0.22, d: 0.02, blur: 0.02 } };
+
+/**
+ * A shot pointing along +x at the origin, as gl.js and drawShot both paint it: h (how high it
+ * flies, cells), albedo (its shape and, on a missile, its fins and its owner's colour band, unlit),
+ * overlay (a missile's nose light, laid on top of the light), shaded (the part whose edge away
+ * from the light is shaded) and parts (all of it: its shadow on the floor). tone: a missile's
+ * owner's tones; blink: its light is on.
+ */
+export function shotPlanes(pal, weapon, { tone = null, blink = true } = {}) {
+  const body = weapon === 'missile' ? MISSILE : weapon === 'minigun' ? SLUG : SHELL;
+  const own = tone || pal.tanks.red;
+  return {
+    h: SHOT_H[weapon] ?? 0.2,
+    albedo(c) {
+      if (weapon !== 'missile') {
+        fillPath(c, body, pal.shell);
+        return;
+      }
+      fillPath(c, MISSILE_FINS, own.dark);
+      fillPath(c, MISSILE, pal.shell);
+      c.save();
+      c.beginPath();
+      MISSILE(c);
+      c.clip();
+      c.fillStyle = own.base;
+      c.fillRect(-0.17, -0.2, 0.07, 0.4);
+      c.restore();
+    },
+    overlay(c) {
+      if (weapon !== 'missile') return;
+      // The red light in its nose.
+      if (blink) {
+        dot(c, 0.09, 0, 0.042, pal.alarm);
+        dot(c, 0.08, -0.01, 0.015, pal.flash);
+      } else dot(c, 0.09, 0, 0.042, own.deep);
+    },
+    shaded: body,
+    parts: weapon === 'missile' ? (c) => { MISSILE_FINS(c); MISSILE(c); } : body,
+  };
+}
+
+/**
+ * What burns behind a shot pointing along +x: flame (a triangle, [x, y] three times, or null)
+ * and glows ({ x, y, r, color: a palette key, a }), light added to the floor under it. flame
+ * (0-1) flickers the flame; blink: a missile's nose light is on.
+ */
+export function shotFire(weapon, flame = 0.5, blink = true) {
+  if (weapon === 'missile') {
+    const glows = [{ x: -0.2, y: 0, r: 0.36, color: 'fire', a: 0.22 + 0.1 * flame }];
+    if (blink) glows.push({ x: 0.09, y: 0, r: 0.3, color: 'alarm', a: 0.35 });
+    return { flame: [[-0.16, -0.035], [-0.24 - flame * 0.05, 0], [-0.16, 0.035]], glows };
+  }
+  if (weapon === 'rocket') return { flame: [[-0.13, -0.05], [-0.3 - flame * 0.08, 0], [-0.13, 0.05]], glows: [] };
+  return { flame: null, glows: [] };
+}
 
 /**
  * A shell, rocket, missile or minigun round, pointing along its velocity, lit like the tanks:
@@ -1002,51 +1750,23 @@ const SHOT_BOUNDS = [-0.5, -0.5, 1, 1];
 export function drawShot(c, pal, b, { flame = 0.5, blink = true, tone = null, light = LIGHT } = {}) {
   const L = lightOf(c.getTransform(), light);
   const u = L.unit;
-  const w = b.weapon;
-  const body = w === 'missile' ? MISSILE : w === 'minigun' ? SLUG : SHELL;
-  const parts = w === 'missile' ? [MISSILE_FINS, MISSILE] : [body];
+  const S = SHOT_LIGHT;
+  const shot = shotPlanes(pal, b.weapon, { tone, blink });
+  const fire = shotFire(b.weapon, flame, blink);
   c.save();
   c.translate(b.x, b.y);
   c.rotate(Math.atan2(b.vy, b.vx));
-  softShadow(c, (cc) => parts.forEach((p) => p(cc)), 'rgba(0, 0, 0, 0.5)', (SHOT_H[w] ?? 0.2) * CAST * u, 0.025 * u, L);
-  const shaded = (path) => innerLight(c, path, null, 'rgba(0, 0, 0, 0.22)', 0.02 * u, 0.02 * u, L, SHOT_BOUNDS);
-  if (w === 'missile') {
-    const own = tone || pal.tanks.red;
-    glow(c, -0.2, 0, 0.36, pal.fire, 0.22 + 0.1 * flame);
-    if (blink) glow(c, 0.09, 0, 0.3, pal.alarm, 0.35);
+  softShadow(c, shot.parts, `rgba(0, 0, 0, ${S.shadow.a})`, shot.h * CAST * u, S.shadow.blur * u, L);
+  for (const g of fire.glows) glow(c, g.x, g.y, g.r, pal[g.color], g.a);
+  if (fire.flame) {
     c.fillStyle = pal.fire;
     c.beginPath();
-    c.moveTo(-0.16, -0.035);
-    c.lineTo(-0.24 - flame * 0.05, 0);
-    c.lineTo(-0.16, 0.035);
+    for (const [x, y] of fire.flame) c.lineTo(x, y);
     c.fill();
-    fillPath(c, MISSILE_FINS, own.dark);
-    fillPath(c, MISSILE, pal.shell);
-    c.save();
-    c.beginPath();
-    MISSILE(c);
-    c.clip();
-    c.fillStyle = own.base;
-    c.fillRect(-0.17, -0.2, 0.07, 0.4);
-    c.restore();
-    shaded(MISSILE);
-    // The red light in its nose.
-    if (blink) {
-      dot(c, 0.09, 0, 0.042, pal.alarm);
-      dot(c, 0.08, -0.01, 0.015, pal.flash);
-    } else dot(c, 0.09, 0, 0.042, own.deep);
-  } else {
-    if (w === 'rocket') {
-      c.fillStyle = pal.fire;
-      c.beginPath();
-      c.moveTo(-0.13, -0.05);
-      c.lineTo(-0.3 - flame * 0.08, 0);
-      c.lineTo(-0.13, 0.05);
-      c.fill();
-    }
-    fillPath(c, body, pal.shell);
-    shaded(body);
   }
+  shot.albedo(c);
+  innerLight(c, shot.shaded, null, `rgba(0, 0, 0, ${S.shade.a})`, S.shade.d * u, S.shade.blur * u, L, SHOT_BOUNDS);
+  shot.overlay(c);
   c.restore();
 }
 
@@ -1068,35 +1788,94 @@ export function bombAt(b) {
  */
 export function drawTarget(c, pal, b, { calm = false } = {}) {
   const { k } = bombAt(b);
+  const T = TARGET;
   c.save();
-  c.globalAlpha = calm ? 0.2 : 0.1 + 0.2 * k;
+  c.globalAlpha = calm ? T.fill.calm : T.fill.a + T.fill.grow * k;
   c.fillStyle = pal.alarm;
   c.beginPath();
   c.arc(b.tx, b.ty, BOMB_R, 0, TAU);
   c.fill();
-  c.globalAlpha = 0.85;
+  c.globalAlpha = T.ring.a;
   c.strokeStyle = pal.alarm;
-  c.lineWidth = 0.05;
-  c.setLineDash([0.16, 0.1]);
+  c.lineWidth = T.ring.w;
+  c.setLineDash(T.ring.dash);
   c.beginPath();
   c.arc(b.tx, b.ty, BOMB_R, 0, TAU);
   c.stroke();
   c.setLineDash([]);
-  c.lineWidth = 0.06;
+  c.lineWidth = T.cross.w;
   c.beginPath();
   for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-    c.moveTo(b.tx + ux * 0.18, b.ty + uy * 0.18);
-    c.lineTo(b.tx + ux * 0.45, b.ty + uy * 0.45);
+    c.moveTo(b.tx + ux * T.cross.from, b.ty + uy * T.cross.from);
+    c.lineTo(b.tx + ux * T.cross.to, b.ty + uy * T.cross.to);
   }
   c.stroke();
   if (!calm) {
-    c.globalAlpha = 0.25 + 0.65 * k;
-    c.lineWidth = 0.07;
+    c.globalAlpha = T.closing.a + T.closing.grow * k;
+    c.lineWidth = T.closing.w;
     c.beginPath();
-    c.arc(b.tx, b.ty, BOMB_R + (1 - k) * 1.3, 0, TAU);
+    c.arc(b.tx, b.ty, BOMB_R + (1 - k) * T.closing.reach, 0, TAU);
     c.stroke();
   }
   c.restore();
+}
+
+/**
+ * A bomb mark's numbers (cells): the blast area's fill (its strength, growing as the bomb comes
+ * down, or steady when calm), the dashed ring round it, the crosshair and the ring that closes
+ * in. gl.js draws it from these too.
+ */
+export const TARGET = {
+  fill: { a: 0.1, grow: 0.2, calm: 0.2 },
+  ring: { a: 0.85, w: 0.05, dash: [0.16, 0.1] },
+  cross: { w: 0.06, from: 0.18, to: 0.45 },
+  closing: { a: 0.25, grow: 0.65, w: 0.07, reach: 1.3 },
+};
+
+/**
+ * A bomb in the air's numbers: the halo round its edge (from and to: cells past its edge, with
+ * the strength of its stops), the ball's shading from its highlight (focal: the highlight's
+ * size, of the ball's; its stops lighten the ink), the light caught on its far edge, the
+ * highlight itself and how far toward the light it sits (of the ball's radius). gl.js draws it
+ * from these too.
+ */
+export const BOMB = {
+  halo: { from: -0.01, to: 0.055, stops: [[0, 0.75], [0.45, 0.3], [1, 0]] },
+  ball: { focal: 0.05, stops: [[0, 0.22], [0.5, 0.05], [1, 0]] },
+  rim: { focal: 0.9, a: 0.16 },
+  spec: { r: 0.42, stops: [[0, 0.95], [0.35, 0.5], [1, 0]] },
+  toward: 0.4,
+};
+
+/**
+ * Where a bomb in the air is drawn, for a context with transform M: its shadow (a disc on the
+ * floor, pushed along the light by its height: x, y, r, its blur and strength, cells), and the
+ * ball (x, y, r, and its highlight at hx, hy), raised toward up (screen up, in world terms).
+ */
+export function bombLook(b, M, { up = { x: 0, y: -1 }, light = LIGHT } = {}) {
+  const L = lightOf(M, light);
+  const p = bombAt(b);
+  const top = 0.35 + 0.08 * Math.hypot(b.tx - b.x0, b.ty - b.y0);
+  const lift = top > 0 ? p.h / top : 0;
+  const lw = toWorld(M, L.x, L.y);
+  const ln = Math.hypot(lw.x, lw.y);
+  const x = p.x + up.x * p.h;
+  const y = p.y + up.y * p.h;
+  const r = 0.14 + 0.06 * lift;
+  return {
+    shadow: {
+      x: p.x + (lw.x / ln) * p.h * CAST * 0.5,
+      y: p.y + (lw.y / ln) * p.h * CAST * 0.5,
+      r: 0.09 + 0.07 * (1 - lift),
+      blur: 0.02 + 0.16 * lift,
+      a: 0.75 - 0.35 * lift,
+    },
+    x,
+    y,
+    r,
+    hx: x - (lw.x / ln) * r * BOMB.toward,
+    hy: y - (lw.y / ln) * r * BOMB.toward,
+  };
 }
 
 /**
@@ -1110,54 +1889,38 @@ export function drawBomb(c, pal, b, { up = { x: 0, y: -1 }, light = LIGHT } = {}
   const M = c.getTransform();
   const L = lightOf(M, light);
   const u = L.unit;
-  const p = bombAt(b);
-  const top = 0.35 + 0.08 * Math.hypot(b.tx - b.x0, b.ty - b.y0);
-  const lift = top > 0 ? p.h / top : 0;
-  const lw = toWorld(M, L.x, L.y);
-  const ln = Math.hypot(lw.x, lw.y);
-  const sx = p.x + (lw.x / ln) * p.h * CAST * 0.5;
-  const sy = p.y + (lw.y / ln) * p.h * CAST * 0.5;
+  const K = BOMB;
+  const { shadow: sh, x, y, r, hx, hy } = bombLook(b, M, { up, light });
+  const stops = (g, list, col) => list.forEach(([at, a]) => g.addColorStop(at, withAlpha(col, a)));
   c.save();
-  c.globalAlpha *= 0.75 - 0.35 * lift;
+  c.globalAlpha *= sh.a;
   softShadow(c, (cc) => {
-    cc.moveTo(sx + 0.2, sy);
-    cc.arc(sx, sy, 0.09 + 0.07 * (1 - lift), 0, TAU);
-  }, '#000', 0, (0.02 + 0.16 * lift) * u, L);
+    cc.moveTo(sh.x + 0.2, sh.y);
+    cc.arc(sh.x, sh.y, sh.r, 0, TAU);
+  }, '#000', 0, sh.blur * u, L);
   c.restore();
-  const x = p.x + up.x * p.h;
-  const y = p.y + up.y * p.h;
-  const r = 0.14 + 0.06 * lift;
-  const halo = c.createRadialGradient(x, y, r - 0.01, x, y, r + 0.055);
-  halo.addColorStop(0, withAlpha(pal.flash, 0.75));
-  halo.addColorStop(0.45, withAlpha(pal.flash, 0.3));
-  halo.addColorStop(1, withAlpha(pal.flash, 0));
+  const halo = c.createRadialGradient(x, y, r + K.halo.from, x, y, r + K.halo.to);
+  stops(halo, K.halo.stops, pal.flash);
   c.fillStyle = halo;
   c.beginPath();
-  c.arc(x, y, r + 0.055, 0, TAU);
+  c.arc(x, y, r + K.halo.to, 0, TAU);
   c.fill();
-  const hx = x - (lw.x / ln) * r * 0.4;
-  const hy = y - (lw.y / ln) * r * 0.4;
-  const g = c.createRadialGradient(hx, hy, r * 0.05, x, y, r);
-  g.addColorStop(0, shade(pal.ink, 0.22));
-  g.addColorStop(0.5, shade(pal.ink, 0.05));
-  g.addColorStop(1, pal.ink);
+  const g = c.createRadialGradient(hx, hy, r * K.ball.focal, x, y, r);
+  for (const [at, k] of K.ball.stops) g.addColorStop(at, k ? shade(pal.ink, k) : pal.ink);
   c.fillStyle = g;
   c.beginPath();
   c.arc(x, y, r, 0, TAU);
   c.fill();
-  const rim = c.createRadialGradient(hx, hy, r * 0.9, x, y, r);
-  rim.addColorStop(0, withAlpha(pal.flash, 0));
-  rim.addColorStop(1, withAlpha(pal.flash, 0.16));
+  const rim = c.createRadialGradient(hx, hy, r * K.rim.focal, x, y, r);
+  stops(rim, [[0, 0], [1, K.rim.a]], pal.flash);
   c.fillStyle = rim;
   c.beginPath();
   c.arc(x, y, r, 0, TAU);
   c.fill();
-  const spec = c.createRadialGradient(hx, hy, 0, hx, hy, r * 0.42);
-  spec.addColorStop(0, withAlpha(pal.flash, 0.95));
-  spec.addColorStop(0.35, withAlpha(pal.flash, 0.5));
-  spec.addColorStop(1, withAlpha(pal.flash, 0));
+  const spec = c.createRadialGradient(hx, hy, 0, hx, hy, r * K.spec.r);
+  stops(spec, K.spec.stops, pal.flash);
   c.fillStyle = spec;
   c.beginPath();
-  c.arc(hx, hy, r * 0.42, 0, TAU);
+  c.arc(hx, hy, r * K.spec.r, 0, TAU);
   c.fill();
 }

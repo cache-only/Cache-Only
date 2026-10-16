@@ -36,6 +36,9 @@
           <span class="meter" id="shellMeter"></span>
           <span class="meter" id="mineMeter"></span>
         </div>
+        <button type="button" class="icon-btn edit-play" id="generateBtn" data-i18n-label="tanks.generate">
+          <svg class="icon"><use href="#i-dice"/></svg>
+        </button>
         <button type="button" class="icon-btn icon-btn-primary edit-play" id="playMapBtn" data-i18n-label="tanks.playThis">
           <svg class="icon"><use href="#i-play"/></svg>
         </button>
@@ -76,11 +79,8 @@
         </button>
       </div>
     </main>
-
-    <div class="pblur pblur-top pblur-deep edge-top" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
-    <div class="pblur pblur-bottom pblur-deep edge-bottom" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
-    <div class="pblur pblur-side pblur-deep edge-left" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div class="pblur pblur-side pblur-deep edge-right" aria-hidden="true"><i></i><i></i><i></i></div>
+    <!-- PERFORMANCE: the blurred screen edges past the field's walls are baked into the arena's
+         floor canvas (render.js blurEdges), not backdrop-filter layers re-blurred every frame. -->
   </div>
 
   <div class="side-menu" id="sideMenu" hidden>
@@ -92,6 +92,14 @@
       <button type="button" class="side-item" id="quitBtn">
         <svg class="icon"><use href="#i-flag"/></svg><span data-i18n="tanks.quit" id="quitLabel"></span>
       </button>
+      <label class="side-item pad-item">
+        <svg class="icon"><use href="#i-stick"/></svg><span data-i18n="tanks.follow"></span>
+        <input type="checkbox" class="switch" id="followToggle" role="switch">
+      </label>
+      <label class="side-item pad-item">
+        <svg class="icon"><use href="#i-target"/></svg><span data-i18n="tanks.autoAim"></span>
+        <input type="checkbox" class="switch" id="autoAimToggle" role="switch">
+      </label>
       <button type="button" class="side-item edit-item" id="mapsBtn">
         <svg class="icon"><use href="#i-list"/></svg><span data-i18n="tanks.mapsTitle"></span>
       </button>
@@ -99,6 +107,9 @@
         <svg class="icon"><use href="#i-mirror"/></svg><span data-i18n="tanks.mirror"></span>
         <input type="checkbox" class="switch" id="mirrorToggle" role="switch">
       </label>
+      <button type="button" class="side-item edit-item" id="sizeBtn">
+        <svg class="icon"><use href="#i-resize"/></svg><span data-i18n="tanks.size"></span>
+      </button>
       <button type="button" class="side-item edit-item" id="renameBtn">
         <svg class="icon"><use href="#i-pencil"/></svg><span data-i18n="tanks.rename"></span>
       </button>
@@ -184,6 +195,17 @@
         <button type="button" class="icon-btn" id="kindClose" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
       </div>
       <div class="segmented is-grid" role="group" id="kindGrid" data-i18n-label="tanks.testEnemy"></div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet" id="sizeSheet" aria-labelledby="sizeTitle">
+    <form method="dialog" class="sheet-inner">
+      <div class="sheet-head">
+        <h2 class="t-title" id="sizeTitle" data-i18n="tanks.size"></h2>
+        <button type="button" class="icon-btn" id="sizeClose" data-i18n-label="common.close"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="segmented is-grid is-thirds" role="group" id="sizeGrid" data-i18n-label="tanks.size"></div>
+      <p class="t-note" data-i18n="tanks.sizeNote"></p>
     </form>
   </dialog>
 

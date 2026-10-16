@@ -8,7 +8,7 @@ deploys). Friends only need a connection to install the app, download games or p
 updates. After that, every downloaded game must run forever with no network. Being offline is
 the normal state, not an error.
 
-Games at launch: **Sudoku** and **2048**. **Tanks** came next; more will be added later, and
+Games at launch: **Sudoku**. **Tanks** came next; more will be added later, and
 each friend chooses which ones to keep.
 
 Everything below exists to protect one property: once a game is downloaded, it never needs
@@ -67,9 +67,8 @@ cache-only/
       icon-512.png
       icon-maskable-512.png
     games/
-      sudoku/  index.html  sudoku.js  generator.js  solver.js  styles.css
-      2048/    index.html  game.js  styles.css
-      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  art.js  render.js  audio.js  styles.css
+      sudoku/  index.html  sudoku.js  generator.js  solver.js  worker.js  styles.css
+      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  mapgen.js  art.js  render.js  gl.js  audio.js  styles.css
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
@@ -136,6 +135,9 @@ service worker with scope `/` covers everything.
   address changes; phones that trust the CA need nothing new.
 - `http://<mac>.local:8081/` is the setup page: it hands out the CA and says how to trust it
   (iPhone: install the profile, then switch it on under Certificate Trust Settings).
+- The same process also serves `dist/` on `http://127.0.0.1:8080` for the Mac's own browser,
+  exactly as `npm run serve` does, so `npm run serve` isn't needed alongside it. Ctrl-C stops all
+  three ports at once.
 - That origin is not the real app's: test installs and saves stay separate from
   `https://cache-only.github.io`. No tunnels or public exposure: it's reachable only on the
   local network.
@@ -188,8 +190,11 @@ service worker with scope `/` covers everything.
   "Step n" eyebrow over the line, on a panel that blurs like a sheet (`--sheet`, `--blur-sheet`).
   Under the steps (no note), a centred eyebrow gives the release ("Version 0.1.1", `release` from
   `/version.json`; hidden if that request fails).
-  Landscape puts the lockup on the left and the steps in the wider right column. No game list and
-  nothing to download.
+  Landscape puts the lockup on the left and the steps in the wider right column, and fits the
+  screen's height with nothing to scroll: no top or bottom edge blurs and none of their room, and
+  the logo stays at portrait's 176 while the height allows (the field runs on the logo's grid, so a
+  smaller logo would put twice the pixels to animate on screen). No game list and nothing to
+  download.
   A tab also keeps no offline copy: `registerSW()` does nothing outside the installed app, and
   `dropBrowserCopy()` unregisters any worker and deletes every cache left by an earlier visit,
   then reloads once if that old copy served the page. So the tab always shows the current
@@ -216,14 +221,13 @@ service worker with scope `/` covers everything.
     (`--tile`: two rows and their gap fill the height). Settings (and Update) floats, fixed at the
     top right, over the tiles; the strip ends with room for the settings button (its 44 and a tile
     gap), so the last tiles clear it once scrolled to the end. Progressive blurs at the left and right edges (`.edge-left/-right`)
-    take the place of the top and bottom ones; the left one stays out of the way at rest and
-    slides in with the strip (`--scrolled`, set by `launcher.js`). A mouse wheel scrolls the strip
+    take the place of the top and bottom ones, both always there. A mouse wheel scrolls the strip
     too.
   - **Status:** the logo is the status. It stays out of focus until every app-shell file is
     confirmed in its cache, then comes into focus with download progress: pixels go from blurred
     grey to sharp white in a fixed pseudo-random order (`shared/logo.js`). The logo is the only
-    progress indicator anywhere in the app. The words ("Ready offline · 2 of 3 games",
-    "Downloading · 64%", "Offline · 2 of 3 games", "Checking offline files…") are still written to
+    progress indicator anywhere in the app. The words ("Ready offline · 1 of 2 games",
+    "Downloading · 64%", "Offline · 1 of 2 games", "Checking offline files…") are still written to
     a visually hidden live region (`#statusLine`) for screen readers.
   - **Suggested:** the most played game on this device, as a "Suggested" eyebrow over a glass
     panel with its title and a primary Resume (saved session) or Play button. The panel is shaped
@@ -232,10 +236,12 @@ service worker with scope `/` covers everything.
     `--blur-sheet`). Plays are counted in
     `gh:app:plays` (`{ id: n }`) whenever a game is opened from the launcher; ties and no history
     fall back to registry order. Its board art (`.hero`) is a square (Tanks' art is a square 15 × 15
-    arena of its own, not a game map). In portrait it starts at the top of the screen, as wide as
-    the page, and fades out toward the panel. In landscape it runs from the screen's left edge
-    (through the safe area) to the column's far gutter, centred on the screen's height, and fades
-    out to the right, toward the tiles.
+    arena of its own, not a game map), measured from the page (`.home`) in both orientations. In
+    portrait it starts under the status bar (`top: var(--safe-t)`, so it doesn't jump while iOS
+    moves the page below the status bar after a rotation), as wide as the page, and fades out
+    toward the panel. In landscape it runs from the screen's left edge (through the safe area) to
+    the column's far gutter, centred on the screen's height, fades to dark at the left under the
+    left edge's blur, and fades out to the right, toward the tiles.
   - **Nothing downloaded yet:** the same layout, with the same panel offering every game
     (`.is-all`): no art behind it, the eyebrow hidden but keeping its room, the title "Download all
     games" (two lines where one won't fit), and for its button a square primary with only the
@@ -310,8 +316,10 @@ service worker with scope `/` covers everything.
 - No zoom, no web-page feel, globally: the viewport has `maximum-scale=1, user-scalable=no`, every element
   gets `touch-action: pan-x pan-y` (no pinch or double-tap zoom; boards that need raw touches use
   `none`), and `shared/app.js` cancels iOS `gesture*` events and ctrl+wheel, since iOS ignores
-  `user-scalable=no`. Text selection and long-press callouts are off except in `input`/`textarea`
-  (and anything that opts back in, like Sudoku's share code). Touch targets are at least 44×44 pt.
+  `user-scalable=no`. Text selection and long-press callouts are off except in `input`/`textarea`.
+  No scrollbar indicator on any
+  scroller (`scrollbar-width: none` and `::-webkit-scrollbar` in `styles.css`); everything still
+  scrolls. Touch targets are at least 44×44 pt.
   No tap highlight on anything, and no focus ring after a touch or click: `shared/app.js` sets
   `data-input` on `<html>` (`keyboard` on a key press, `pointer` on any pointerdown), and
   `styles.css` draws `:focus-visible` outlines only under `data-input="keyboard"`.
@@ -329,18 +337,23 @@ service worker with scope `/` covers everything.
 - Write after every move, debounced to 250 ms, and on `visibilitychange` to hidden. iOS
   kills backgrounded web apps without warning.
 - Export and import cover all `gh:*` keys in one JSON blob.
+- A game gone from `registry.json` takes its saves (`gh:<id>:*`) and its play count with it: the
+  installed app's launcher deletes them on start and after an import (`dropSavesExcept` in
+  `storage.js`). Only the installed app does, because its registry comes from the worker's own
+  release, while a browser tab's could be a stale CDN copy. The worker already drops the pack.
 
 ## Design
 
 The approved design is dark, monochrome and built from the logo's rounded-square pixels. Every
-page (launcher, settings, first launch, install, and all three games) uses only the parts defined
+page (launcher, settings, first launch, install, and every game) uses only the parts defined
 in `src/styles.css`; a game's own stylesheet draws its board or arena and nothing else. Never
 style a button, header, card, sheet or menu locally.
 
 - **Colour:** dark only, no accent colour. `--bg #0b0b0b`, `--card #151515`, `--raised #1d1d1d`,
   `--quiet #4a4a4a`, `--muted #a8a8a8`, `--ink #efefef`. Glass is a `rgba(255,255,255,0.07)` fill,
   a 1px `rgba(255,255,255,0.14)` edge and a 20–24px backdrop blur, used only over art or content.
-  Tanks keeps its kind colours inside the arena (game content); everything around it is grey.
+  Tanks keeps its kind colours inside the arena (game content), and Sudoku shows a wrong number
+  in red for its moment on the board; everything around them is grey.
 - **Type:** system stacks only (or a `.woff2` under `src/fonts/`, never a remote font). Display
   52/800, Title 30/800 (−0.04em), Heading 18/750, Body 15 muted, Eyebrow = mono 12 uppercase
   0.06em muted for numbers, versions and section labels. Nothing smaller than 13 except eyebrows.
@@ -353,21 +366,29 @@ style a button, header, card, sheet or menu locally.
   `--ink`, for a header action that is the screen's one primary, at the home button's size (the
   Tanks map editor's Play). `.btn-small` is 32 tall with 13px text, only in a section header next to
   a 12px label, its tap area still 44. Disabled is the same button at 40% opacity, never a new
-  style. (Tanks' thumbsticks are round: they are sticks, not buttons.)
+  style. (Tanks' thumbsticks are round: they are sticks, not buttons.) Number keys (`.keypad`,
+  `.key`) are flat cards, radius 8; `.keypad.has-tools` starts with a row of two `.key-tool`s
+  over the numbers, a number key's card holding a smooth icon and its name, pressed (a mode that
+  is on) = solid white (Sudoku's Notes and Erase).
+- **Slider** (`.slider`, `setupSlider()` in `shared/ui.js`): one of a row of steps, in the
+  segmented control's 48 tall box. Each step is a small pixel on the track; the thumb is the
+  selected segment's solid chip (radius 4, inset 4) with the value written in it, gliding from
+  step to step. A drag anywhere on the track or a tap moves it; arrows, Home and End once focused.
+  Sudoku's difficulty is the one today.
 - **Concentric radii:** an outer radius is the inner radius plus the inset between them, starting
   from the button's 8. 8 every button and control (number keys, side-menu rows, the segmented
-  control, the switch track, fields) and the rows and text cards beside them; 4 a chip inset 4
-  inside one (the selected segment); 5 the switch knob, inset 3; 24 a sheet,
+  control, the slider, the switch track, fields) and the rows and text cards beside them; 4 a chip
+  inset 4 inside one (the selected segment, the slider's thumb); 5 the switch knob, inset 3; 24 a sheet,
   holding its close button and buttons inset 16; 18 a launcher game tile (8 art + 10) and the
   suggested game's panel (its button inset 10); 16 an install step's panel (its icon tile inset
-  8); 26 a game board (16 tile + 10). Check every nested shape.
+  8). Check every nested shape.
 - **Pixels:** the logo and every icon are rounded-square pixels, 3/4 of their pitch with a 1/4 gap
   and corners at 34% (`--r-pixel`). The logo (`shared/logo.js`) is a solid 11 × 13 cent sign and
   nothing else, `--logo-w` wide. Icons (`shared/icons.js`) are 9 × 9 bitmaps (`#` lit,
   `+` dimmed) with the four corner pixels always dark. Shapes are solid with their details cut
-  out, and lines (close, new, update, share) are one pixel. The one exception is Tanks' shell and mine
-  (`SHAPES` in the same file): smooth shapes, not pixels, solid while ready and outlined while in
-  use (`-empty`). `shared/app.js` puts every icon on every page as one sprite, and pages write
+  out, and lines (close, new, update, share) are one pixel. The exceptions are the smooth shapes
+  in `SHAPES` (the same file): Tanks' shell and mine and Sudoku's hearts, solid while ready and
+  outlined while in use (`-empty`), and the pen and backspace on Sudoku's Notes and Erase keys. `shared/app.js` puts every icon on every page as one sprite, and pages write
   `<svg class="icon"><use href="#i-name"/></svg>`. Never add a `<symbol>` to a page; add a bitmap
   to `ICONS`. `npm run icons` redraws the app icons from the logo: the white mark on `#070707`,
   centred on its box, not optically (the field shares its grid, which must stay centred, its dots
@@ -382,8 +403,8 @@ style a button, header, card, sheet or menu locally.
   `shared/ui.js`): stacked backdrop-filter layers with staggered mask gradients, at the top and
   bottom edges of scrolling screens (left and right where one scrolls sideways), behind the side
   menu and under each game tile's title. `.pblur-deep` makes an edge's blur deepen all the way to
-  the screen's edge under a shade to `--bg` (the launcher's top edge, the Tanks arena's ends);
-  without its `<b>` it is the blur alone.
+  the screen's edge under a shade to `--bg` (the launcher's top edge; the Tanks arena bakes the
+  same look into its canvas instead, see Tanks); without its `<b>` it is the blur alone.
   Nothing that wraps the layers may set opacity, filter or mask.
 - **Blur out and blur in** (`.blur-out` / `.blur-in` in `styles.css`, `blurOut()` / `blurIn()` in
   `shared/ui.js`): the one animation for something that steps away and comes back in place. Blur
@@ -395,7 +416,9 @@ style a button, header, card, sheet or menu locally.
 - **Header:** portrait, a row under the status bar (icon button, stats right-aligned as a mono
   label over a 17/750 tabular value, and optionally `.stat-meters` under them: a row of small
   two-state icons, filled while ready and hollow while used, such as Tanks' shells and mines;
-  in a landscape game header each meter runs down the right edge). No page shows a title in the
+  in a landscape game header each meter runs down the right edge). `.bar-center` puts something in
+  the middle of the portrait header row, between home and the stats, and in landscape lets it join
+  the stats down the right edge (Sudoku's hearts, `.lives`). No page shows a title in the
   header (a game's name is on its start sheet); the launcher's header is only settings, floating
   at the top right, its logo being in the page (Launcher, above). A game page's header stays in
   the page (never
@@ -413,80 +436,128 @@ style a button, header, card, sheet or menu locally.
   content such as settings, confirmations and results, glass from the bottom with top corners 24,
   padding 16 and a 44 close button where one is needed. A sheet is barely tinted (`--sheet`, 40%)
   and blurs what's behind it (`--blur-sheet`, 40px); a modal one dims the page only lightly, and
-  the flat surfaces on it (segmented control, toggle rows, cards, facts, fields) turn to glass too. A sheet that belongs to the game state (a
+  the flat surfaces on it (segmented control, slider, toggle rows, cards, facts, fields) turn to glass too. A sheet that belongs to the game state (a
   start screen or a result) is docked: opened with `show()`, so the header and menu still work.
-- **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Undo, Redo, Erase,
-  Notes, Hint as labelled icon buttons over a 3×3 number pad; 2048: an Undo button); anything about
+- **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Notes and Erase
+  over a 3×3 number pad); anything about
   the whole session lives in the side menu. Boards must stay square and fully visible on an iPhone
-  SE and a Pro Max in portrait and in landscape, with no page scrolling during play.
+  SE and a Pro Max in portrait and in landscape, with no page scrolling during play. Check
+  landscape in WebKit, not only Chrome: a size container (`.board-wrap`) whose width came from
+  `aspect-ratio` and a stretched height was 0 wide on iPhones while Chrome drew it, so in landscape
+  it takes an explicit width (`min(60%, the play area's height)`).
 - Respect `prefers-reduced-motion`: state changes are instant, with no blur or scale animations.
 
 ## Game: Sudoku
 
 - **Generator** (`generator.js`): fill a full grid with randomized backtracking, then remove
   cells in random symmetric pairs, keeping each removal only if the solver still finds
-  **exactly one** solution (the count stops at 2). Difficulty targets givens:
-  Easy 38–42, Medium 32–36, Hard 28–31, Expert 24–27. Use a seeded PRNG (mulberry32) so a
-  seed reproduces the same puzzle.
-- Run generation in a **Web Worker** (the worker file ships in the Sudoku pack like any other
-  file) so Expert never freezes the UI. Show a brief "Generating…" state.
-- **Sharing:** a puzzle can be shared as an 81-character string (`0` for empty). "Enter
-  puzzle" accepts one, validates it, and rejects puzzles without a unique solution.
-- **Input:** tap a cell, then use the on-screen number pad. Also support a notes (pencil)
-  toggle, erase, undo and redo (unlimited, stored in the save), and a hint that fills one
-  correct cell and counts toward stats.
-- **Feedback:** highlight the selected row, column and box, highlight cells with the same
-  digit, and mark conflicts (toggleable). Placing a digit clears that digit from the notes
-  of its peers. A number on the pad dims once all nine of it are placed.
-- **Timer** pauses on `visibilitychange` (which opens the side menu) and while the side menu or
-  a modal sheet is open.
-- **Menu:** the home button's side menu: Resume, New puzzle, Enter puzzle, Share this puzzle, Show
-  conflicts (switch), Back to games. "New puzzle" is a sheet with a Difficulty segmented control;
-  with no puzzle going it is docked and opens on its own. "Solved" is a docked results sheet.
-- **Completion:** detected when the grid matches the solution. Show time, difficulty and
-  hints used, and record best times per difficulty.
-- **Save:** puzzle, solution, current grid, notes, undo stack, elapsed time and difficulty.
-  Resume exactly where the player left off.
-
-## Game: 2048
-
-- Implemented from scratch: 4×4 grid, a new tile after each valid move (2 at 90%, 4 at 10%).
-- **Input:** swipes on the board using pointer events with a ~30 px threshold and the
-  dominant axis winning. Arrow keys work too. Call `preventDefault` on the board so swipes
-  never scroll or trigger iOS back-swipe behaviour.
-- **Correct merge rules:** each tile merges at most once per move, merges resolve from the
-  direction of movement (`[2,2,2,2]` → `[4,4]`, `[2,2,2]` moving left → `[4,2]`), and a move
-  that changes nothing doesn't spawn a tile.
-- **Animation:** slide and merge transitions of about 100 ms using CSS transforms on
-  absolutely positioned tiles. Inputs during an animation are queued, not dropped. Use
-  instant updates under reduced motion.
-- **Game states:** reaching 2048 shows a win prompt with "Keep playing" and "New game". When
-  no moves remain, show game over.
-- **Score and best score,** plus a single-step undo.
-- **Save:** grid, score, best, won flag and undo snapshot, written after every move.
-- Use a tile colour scale of my own design from the shared tokens, not a copy of the
-  original game's palette: grey steps up to white, then ringed and inverted tiles (`--tile-*` and
-  `.t2`…`.tmax` in `styles.css`, shared with the launcher's tile art).
-- **Menu:** Resume, New game, Back to games. The win and game-over prompts are docked sheets.
+  **exactly one** solution (the count stops at 2), in one pass down to Expert (`ladder(seed)`).
+  Every step on the way is a puzzle, so one pass is a ladder of puzzles on one solution, each
+  rung one pair (or the centre) fewer than the one above it, and an easier rung holds every given
+  of a harder one (`rungs()`: the rungs with 24 to 42 givens, easiest first). A pass that stalls
+  above Expert starts on another grid. Difficulty by givens, in ranges that meet (`LEVELS`,
+  `levelOf()`): Easy 38–42, Medium 32–37, Hard 28–31, Expert 24–27. Use a seeded PRNG (mulberry32)
+  so a seed reproduces the same ladder. No puzzle comes from anywhere else: there is no sharing,
+  no typing a puzzle in, and no hints.
+- Run generation in a **Web Worker** (`worker.js`, shipped in the Sudoku pack like any other
+  file) so a slow phone never freezes the UI. A pass takes about a millisecond, and the next
+  ladder is built ahead (a second after opening the page, and as each puzzle starts), so
+  "Generating…" shows on the board only if one takes longer than 300 ms.
+- **Choosing the difficulty** is a phase of the page (`choosing` in `sudoku.js`), not a sheet:
+  the chooser takes the moves' place and room (under the board in portrait, beside it in
+  landscape), so the board stays in full view and never moves. It holds the difficulty's name
+  (Title) with its best time as an eyebrow, a slider over the ladder's rungs (Easy at the left,
+  the thumb showing the givens), and Start. Nothing is going while it shows (it follows a first
+  open, Solved, Out of lives or Quit puzzle), so there is no Cancel and Start never asks. The
+  header's level, timer and hearts step away meanwhile. The board shows the rung under the slider
+  as ghosts (`.ghost`): each square that will hold a given already shows its number, set exactly
+  as a given's but grey and blurred past reading (1.4cqmin): you can't tell the digit, or barely.
+  Moving the slider blurs ghosts in and out (`blurIn()`/`blurOut()` slowed to `--t-twinkle`, like
+  the install page's pixels), more of them toward Easy. Start brings each ghost into focus where
+  it is, grey to white, as its square lifts to a given's grey, one after another in a random order
+  over 0.6 s; once all are sharp the givens under them take over, looking the same. Going into
+  choosing with a puzzle on the board, and Try again, blur the whole board out and back in as the
+  other one. With no saved puzzle the page opens straight into choosing. The slider starts at the
+  rung nearest the givens of the last puzzle started (`prefs.givens`, Medium's 34 at first),
+  keeping to that difficulty on a tie.
+- **Input:** tap a cell, then use the on-screen number pad: Notes (a toggle) and Erase as its
+  first row, then 1 to 9 (`.keypad.has-tools`). There is no undo or redo. A right number stays and
+  can't be changed; Erase only clears a cell's notes.
+- **Lives:** three per puzzle, as smooth hearts (`.lives` in `styles.css`, `#i-heart` /
+  `#i-heart-empty` in `SHAPES`) in the middle of the portrait header between home and the timer,
+  and down the right edge under the timer in landscape. A wrong number costs one: it shows a
+  moment (0.6 s) in red (`#ff453a`, the board's one colour), then blurs out slowly (`--t-twinkle`)
+  and the cell is empty again; another number in the meantime ends it at once.
+  The heart breaks (`.is-breaking`): it cracks down a zigzag from its notch to its point, the two
+  halves part, then fall a little way to either side, turning and blurring out, while the hollow
+  heart blurs in where it was (0.8 s). A hidden live region says how many are left. The grid only ever holds right numbers, so nothing can
+  conflict (there is no conflicts switch). Notes never cost a life. With the last heart gone the
+  clock stops and a docked "Out of lives" sheet offers Try again (the same puzzle from the start,
+  every life back) and New puzzle. A lost puzzle records nothing.
+- **Feedback:** highlight the selected row, column and box, and highlight cells with the same
+  digit. Placing a digit clears that digit from the notes of its peers. A number on the pad dims
+  once all nine of it are placed.
+- **Timer** pauses on `visibilitychange` (which opens the side menu), while the side menu or
+  a modal sheet is open, and while choosing.
+- **Menu:** the home button's side menu: Resume, Quit puzzle (as Tanks' Quit campaign, with its
+  flag; only while a puzzle is going), Back to games. Quit asks first when the puzzle has a number
+  or note entered, a life spent or more than 5 s on the clock, then drops the save and the board
+  blurs into the chooser. "Solved" and "Out of lives" are docked sheets whose New puzzle opens it.
+- **Completion:** detected when the grid matches the solution. Show time and difficulty, and
+  record best times per difficulty.
+- **Save:** puzzle, solution, current grid, notes, lives, elapsed time, difficulty, and whether
+  it was solved or lost. Resume exactly where the player left off. Older saves load with three
+  lives and any wrong numbers taken out.
 
 ## Game: Tanks
 
 - Top-down tank battles in the style of Wii Play's *Tanks!*, with original code, art and sound.
-  The arena is 20 × 15 cells (4:3). On a tall screen the renderer turns it 90°, so the player's side
+  The arena is 20 × 15 cells (4:3). A map of your own can be any 4:3 size of `SCALES` in `rules.js`,
+  12 × 9 up to 32 × 24; a world needs nothing more than its grid to say its size (`gridSize`:
+  never read `COLS`/`ROWS`, the campaign's size, for a world's), and the renderer lays the field
+  out again whenever the size shown changes. On a tall screen the renderer turns it 90°, so the player's side
   (the left of every map) sits at the bottom, next to the thumbs. The arena's canvas covers the
   whole screen, under everything else on the page, and all of it round the field is brick wall
   (`cellAt` already calls everything outside the map wall); the play area only says where the field
   goes (`layout` in `render.js`). In portrait the field fills the width but for half a cell of wall
   each side, with two cells of wall over it starting right under the header; past those two cells,
   above and below the field, the wall blurs out deeper toward the screen's top and bottom under a
-  shade to `--bg` (`.edge-top`/`.edge-bottom` with `.pblur-deep`, the launcher's top edge). In
+  shade to `--bg` (`.pblur-deep`'s look, the launcher's top edge). In
   landscape there is no header band: the home button floats in the top-left corner, mission and
   lives in the top-right, and the field fills the height but for half a cell of wall top and bottom,
   centred on the screen with equal room on both sides; past two cells of wall left and right, the
-  wall in the gutters blurs out toward the screen's sides with no shade (`.edge-left`/`.edge-right`,
-  deep, without their `<b>`). `tanks.js` sets `--wall-top/-bottom/-left/-right` for those edges.
+  wall in the gutters blurs out toward the screen's sides with no shade (the blur alone). Those
+  blurred edges are baked into the floor canvas once per layout (`blurEdges` in `render.js`, with
+  `.pblur-deep`'s layers and shade), never CSS backdrop-filter over the arena: iOS re-blurs those on
+  every frame the canvas changes, which cost battery.
   Everything past the wall's first cell is drawn once per layout; a crate blown away or an editor
-  stroke redraws only the field and that cell. Up on screen is always up for input.
+  stroke redraws only the cells that changed and the cell round them. Up on screen is always up for input.
+- **Rendering** (`gl.js`, where WebGL2 works; `render.js` keeps the effects and says what goes
+  where): the arena is drawn by the GPU on its own canvas (`.arena-gl`), laid over the arena's
+  canvas, which only takes the touches, at the screen's own pixel ratio (3 on iPhones; the 2D
+  renderer stays at 2). The floor is still built with a 2D context, off the screen
+  (`willReadFrequently`), and laid by the GPU from a texture, a broken crate or a new dent sending
+  only its own patch again: a big 2D canvas on an iPhone's screen can show blurred and pixelated
+  (it did on opening, until the next layout), which the simulator never shows. A tank is painted
+  once per look, unlit and facing right (`tankPlanes` in `art.js`: hull, gun and head, each with
+  masks of its parts), never once per angle, and lit on the GPU with the bands and drop shadows
+  `paintHard` paints, at its exact angle and position; every look a tank can show in play is
+  painted ahead while the mission's banner is up (`planePose`/`planeVariants`, a test checks).
+  Mines and bombs are drawn from their numbers (`MINE`, `BOMB`, `TARGET` in `art.js`), every effect
+  is a shape from a few numbers, and tread marks are laid on the GPU once each. Without WebGL2 (an
+  old phone, Lockdown Mode, a lost context that never comes back) `render.js` draws it all with
+  the 2D renderer as before; both draw the same things from the same numbers, so change both.
+- **Performance** (battery): a frame must stay close to 0.1.0's cost (about 1 ms in the iPhone
+  simulator for mission 20; 0.1.1 had grown to about 68 ms). With `gl.js`, mission 20 costs about
+  1 ms of JavaScript a frame at 3x, most of it the simulation, and the WebKit GPU process about a
+  quarter of what the 2D renderer cost it at 2x. Rules that keep it so: a frame paints nothing
+  with a 2D context (pictures are painted once, ahead or when first needed, and anything that
+  stays, dents, scorch marks, lasting tracks, goes into the floor or the tracks texture once); a
+  frame is a few dozen draw calls and one upload per program, so new things to draw should batch
+  with the shapes there are; every input `model()` reads goes in `planePose` (or `POSE`, the 2D
+  renderer's kept pictures, marked `moving` if it changes every frame); no backdrop-filter over
+  the arena. The 2D renderer's own rules still hold for it: never draw on a spare canvas and lay
+  it down in the same frame (WebKit waits about 1 ms each time), no per-frame clips beyond one per tank.
 - **Rules** (`rules.js`, `engine.js`): one hit destroys a tank. Shells ricochet off walls and crates;
   the player has 5 shells in flight with 1 ricochet each and 2 mines. Shells that meet cancel out
   (missiles and minigun rounds too), your own shell can destroy you after a ricochet, and a barrel inside a wall fizzles.
@@ -494,20 +565,38 @@ style a button, header, card, sheet or menu locally.
   rad/s for 4 s, only while you are within 90° of the nose) and die on the first wall; mortar bombs
   fly over everything and land 1.5 s later on a spot marked on the floor; a minigun spins its
   barrels up for 1.2 s, then sprays a round every 0.1 s (they run down over 2.5 s once it loses
-  you); its rounds never ricochet. Mines go off after 10 s,
+  you); its rounds never ricochet; a laser stops and shows a red line for 0.9 s (`LASER_CHARGE`), then
+  burns down it for 1 s (`LASER_BEAM`) through every tank and shot on it until a wall or crate stops
+  it, setting off any mine on the line (`t.beam` holds its phase and angle, plain JSON; `beamLine()`
+  in `rules.js` is its line). Mines go off after 10 s,
   when any tank comes close (the layer only once it has driven off), or when shot. A blast (a mine's
   1.5 cells, a landing bomb's 1.0) destroys tanks, shells and striped crates, sets off nearby mines,
   and never touches walls. Holes stop tanks, not shells.
-- **Enemies** (`ai.js`, kinds in `rules.js`): brown, grey, teal, yellow, pink, green, violet, red,
-  white, black, olive, lime and hornet, differing in speed, weapon, ricochets, shots in flight, aim
+- **Enemies** (`ai.js`, kinds in `rules.js`): brown, cream, teal, yellow, pink, green, red, white,
+  black, olive, lime and indigo, plus night pink, yellow, red, lime and indigo, differing in speed, weapon, ricochets, shots in flight, aim
   (sweep, direct, bank shots found by mirroring the target in wall faces, guided missiles, lobbed
   bombs, or a minigun's spray, whose turret drags as its barrels speed up),
   lead (an exact intercept on your smoothed velocity, stopped at walls), dodging, and invisibility for
-  white. Kinds come in lines: a V2 names the first version it upgrades (`upgrade` in `TYPES`):
-  Brown → Grey, Teal → Green, Yellow → Hornet, Pink → Violet and White (Violet's twin, `twin`); Red,
-  Black, Olive and Lime stand alone. A V2 reacts and thinks at least as fast as its V1 (a test
-  checks), and the field guide rates every kind on five axes: Aim, Awareness, Defence, Tactics,
-  Mines (TANKS.md A5 plans the rest). Lines are on their way out (TANKS.md N1): every kind will stand alone in its own colour, and the stronger version of a kind is its night version (none has one yet), so add no new `upgrade` links. Yellow and Hornet lay mines. Yellow drops one of its 2 now and then. Hornet lays its 4 by
+  white. Every kind stands alone in its own colour; the stronger version of a kind is its night
+  version (`NIGHT` in `rules.js`: only what changes, laid over the day kind as `TYPES.<kind>Night`
+  with `base` and `night: true`). A night version keeps its kind's colour, weapon and aim, is never
+  worse on any number (a test checks), is drawn with a deep hull in its kind's colour and bright
+  cleats (`art.js`), and has its kind's map letter in upper case. Night Pink (`P`) is Pink faster,
+  with 5 shells and sharper dodging and lead (it plays as Violet did); Night Yellow (`Y`) lays mines
+  by plan (Hornet's behaviour); Night Red (`R`) fires its left pod then its right `PAIR_GAP` (0.25 s) later (`pair`, `TWIN_SPREAD` either
+  side) with faster missiles that follow the open way round walls to you and swerve round tanks and mines
+  (`path`; `routeTo()` in `ai.js`, `waypoint()` in `engine.js`; a pair never cancels itself), and it
+  fires round a corner along that way when you hide close by; Night Lime (`L`) dodges more and walks its stream up to `walk` cells either side of
+  you; Indigo (`i`) is the laser tank, holding its beam still, and Night Indigo (`I`) turns its beam
+  after you as it burns, at up to `track` rad/s. Pink spaces its 3 shells 0.6 s apart and leads you,
+  rather than firing a burst. A tank dodging a shot it notices plans its way out (`escape()` in
+  `ai.js`): the nearest spot its hull can really reach in time, in any of 24 directions, that is off
+  the shot's line or behind something that stops it, counting the time to turn; it drives there and
+  waits until the shot has passed, and if nothing gets it clear it doesn't dodge rather than park in
+  the line. Every mover keeps off a laser's red line or beam (`fleeBeams`), and a laser never fires
+  with an ally anywhere on its line. Saved maps with the retired letters `v`/`h` load as `P`/`Y` (`OLD_CODES`). The
+  field guide rates every kind on five axes: Aim, Awareness, Defence, Tactics, Mines (TANKS.md A5
+  plans the rest). Yellow and Night Yellow lay mines. Yellow drops one of its 2 now and then. Night Yellow lays its 4 by
   plan: at a cell on your shortest way to it that it reaches well before you, then watches the mine
   from a lookout and shoots it as you pass (only when the blast spares every enemy); it knows its
   side's quiet mines only go off when driven onto, and drives clear of any about to blow. No enemy
@@ -515,22 +604,71 @@ style a button, header, card, sheet or menu locally.
   the cell they drive to, take turns by right of way, line up before narrow gaps, and back off when
   stuck, so they never jam.
 - **Art** (`art.js`, drawn by `render.js` and by the field guide): shape tells you what a tank can do
-  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods, a
-  mortar tube and a minigun's spinning bundle; treads or a concrete pad: moves or not; rear-deck
+  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods in a mount fixed to the turret, its light on the turret's axis (they fire in turn, left first, and only the pod that fired slides back through the mount: `POD`), a
+  mortar tube, a minigun's spinning bundle and, for a laser, no barrel but a ruby rod held out
+  between two prongs on a squat housing, lit red while it fires; treads or a concrete pad: moves or not; rear-deck
   discs: mines left), colour only
   which kind it is. The colour plan sits above the `--tk-*` colours in `tanks/styles.css`, and a test
   holds new colours to it; past about 14 kinds, a variant can wear another kind's colour with
-  hazard stripes (`VARIANTS` in `art.js`, empty today; Hornet has its own cream). Nothing has an ink
+  hazard stripes (`VARIANTS` in `art.js`, empty today). Nothing has an ink
   outline: one light from the top left of the screen (`LIGHT`), fixed however the arena turns,
-  lights every part on the edges facing it, shades the edges facing away, and gives each part a
+  lights every part on the edges facing it, shades the edges facing away, lights a tube (a barrel or
+  a missile pod) round across it (`tubeBands`: wide stepped bands down its
+  sides, as wide as the light falls across it, and a little shade down both sides when it points
+  along the light; its tip keeps a flat part's edge; a gun's tubes are its first run of solids,
+  which the GPU lights the same way), and gives each part a
   soft shadow on the one under it and every tank a shadow on the floor built from all its parts,
   each raised by its height. Shells, rockets, rounds, missiles, bombs and mines get the same light;
-  only a missile glows and wears its owner's colour. Edges and shadows are canvas shadows, so
-  `render.js` and the guide pass a `kit` of spare canvases (`makeKit`); a tank under about 1.5 px
-  of blur is lit hard, part by part, which costs far less. Walls are brick, laid along the screen;
+  only a missile glows and wears its owner's colour. In game, tanks are lit hard (two-step edge
+  bands), exactly like the menu's badges: by the GPU from their unlit pictures (see Rendering;
+  no band or drop shadow thinner than at 2x, in CSS px), or by the 2D renderer from kept pictures
+  (`makeSprites`/`drawKept`). A glow in the effects is laid at the strength the effect before it
+  left the 2D context at (`drawFxLayer` sets none for it), about a third of its own: `glFx` keeps
+  that look. The field guide
+  passes a `kit` of spare canvases (`makeKit`) for the soft light, whose edges and shadows are
+  blurred on them; a tank under about 1.5 px of blur is lit hard there too. The blur (`soften`) halves a mask and
+  doubles it back, never scaling by anything but exactly 2 in one `drawImage`: iPhones sample
+  rather than average past that (whatever `imageSmoothingQuality` says), and in-game tanks came
+  out pixelated, their light and shadows jumping as they moved. Walls are brick, laid along the screen;
   crates are toy crates braced with an X, one box a cell; pits are holes broken in the floor, a
   dark recess with a crack off a corner now and then. The floor has a tone per slab and dims into
-  its corners.
+  its corners. Things show weight (`render.js`, from the engine's events, which name the tank that
+  fired and the face a shot met): as it fires, the gun slides a third of its length back into the
+  turret in 30 ms and runs out over 300 ms while the turret and hull jolt back and settle like a
+  spring, and a mortar's tube punches down and springs back (`RECOIL`/`recoilAt` in `art.js`, from
+  `fired`, the seconds since the shot; the GPU slides the gun's picture, and the 2D renderer keeps
+  the slide in eighths in `POSE`; the jolt only moves where the parts are laid), with a flame, a flash of light on the floor, smoke and sparks at the muzzle; a
+  laser's rod gathers light as it charges (a glow, sparks drawn in, rings closing on it), thumps
+  back as its beam lights with a burst off its point, flares as it burns (a glare across the beam,
+  its light on the floor) and glows on as it cools (`drawLasers` and `emitter` in `render.js`, at
+  `lensAt` in `art.js`, one function for the GPU and the 2D renderer); Lime's barrels glow
+  orange after a long spray and cool as they run down (`heat`); a tank puffs exhaust as it pulls
+  away or turns hard (never White). A shot meeting a wall or crate sparks and leaves a dent that
+  stays (painted into the floor once, `addDent`): a square hit pocks a wall (a pale flake, a dark
+  pock, a fan of cracks), a glancing one (the engine's events carry the shot's velocity) scrapes it
+  lengthwise, and a crate takes a shallow nick, dark inside, its rim lit and shaded as the crate's
+  own edges are. A hit beside a dent roughens it instead of adding another, growing it a third at
+  most: dents are paint, and gameplay never changes (blocks never wear away). Dents follow a wall's
+  rounded corners, and a crate's go with the crate. The crumbs and dust a shot knocks off fade
+  over 3 s. A blast leaves a scattered soot burn on the floor (`blastBurn`, floor cells only) and
+  peppers every wall face turned toward it with shrapnel, the wall round the field too
+  (`blastScars`: soot, pits and scrapes over the edge and the top, and scores the way the fragments
+  flew; they never merge). A tank blowing up leaves the same at a landing bomb's size, paint only
+  (`blastMarks`), with its X on the burn: two crossed gouges torn into the floor (`drawX`, floor
+  cells only), so it reads on the burn's black without being white: a ragged rim of ash with gaps
+  and soft smudges round it, inside a near wall in shadow, a charred bottom crazed into small
+  plates with grit on it and a far wall lit as much as it faces `LIGHT`, pale chips spalled off the
+  rims, the heat's brown along them, a hairline crack or two and flecks of ash. A laser's beam
+  scorches the block it meets for good (`laserBurn`): ragged char with pits and a hairline crack
+  or two, once the beam stops or moves on, in soot it lays as it burns (`sear`, into the floor 20
+  times a second), as much as how long it has stayed about there (`SEAR_SPREAD`): held still,
+  a stain that spreads and darkens to half a cell into the block, clouded, the heat's brown tint
+  nearer in, and streaked outward; turning, a thin trail along the face. It glows as it burns and
+  cools after; a beam that turns drags one scorched streak along the face, charred deepest where
+  it burned worst. Tread marks fade
+  over 9 s to a faint trace that stays (`TRAIL_A`; on the GPU a tracks texture the floor is laid
+  through, where overlapping marks are no darker than one). A broken crate leaves splinters for
+  the rest of the mission.
 - **Campaign** (`missions.js`): 20 missions, 3 lives, a bonus tank after missions 5, 10 and 15,
   which also unlock checkpoints (start at 6, 11 or 16). A retry keeps destroyed enemies destroyed.
   Each mission has one idea, a name and a one-line briefing (`tanks.name.<n>`, `tanks.brief.<n>`),
@@ -538,8 +676,8 @@ style a button, header, card, sheet or menu locally.
   reachable, no enemy with a clear shot at your start, no two missions with the same blocks.
   Playtest new or changed maps with `npm run playtest` (`scripts/playtest.mjs`): its expert bot
   should win each mission at least 6 times in 8, and its casual bot shows how hard the mission is
-  next to the others. `--map file` plays a draft copied from the field guide's editor. Lime and
-  Hornet are in no mission yet.
+  next to the others. `--map file` plays a draft copied from the field guide's editor. Lime, Indigo
+  and the night versions but Night Pink are in no mission yet.
 - **Test range:** the start sheet's Test button opens a docked sheet to pick one enemy kind and
   how many (1 to 6), on `testMap` in `missions.js`: four short walls (columns 2, 6, 13, 17, rows 4
   to 10), side on `_|__|__` and `__|__|_`, you at the far left. A test never touches the campaign:
@@ -548,8 +686,10 @@ style a button, header, card, sheet or menu locally.
 - **Your maps** (the map editor, `maps.js`): the start sheet's Maps button opens "Your maps", a
   docked sheet listing the maps this phone has drawn (pick one and it shows behind the sheet),
   with Edit, New map and Play; with none yet it explains the editor and offers only New map. A
-  new map is open floor with you at the left (column 2, row 7), named "Map n". The editor is a
-  phase of its own (`edit`, `.is-editing` on the page): the header holds only home and a square
+  new map is open floor at the size last picked (20 × 15 at first) with you at the left (column 2,
+  halfway down), named "Map n". The editor is a
+  phase of its own (`edit`, `.is-editing` on the page): the header holds only home, Generate (a
+  44 glass icon button with a die) and a square
   primary Play (`.icon-btn-primary`, the home button's size, off while the map can't be played), and under the arena in portrait
   (beside it, two columns, in landscape) sit a line about the map's state and the tools: Wall,
   Crate, Hole, Erase, You, Enemy and Undo, the brushes drawn by the game's own art. Enemy opens a
@@ -558,8 +698,17 @@ style a button, header, card, sheet or menu locally.
   lifts, and there is only ever one of you. A stroke is one undo step (in memory, kept while you
   play the map and come back). A mouse paints too, right-click erases, and a map character picks
   its brush (Cmd or Ctrl+Z undoes, Escape opens the menu). The side menu adds Your maps, Mirror
-  painting (a switch: the twin cell across the middle row too, never you), Rename (a modal sheet
-  with a `.field.is-line`) and Delete map (confirmed). Your maps only need to be playable:
+  painting (a switch: the twin cell across the middle row too, never you), Map size (a modal sheet,
+  the six sizes as a `.segmented.is-grid.is-thirds`: a pick resizes the map round its middle, one
+  undo step, and you are never cut off), Rename (a modal sheet
+  with a `.field.is-line`) and Delete map (confirmed). Generate (`mapgen.js`) replaces the map,
+  one undo step, with one made at its size: a lead kind at random (most of the enemies) and a
+  kind or two beside it, and blocks to suit the lead (`themeOf`, from what the kind does: bank
+  shooters get long walls, minelayers two-wide lanes, mortars, miniguns and fast rockets open
+  ground, missiles and plain shooters corners, turrets cover). Pieces go down one by one, each
+  kept only while the map has at most its theme's 0 to 2 tight spots (`tightSpots` in
+  `mapcheck.js`: floor no 2 × 2 of floor covers) and every cell stays reachable; every map passes
+  `checkMap`. The line under the arena says what it was made for until the map changes. Your maps only need to be playable:
   `mapReport` blocks a map without your tank, with no enemies or more than 8, or with an enemy
   `checkMap` can't reach (ringed red); an enemy with a clear shot at your start is a note
   (ringed white), not a block. A map plays like a test: Mission "Custom", no lives, never saved
@@ -567,14 +716,16 @@ style a button, header, card, sheet or menu locally.
   back where it started.
 - **Input:** touch works like Brawl Stars. The controls float over the whole play area at 20% opacity.
   The sticks start only on the bottom half of the screen, in portrait and landscape alike. A thumb
-  anywhere on its left half drives, with the stick centred where it lands. On its right half,
-  drag to aim and let go to fire, drag back to the middle to cancel, or tap to fire straight at the
+  anywhere on its left half drives, with the stick centred where it lands; dragged past the rim,
+  the stick comes along under the thumb (the side menu's "Sticks follow your thumb", on by default).
+  On its right half, drag to aim and let go to fire, drag back to the middle to cancel, or tap to fire straight at the
   nearest enemy in sight within 6.5 cells (`tapTarget` in `ai.js`: one behind a wall or crate is
   passed over for the next; no ricochet or lead; invisible tanks are skipped). While there is one,
   the aim stick shines (its shell turns white and glows, and a ring spreads from it to the rim) and
-  the turret follows that enemy, until a thumb drags the stick. With none, a tap fires where you
-  last aimed. The aim knob is a shell pointing along the aim. The mine button sits on the right edge, halfway down, above the aim stick in landscape, and
-  in portrait in the middle of the bottom row, between the two sticks. It has the sticks' rim
+  the turret follows that enemy, until a thumb drags the stick. With none, or with the side menu's
+  "Auto aim" off, a tap fires where you last aimed. The aim knob is a shell pointing along the aim. The
+  mine button sits on the right edge in landscape, above the aim stick and just above the screen's
+  middle, where the sticks start, and in portrait in the middle of the bottom row, between the two sticks. It has the sticks' rim
   and fill with a button's corners (`--r-btn`), and its mine turns hollow while both of yours are down. Under Mission and
   Lives, the header's meters show your 5 shells and 2 mines, filled while ready and hollow while
   out (a row in portrait, columns down the right edge in landscape).
@@ -582,7 +733,8 @@ style a button, header, card, sheet or menu locally.
   missing from a touch event's `touches`, so a lost `touchend` can't leave one held. Keyboard and mouse: WASD/arrows, mouse to aim, click to fire, Space or right-click for a mine,
   P or Escape for the menu. The on-screen controls only appear on touch devices.
 - **Menu:** no back or pause button. The header's home button opens a side menu (Resume, Quit
-  campaign, End test or the way back from a map of yours, Back to games; in the editor, Resume,
+  campaign, End test or the way back from a map of yours, on touch screens the switches Sticks
+  follow your thumb and Auto aim, Back to games; in the editor, Resume,
   Your maps, Mirror painting, Rename, Delete map, Back to games) down the left edge over a progressive blur (`.side-menu` in
   `styles.css`, `setupSideMenu` in `shared/ui.js`). Opening it pauses the battle; closing it plays on.
   The home button blurs out while the menu is open and blurs back in when it closes: Resume is the
@@ -595,21 +747,23 @@ style a button, header, card, sheet or menu locally.
   pagehide, so a killed app reopens paused mid-battle. `summary: { mission }` feeds the launcher.
   Your maps are `gh:tanks:maps` (`{ next, list: [{ id, name, rows }] }`), written 250 ms after
   every stroke, at once on leaving the editor, and on hide; `readMaps` drops any malformed entry.
-  The picked map, the enemy brush's kind and Mirror painting live in `prefs`. Export and Import
+  The picked map, the enemy brush's kind, Mirror painting and the two touch switches (`follow`,
+  `autoAim`) live in `prefs`. Export and Import
   in Settings carry them like any other save.
 - **Sound** is synthesised with Web Audio (no audio files). It follows the iOS silent switch
   (`navigator.audioSession.type = 'ambient'`) and the app's Sound switch in Settings
   (`shared/sound.js`); the game has no sound setting of its own.
 - Leaving the app or the window pauses the battle (the side menu opens). Under reduced motion there is no screen shake,
-  fewer particles, no banner slide, steady lights on mines and missiles, and a static bomb mark.
+  fewer particles (one spark where there would be several), no banner slide, steady lights on mines
+  and missiles, and a static bomb mark.
 - **Planned work** lives in `TANKS.md`, grouped by category with ids (R1, W1, A1…). New Tanks ideas
   go there; when one ships, mark it done with the date.
 
 ## Tanks field guide (keep it in sync)
 
 A reference page for Tanks, published as a private claude.ai artifact:
-**https://claude.ai/artifact/YKPsuThAVXPnPLm4Wwa5gN**. It shows every enemy kind grouped into lines
-(card, scene, what each V2 gains and gives up), a stats table, an intelligence table (five axes,
+**https://claude.ai/artifact/YKPsuThAVXPnPLm4Wwa5gN**. It shows every enemy kind, each day kind
+with its night version beside it (card, scene, what the night version gains), a stats table, an intelligence table (five axes,
 levels worked out from the stats, with proposed levels marked as such), what we could add
 (`guide/plans.mjs`, nothing in it is built), shared AI behaviour and aim styles, how to read a tank at a glance and the colour plan,
 all missions as drawn maps with their names and an enemy matrix, how a map is written, and a map
@@ -659,7 +813,7 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 ```bash
 npm run build                 # node scripts/build.mjs
 npm run serve                 # node scripts/serve.mjs  (dist/ on :8080, local testing)
-npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi
+npm run lan                   # build + https://<mac>.local:8443 for phones on the same Wi-Fi, and :8080 locally
 npm run lan --stop            # stop that server, from any terminal
 npm run guide                 # rebuild the Tanks field guide into guide/out/ (then republish it)
 npm run playtest              # Tanks: a bot plays every mission (--missions 4,12  --map draft.txt)
@@ -698,26 +852,36 @@ Friends see the update within about 10 minutes, the next time they open the app 
   301 on Pages and a 404 locally; nothing in the app requests it).
 - On a real iPhone: install, download every game, go to airplane mode, force-quit, relaunch, and finish
   a move in each game. Kill the app mid-game and confirm it resumes. In airplane mode, games
-  you didn't download keep a dimmed download icon. The status bar is solid, not blurred.
+  you didn't download keep a dimmed download icon. The status bar is solid, not blurred. In
+  Tanks, the arena (walls and floor too) is sharp from the moment a mission opens, not only after
+  a rotation, and tanks stay sharp as they drive and turn.
 - Update path: change a file, push, wait for the Actions run plus about 10 minutes, open the
   installed app online, and confirm "Update available" appears, then reload and check the new version shows and every downloaded game
   still plays offline.
-- Sudoku: generated puzzles always have a unique solution. Add a script test that generates
-  200 puzzles per difficulty and verifies uniqueness.
-- 2048: unit-test merge rules with the edge cases listed above.
+- Sudoku: `tests/sudoku.test.mjs` builds 200 ladders and checks that every difficulty has a
+  rung, the rungs nest (each one only the givens of the one above, a pair fewer), stay symmetric
+  and agree with the solution, and that the sparsest rung of each difficulty has exactly one
+  solution by an independent solver (which vouches for every rung above it); also that the
+  difficulty ranges meet and a seed reproduces its ladder.
 - Tanks: `tests/tanks.test.mjs` covers the map checks on every mission (reachable enemies, no free
   shot at your start, no repeated layouts), ricochets, bank shots, cancelling shells, limits,
-  fizzles, mines and chain blasts, the two minelayers (Hornet lays far more than Yellow, watches each
-  mine from no nearer you and never blows itself up), Hornet's shot into a mine beside you (never
+  fizzles, mines and chain blasts, the two minelayers (Night Yellow lays far more than Yellow, watches each
+  mine from no nearer you and never blows itself up), Night Yellow's shot into a mine beside you (never
   one whose blast reaches an ally), no shot through a mine beside an ally, collisions, exact path prediction, weapons, guided missiles
   (turn limit, lock cone, fuel, shot down), mortar bombs (where and when they land, blast radius,
   minimum range, allies), the minigun (spin-up before the first round, spin-down, spray, turret
   drag, rounds that cancel out with other shots), deterministic save/resume with missiles, bombs and a
   spinning minigun, the test range map (its walls, and the map checks for every kind at 1 to 6),
   jam-free movement (corridor passing, stuck recovery, no tank pinned over 1.5 s in any mission),
-  lead aim, the colour plan, mission names in both languages, and the map editor's model
+  lead aim, lasers (warning then beam, piercing, walls stop it, shots and mines on the line, a night
+  beam's turn limit, no shot across an ally, resume mid-charge), Night Red's pair and its missiles
+  round a wall, Night Lime's walking stream, dodging beside walls without swinging back and forth, the colour plan, mission names in both languages, the GPU renderer's pictures (every kind cut into hull, gun and head; every look a tank shows in play painted ahead), and the map editor's model
   (`maps.js`: one of you, mirroring, gap-free drags, what blocks a map of yours and what is only a
   note, a map drawn exactly as its mission starts, and saved maps checked as they load).
+- Map sizes and Generate: `tests/mapgen.test.mjs` covers every size (parsing, blank maps,
+  painting and mirroring, resizing there and back, saved maps), tight spots, each kind's theme,
+  generated maps at every size (playable, few tight spots, the same for a seed), and enemies
+  thinking and driving on the smallest and the largest arena.
 - Field guide: `tests/guide.test.mjs` builds the guide from the game and fails if an enemy kind has
   no text or scene, a mission has no name or briefing, a colour is missing, or the page script
   doesn't parse. It also checks that the game code bundled into the page behaves exactly like the
@@ -727,7 +891,9 @@ Friends see the update within about 10 minutes, the next time they open the app 
 - Downloads: `tests/sw.test.mjs` runs the built service worker against an in-memory cache and a
   fake host. The shell installs alone, games download on request and resume after a failure,
   every file is fetched as `?v=<hash>` and a stale CDN copy is refused, and updates keep the games a device has (re-fetching only those that changed), including
-  from the single cache used before packs.
+  from the single cache used before packs, and drop a game the release no longer has.
+- Saves: `tests/storage.test.mjs` checks that only the saves of games missing from the registry are
+  dropped, never the app's own keys or anything outside `gh:`.
 - Icons and logo: `tests/icons.test.mjs` checks that every `#i-<name>` a page or script uses is in
   `shared/icons.js`, that no icon lights a corner pixel, that no page carries its own sprite, and
   that the logo keeps its solid 11 × 13 mark.

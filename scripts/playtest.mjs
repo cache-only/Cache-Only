@@ -24,17 +24,16 @@ import { MISSIONS } from '../src/games/tanks/missions.js';
 import {
   BLAST_R,
   BOMB_R,
-  COLS,
   CRATE,
   FLOOR,
   HIT_R,
   MUZZLE,
-  ROWS,
   SHELL_R,
   STEP,
   TYPES,
   blocksShell,
   cellAt,
+  gridSize,
   muzzleBlocked,
   open,
   owned,
@@ -51,6 +50,10 @@ const BOTS = {
   expert: { lookEvery: 4, fireGap: 0.28, aimError: 0 },
   casual: { lookEvery: 24, fireGap: 0.6, aimError: 0.06 },
 };
+// The size of the arena being played: maps come in several (SCALES in rules.js), and the bot
+// sets these from the world's grid at every step.
+let COLS = 0;
+let ROWS = 0;
 const WATCH = 0.7; // seconds ahead it watches for shots coming at it
 const KEEP = 3; // cells it keeps from a tank that moves (a mortar can't reach it closer than BOMB_MIN)
 
@@ -133,6 +136,7 @@ export function makeBot({ casual = false, seed = 1 } = {}) {
   const dice = { seed: 0x5eed + seed };
   const memo = { lines: null, gridVer: -1, shot: null, lastShot: -9, noShot: 0 };
   return function input(s) {
+    [COLS, ROWS] = gridSize(s.grid);
     const p = s.tanks[0];
     const out = { mx: 0, my: 0, aim: null, fire: false, mine: false };
     if (!p.alive) return out;

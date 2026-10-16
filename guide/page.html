@@ -118,7 +118,7 @@
   .chip.lg { width: 30px; height: 30px; font-size: 15px; }
   .masthead .chip { box-shadow: none; }
 
-  /* ---------- Roster: a block per line (a first version and its V2 upgrades), then the rest ---------- */
+  /* ---------- Roster: a block per kind with a night version (day, then night), then the rest ---------- */
   .lines { display: grid; gap: 34px; }
   .line { display: grid; gap: 12px; }
   .line-head { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 10px; }
@@ -432,8 +432,8 @@
 
 <main class="wrap">
   <section id="enemies">
-    <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · by line</span></header>
-    <p class="intro">Kinds come in lines: a first version (V1) and the upgrades built on it (V2), which see, react and fight better. Each line's note says what its V2 gains and gives up. Red, Black, Olive and Lime stand alone. Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up; a kind in no mission yet says Test, and you can try it on the test range (the Test button on the game's start sheet).</p>
+    <header class="sec-head"><h2>The enemies</h2><span class="label">{{KINDS}} kinds · day and night</span></header>
+    <p class="intro">Every kind stands alone in its own colour. A kind's stronger version is its night version: the same tank, its hull a deep shade of the kind's colour, never worse on any number and better somewhere. Its map letter is the day kind's in upper case. Each pair's note says what the night version gains. Each card shows the tank as the game draws it, doing the thing it is known for. The gate number is the mission where it first shows up; a kind in no mission yet says Test, and you can try it on the test range (the Test button on the game's start sheet).</p>
     <div class="lines" id="roster"></div>
   </section>
 
@@ -461,7 +461,7 @@
 
   <section id="smarts">
     <header class="sec-head"><h2>Intelligence</h2><span class="label">Five axes · by line</span></header>
-    <p class="intro">How clever each kind is, on five separate axes rather than one number: how it finds a line on you, how fast it notices, what it does about a shot coming at it, what it does when it has no shot, and how it uses mines. Read down a line to see what its V2 adds. Each level is worked out from the kind's stats in rules.js.</p>
+    <p class="intro">How clever each kind is, on five separate axes rather than one number: how it finds a line on you, how fast it notices, what it does about a shot coming at it, what it does when it has no shot, and how it uses mines. Read a day kind against its night version to see what the night adds. Each level is worked out from the kind's stats in rules.js.</p>
     <dl class="axes" id="axes"></dl>
     <p class="smarts-key"><span>The bars show each kind’s level today, worked out from its stats.</span><span><span class="propose">Proposed</span> marks a level it would reach with an addition below: not built yet.</span></p>
     <div class="scroller"><table class="smarts" id="smarts-table"></table></div>
@@ -469,7 +469,7 @@
 
   <section id="adds">
     <header class="sec-head"><h2>What we could add</h2><span class="label">Proposed · not built</span></header>
-    <p class="intro">Additions that would raise a kind on one of the five axes, and give each V2 a clear edge over its first version. The plan lives in TANKS.md (A5) and guide/plans.mjs; when one ships, its level moves into the table above as the kind’s level today.</p>
+    <p class="intro">Additions that would raise a kind on one of the five axes, and give each night version a clear edge over its day kind. The plan lives in TANKS.md (A5) and guide/plans.mjs; when one ships, its level moves into the table above as the kind’s level today.</p>
     <div class="adds" id="add-list"></div>
   </section>
 
@@ -497,7 +497,7 @@
 
   <section id="anatomy">
     <header class="sec-head"><h2>How a map is made</h2><span class="label">{{ROWS}} rows × {{COLS}} characters</span></header>
-    <p class="intro">A mission is a list of {{ROWS}} strings in <code>missions.js</code>, one per row, each exactly {{COLS}} characters long. Every character is one cell. <code>parseLevel</code> in <code>engine.js</code> turns the text into a grid of blocks plus the spawn points. Point at a cell in either view to read it. Rows and columns count from 0, as they do in the code.</p>
+    <p class="intro">A mission is a list of {{ROWS}} strings in <code>missions.js</code>, one per row, each exactly {{COLS}} characters long. Every character is one cell. <code>parseLevel</code> in <code>engine.js</code> turns the text into a grid of blocks plus the spawn points. Point at a cell in either view to read it. Rows and columns count from 0, as they do in the code. Maps players draw in the game's own editor can be any 4:3 size from 12 × 9 to 32 × 24 (<code>SCALES</code> in <code>rules.js</code>), and its Generate button makes one to suit a lead enemy (<code>mapgen.js</code>). Missions stay {{COLS}} × {{ROWS}}.</p>
     <div class="viewer">
       <div class="viewer-bar">
         <button class="btn" id="ana-prev" type="button" aria-label="Previous mission">‹ Prev</button>
@@ -526,7 +526,7 @@
       <div>
         <h3 class="sub">The parser requires</h3>
         <ul>
-          <li>Exactly {{ROWS}} rows, each exactly {{COLS}} characters.</li>
+          <li>Exactly {{ROWS}} rows, each exactly {{COLS}} characters (a map of your own: any size of <code>SCALES</code>).</li>
           <li>Exactly one <code>@</code>. A second one is an error.</li>
           <li>At least one enemy letter.</li>
           <li>No characters outside the legend. Anything else stops the game with an "Unknown map cell" error.</li>
@@ -882,7 +882,26 @@ function drawScene(canvas, kind) {
   const tank = { type: kind, x, y, body, turret: sc.turret };
   drawShadows(ctx, P, [...(target ? [{ t: target }] : []), { t: tank, alpha }], { kit: KIT });
   if (target) drawTank(ctx, P, target, { kit: KIT });
-  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek, roll: sc.roll || 0, alpha, kit: KIT });
+  drawTank(ctx, P, tank, { mines: t.mines - (sc.laid || 0), lit: !!sc.seek || !!sc.laser, roll: sc.roll || 0, heat: sc.heat || 0, alpha, kit: KIT });
+  // A laser: its thin red warning line, or the beam itself, from the muzzle to the first wall.
+  if (sc.laser) {
+    const [ax, ay] = path[0];
+    const [bx, by] = path[path.length - 1];
+    const strokes = sc.laser === 'charge' ? [[0.04, 0.8, P.alarm]] : [[0.3, 0.22, P.alarm], [0.14, 0.55, P.alarm], [0.05, 1, P.flash]];
+    ctx.save();
+    if (sc.laser !== 'charge') ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const [w, a, col] of strokes) {
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   for (const d of sc.shots) shotAt(ctx, P, t.weapon, path, d);
   // A minigun's stream: each round on its own line, a little either side of the turret's.
   for (const [d, off] of sc.spray || []) {
@@ -971,15 +990,15 @@ document.getElementById('yours').append(
   h('span', {}, 'reload ', h('b', {}, `${fmt(P0.reload, 2)} s`)),
 );
 
-/* ---------- Lines: a first version (V1) and the upgrades built on it (V2) ---------- */
-const LINES = KINDS.filter((k) => !T[k].upgrade && KINDS.some((o) => T[o].upgrade === k)).map((k) => [k, ...KINDS.filter((o) => T[o].upgrade === k)]);
-const ALONE = KINDS.filter((k) => !T[k].upgrade && !LINES.some(([b]) => b === k));
-const tierOf = (k) => (T[k].upgrade ? 'V2' : LINES.some(([b]) => b === k) ? 'V1' : null);
+/* ---------- Day and night: a kind and its night version (base names the day kind) ---------- */
+const LINES = KINDS.filter((k) => !T[k].night && KINDS.some((o) => T[o].base === k)).map((k) => [k, ...KINDS.filter((o) => T[o].base === k)]);
+const ALONE = KINDS.filter((k) => !T[k].night && !LINES.some(([b]) => b === k));
+const tierOf = (k) => (T[k].night ? 'Night' : LINES.some(([b]) => b === k) ? 'Day' : null);
 const AIM_WORD = { sweep: 'sweeps its turret about', direct: 'aims straight at you', bank: 'finds bank shots', guided: 'fires guided missiles', lob: 'lobs bombs', spray: 'sprays a minigun' };
 const AIM_LEVEL = { sweep: 0, direct: 1, guided: 1, lob: 1, spray: 1, bank: 2 };
 const aimLevel = (t) => AIM_LEVEL[t.aim] + (t.aim === 'bank' && t.bounces > 1 ? 1 : 0);
 const aimWord = (t) => (t.aim === 'bank' && t.bounces > 1 ? 'finds two-bounce shots' : AIM_WORD[t.aim]);
-/** What a V2 kind gains over the kind it upgrades, and what it gives up, from their stats. */
+/** What a night version gains over its day kind (and anything it gave up, which a test forbids), from their stats. */
 function changes(a, b) {
   const gains = [];
   const costs = [];
@@ -987,8 +1006,8 @@ function changes(a, b) {
   if (!a.speed && b.speed) gains.push(`drives (${fmt(b.speed)} cells a second)`);
   else if (a.speed && !b.speed) costs.push('never moves: it sits bolted to a pad');
   else if (a.speed !== b.speed) one(b.speed > a.speed, `${b.speed > a.speed ? 'faster' : 'slower'} (${fmt(b.speed)} cells a second, from ${fmt(a.speed)})`);
-  if (aimLevel(b) !== aimLevel(a) || a.aim !== b.aim) one(aimLevel(b) >= aimLevel(a), `${aimWord(b)} (V1 ${aimWord(a)})`);
-  if ((b.lead || 0) !== (a.lead || 0)) one((b.lead || 0) > (a.lead || 0), b.lead ? `leads its shots by ${Math.round(b.lead * 100)}%${a.lead ? ` (${Math.round(a.lead * 100)}%)` : ''}` : `no lead (V1 leads ${Math.round(a.lead * 100)}%)`);
+  if (aimLevel(b) !== aimLevel(a) || a.aim !== b.aim) one(aimLevel(b) >= aimLevel(a), `${aimWord(b)} (by day ${aimWord(a)})`);
+  if ((b.lead || 0) !== (a.lead || 0)) one((b.lead || 0) > (a.lead || 0), b.lead ? `leads its shots by ${Math.round(b.lead * 100)}%${a.lead ? ` (${Math.round(a.lead * 100)}%)` : ''}` : `no lead (by day it leads ${Math.round(a.lead * 100)}%)`);
   if (b.weapon !== a.weapon) gains.push(`fires ${WEAPON[b.weapon].toLowerCase()}s, not ${WEAPON[a.weapon].toLowerCase()}s`);
   if (b.spread !== a.spread && b.spread != null) one(b.spread < a.spread, `aims to within ±${fmt(deg(b.spread))}° (±${fmt(deg(a.spread))}°)`);
   if (b.bounces !== a.bounces) one(b.bounces > a.bounces, `${b.bounces} ricochet${b.bounces === 1 ? '' : 's'} (${a.bounces})`);
@@ -1003,19 +1022,19 @@ function changes(a, b) {
   if (b.invisible && !a.invisible) gains.push('turns invisible');
   return { gains, costs };
 }
-const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb', minigun: 'Minigun' };
+const WEAPON = { shell: 'Shell', rocket: 'Rocket', missile: 'Missile', bomb: 'Bomb', minigun: 'Minigun', laser: 'Laser' };
 function card(k) {
   const t = T[k];
   const info = INFO[k];
   const canvas = h('canvas', { role: 'img', 'aria-label': info.scene });
-  const shot = t.weapon === 'bomb' ? `${fmt(DATA.bombFlight)} s` : fmt(t.shot);
+  const shot = t.weapon === 'bomb' ? `${fmt(DATA.bombFlight)} s` : t.weapon === 'laser' ? `${fmt(DATA.laserCharge)} + ${fmt(DATA.laserBeam)} s` : fmt(t.shot);
   const tier = tierOf(k);
   paint(canvas, () => drawScene(canvas, k));
   return h('article', { class: 'card', id: `t-${k}` },
     h('header', { class: 'card-head' },
       chip(k, 'lg'),
       h('div', { class: 'card-title' }, h('h3', {}, info.name), h('p', { class: 'role' }, info.role)),
-      tier ? h('span', { class: 'tier', title: tier === 'V2' ? `Upgrades ${INFO[t.upgrade].name}` : 'First version of its line' }, tier) : null,
+      tier ? h('span', { class: 'tier', title: tier === 'Night' ? `${INFO[t.base].name}, at night` : 'Has a night version' }, tier) : null,
       FIRST[k]
         ? h('span', { class: 'gate', title: `First seen in mission ${FIRST[k]}: ${DATA.names[FIRST[k] - 1]}` }, `M${pad(FIRST[k])}`)
         : h('span', { class: 'gate', title: 'In no mission yet: try it on the test range' }, 'Test'),
@@ -1035,7 +1054,7 @@ function card(k) {
     ),
   );
 }
-const lineName = (base) => `${INFO[base].name} line`;
+const lineName = (base) => `${INFO[base].name}, by day and by night`;
 const AXIS_NAMES = { aim: 'Aim', aware: 'Awareness', defence: 'Defence', tactics: 'Tactics', mines: 'Mines' };
 /** What we could add to kind k (guide/plans.mjs), as a line under its line's heading. */
 const proposalLine = (k) => h('p', { class: 'could' }, h('span', { class: 'propose' }, 'Proposed'), ' ', h('b', {}, `${INFO[k].name}: `),
@@ -1043,18 +1062,17 @@ const proposalLine = (k) => h('p', { class: 'could' }, h('span', { class: 'propo
 document.getElementById('roster').append(
   ...LINES.map(([base, ...ups]) => h('div', { class: 'line' },
     h('header', { class: 'line-head' },
-      h('h3', {}, lineName(base), h('span', { class: 'arrow' }, 'V1'), chip(base), h('span', { class: 'arrow' }, '→ V2'), ups.map((k) => chip(k))),
+      h('h3', {}, lineName(base), h('span', { class: 'arrow' }, 'Day'), chip(base), h('span', { class: 'arrow' }, '→ Night'), ups.map((k) => chip(k))),
       ...ups.map((k) => {
         const { gains, costs } = changes(T[base], T[k]);
-        const twin = T[k].twin ? ` Built like ${INFO[T[k].twin].name}, as its twin.` : '';
-        return h('p', {}, h('b', {}, `${INFO[k].name} over ${INFO[base].name}: `), `${gains.join('; ')}.`, costs.length ? ` Gives up: ${costs.join('; ')}.` : '', twin);
+        return h('p', {}, h('b', {}, `${INFO[k].name} over ${INFO[base].name}: `), `${gains.join('; ')}.`, costs.length ? ` Gives up: ${costs.join('; ')}.` : '');
       }),
       ...[base, ...ups].filter((k) => DATA.plans.proposed[k]).map((k) => proposalLine(k)),
     ),
     h('div', { class: 'roster' }, [base, ...ups].map(card)),
   )),
   h('div', { class: 'line' },
-    h('header', { class: 'line-head' }, h('h3', {}, 'Stand alone'), h('p', {}, 'Kinds with no first version or upgrade (yet): each is the only one of its kind.'), ...ALONE.filter((k) => DATA.plans.proposed[k]).map((k) => proposalLine(k))),
+    h('header', { class: 'line-head' }, h('h3', {}, 'No night version yet'), h('p', {}, 'Any kind can have one; these have only their day version so far.'), ...ALONE.filter((k) => DATA.plans.proposed[k]).map((k) => proposalLine(k))),
     h('div', { class: 'roster' }, ALONE.map(card)),
   ),
 );
@@ -1064,7 +1082,7 @@ const kindName = (k) => (k === 'player' ? 'You' : INFO[k].name);
 const PARTS = [
   {
     title: 'Barrel: what it fires',
-    text: 'A thin barrel fires shells. A barrel that ends in a muzzle brake, a wide double block across its tip, fires rockets, which are fast and leave smoke. Twin launch pods fire guided missiles, and their light is lit while one is in the air. A wide round tube with no barrel lobs mortar bombs over walls. A bundle of six barrels on a motor housing is a minigun: the barrels spin up before it fires, so watch them start to turn.',
+    text: 'A thin barrel fires shells. A barrel that ends in a muzzle brake, a wide double block across its tip, fires rockets, which are fast and leave smoke. Twin launch pods fire guided missiles, and their light is lit while one is in the air. A wide round tube with no barrel lobs mortar bombs over walls. A bundle of six barrels on a motor housing is a minigun: the barrels spin up before it fires, so watch them start to turn. No barrel at all, but a ruby rod held out between two prongs, is a laser: the rod lights up red while it charges and burns.',
     tiles: [['ash', 'Shell'], ['marine', 'Rocket'], ['red', 'Missile', { lit: true }], ['olive', 'Mortar'], ['lime', 'Minigun', { roll: 0.45 }]],
   },
   {
@@ -1074,8 +1092,8 @@ const PARTS = [
   },
   {
     title: 'Rear deck: mines',
-    text: 'One disc for each mine it can have on the ground. A disc empties while its mine is down, so you can count what it has left. Only Yellow, Hornet and your own tank carry mines.',
-    tiles: [['pink', 'No mines'], ['yellow', `${T.yellow.mines} mines`], ['hornet', `${T.hornet.mines} mines`], ['hornet', `1 of ${T.hornet.mines} laid`, { mines: T.hornet.mines - 1 }]],
+    text: 'One disc for each mine it can have on the ground. A disc empties while its mine is down, so you can count what it has left. Only Yellow, Night Yellow and your own tank carry mines.',
+    tiles: [['pink', 'No mines'], ['yellow', `${T.yellow.mines} mines`], ['yellowNight', `${T.yellowNight.mines} mines`], ['yellowNight', `1 of ${T.yellowNight.mines} laid`, { mines: T.yellowNight.mines - 1 }]],
   },
 ];
 document.getElementById('parts').append(...PARTS.map((part) => {
@@ -1256,7 +1274,7 @@ document.getElementById('axes').append(...AXES.map((a) => h('div', {}, h('dt', {
 const PLANS = DATA.plans;
 const pips = (level, max, then = null) => h('span', { class: 'pips', 'aria-hidden': 'true' }, Array.from({ length: max }, (_, i) => h('i', { class: i < level ? 'on' : then != null && i < then ? 'up' : null })));
 const smartRow = (k) => h('tr', {},
-  h('th', { class: 'stick', scope: 'row' }, h('span', { class: 'tankcell' }, chip(k), h('span', {}, INFO[k].name, h('small', {}, tierOf(k) ? `${tierOf(k)}${T[k].twin ? ` · twin of ${INFO[T[k].twin].name}` : ''}` : 'stands alone')))),
+  h('th', { class: 'stick', scope: 'row' }, h('span', { class: 'tankcell' }, chip(k), h('span', {}, INFO[k].name, h('small', {}, tierOf(k) ? tierOf(k) : 'no night version')))),
   AXES.map((a) => {
     const v = a.of(T[k]);
     const then = PLANS.proposed[k]?.[a.key];
@@ -1270,7 +1288,7 @@ document.getElementById('smarts-table').append(
   h('thead', {}, h('tr', { class: 'heads' }, h('th', { class: 'stick', scope: 'col' }, 'Tank'), AXES.map((a) => h('th', { scope: 'col' }, a.name)))),
   h('tbody', {},
     LINES.flatMap((line) => [h('tr', { class: 'line-row' }, h('th', { colspan: AXES.length + 1 }, lineName(line[0]))), ...line.map(smartRow)]),
-    h('tr', { class: 'line-row' }, h('th', { colspan: AXES.length + 1 }, 'Stand alone')),
+    h('tr', { class: 'line-row' }, h('th', { colspan: AXES.length + 1 }, 'No night version yet')),
     ALONE.map(smartRow),
   ),
 );
@@ -1295,12 +1313,12 @@ const RULES = [
   ['Never wastes a shot.', ` It traces the shot’s path, ricochets included, 30 times a second and fires only when that path would pass close to your centre. For a missile that is the straight line it leaves on. A minigun is looser: it fires while its line passes within ${fmt(DATA.sprayR)} cells of you, and its rounds spread round that line.`],
   ['Spares its friends.', ' It won’t fire if the path runs near another enemy or would bounce back into itself, or crosses a mine whose blast would reach one of them, and a mortar never aims at a spot near another enemy. A missile’s curve and a minigun’s spread aren’t predicted, so either can still hit an ally.'],
   ['Pauses on a new angle.', ' When it finds a new line of fire it waits its reaction time before shooting. A minigun’s spin-up takes the place of that pause.'],
-  ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one, the nearer the more, and never runs or dodges onto another mine. Hornet keeps that distance only from your mines and from any about to go off; from its side’s other mines it keeps just clear of setting them off, and when one is about to blow it drives to the nearest cell out of reach.`],
+  ['Steers clear of mines.', ` Every tank that moves runs from any mine within ${fmt(DATA.blastR + 0.9)} cells and avoids cells near one, the nearer the more, and never runs or dodges onto another mine. Night Yellow keeps that distance only from your mines and from any about to go off; from its side’s other mines it keeps just clear of setting them off, and when one is about to blow it drives to the nearest cell out of reach.`],
   ['Keeps its distance.', ' Each mover has a preferred distance from you along the route. It closes in or backs off to stay there, and sometimes stops for a moment to size things up.'],
   ['Takes turns on the road.', ' Each mover claims the cell it is driving to, and no tank picks a cell another one stands in or has claimed. When two need the same way, the one with somewhere to be goes first (between equals, the one listed first in the map); the other steps out of its line, or backs ahead of it, and waits until it has passed.'],
   ['Never stays stuck.', ' A tank that keeps pushing for 0.4 s without covering 0.1 cells gives up on that cell for 2 s, backs off and chooses again. Before driving into a one-wide gap it lines up with the gap’s centre instead of clipping the corner.'],
-  ['Lays mines, two ways.', ` Yellow drops one now and then, when 2 to 9 steps from you and never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine. Hornet lays them by plan on your way to it, never within ${fmt(DATA.blastR + 0.5)} cells of another enemy, 1.7 cells of another mine or a spot another Hornet means to use, and watches each from a lookout.`],
-  ['Shoots the mine, not you.', ' When you are beside a mine Hornet can see (yours included), it fires into the mine if the blast would still catch you when its shell gets there and would spare every enemy, mines that go off with it included. It aims that shot with a quarter of its usual spread.'],
+  ['Lays mines, two ways.', ` Yellow drops one now and then, when 2 to 9 steps from you and never within ${fmt(DATA.blastR + 1.2)} cells of another enemy or 2 cells of another mine. Night Yellow lays them by plan on your way to it, never within ${fmt(DATA.blastR + 0.5)} cells of another enemy, 1.7 cells of another mine or a spot another Night Yellow means to use, and watches each from a lookout.`],
+  ['Shoots the mine, not you.', ' When you are beside a mine Night Yellow can see (yours included), it fires into the mine if the blast would still catch you when its shell gets there and would spare every enemy, mines that go off with it included. It aims that shot with a quarter of its usual spread.'],
   ['Dies to one hit,', ` like you. Shells that meet cancel out, missiles and minigun rounds included. A mine blast (${fmt(DATA.blastR)} cells) or a landing bomb (${fmt(DATA.bombR)} cell) destroys every tank in reach, enemies included, and clears striped crates.`],
   ['Dodging is per shell.', ' The dodge figure is the share of shells a tank notices. The choice is fixed for each shell, so a shell it missed stays missed. Stationary tanks never dodge or flee.'],
   ['Reads your speed, not your stick.', ` Tanks that lead take your velocity averaged over the last moment (it settles in about ${fmt(DATA.velSmooth * 2, 2)} s), so twitching the stick doesn’t fool them but changing direction does. They know you can’t drive through walls.`],
@@ -1312,7 +1330,7 @@ const leaders = KINDS.filter((k) => T[k].lead && T[k].aim !== 'lob');
 const AIMS = [
   ['Sweep', who('sweep'), 'The turret wanders to a new heading every 1.4 to 3.4 s, toward you 60% of the time and anywhere otherwise. It fires when that line happens to cross you.'],
   ['Direct', who('direct'), 'The turret turns straight at you. It only considers the straight line, though a shell can still hit you off its natural ricochet.'],
-  ['Bank', who('bank'), `Also looks for one-bounce shots by mirroring your position in every wall face, and picks the shot that needs the least turret turning.${doubleBank.length ? ` ${doubleBank.join(' and ')}, with more than one ricochet, also ${doubleBank.length > 1 ? 'try' : 'tries'} 160 directions for a two-bounce shot when nothing simpler works.` : ''}`],
+  ['Bank', who('bank'), `Also looks for one-bounce shots by mirroring your position in every wall face, and picks the shot that needs the least turret turning.${doubleBank.length ? ` ${doubleBank.join(' and ')}, with more than one ricochet, also ${doubleBank.length > 1 ? 'try' : 'tries'} 160 directions for a two-bounce shot when nothing simpler works.` : ''} Every ricochet leaves a pale chip on the wall for a few seconds, so you can see the faces its shots bounce off.`],
   ['Guided', who('guided'), `Fires down a clear straight line, like Direct. The missile then steers itself: up to ${Math.round(deg(DATA.missileTurn))}° a second toward you for ${fmt(DATA.missileFuel, 0)} s, and only while you are within ${Math.round(deg(DATA.lock))}° of its nose.`],
   ['Lob', who('lob'), `Needs no line at all. It picks where you will be when the bomb lands ${fmt(DATA.bombFlight)} s later, adds a little scatter, and skips any spot closer than ${DATA.bombMin} cells, beyond ${DATA.bombMax}, or near another enemy.`],
   ['Spray', who('spray'), `Turns straight at you and spins its barrels up (${fmt(DATA.spinUp)} s from rest) while it has a straight line on you. At full speed it fires every reload while its line passes within ${fmt(DATA.sprayR)} cells of you, each round a little off the line. Its turret slows as the barrels speed up, down to ${Math.round(deg(DATA.sprayTurn))}° a second, and once it loses you they take ${fmt(DATA.spinDown)} s to run down.`],

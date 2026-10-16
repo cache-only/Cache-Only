@@ -122,6 +122,21 @@ export function importAll(blob) {
   return written;
 }
 
+/** Deletes every save of a game not in ids; the app's own keys (gh:app:*) always stay. */
+export function dropSavesExcept(ids) {
+  const keep = new Set(['app', ...ids]);
+  try {
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(PREFIX) && !keep.has(key.slice(PREFIX.length).split(':')[0])) doomed.push(key);
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export function countSaves() {
   return Object.keys(exportAll().entries).length;
 }

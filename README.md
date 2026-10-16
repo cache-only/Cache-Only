@@ -4,7 +4,7 @@ Small games in one installable PWA, published at **https://cache-only.github.io/
 install it and download the games they want while online. After that, every downloaded game runs
 forever with no network, including in airplane mode.
 
-Games: **Sudoku**, **2048** and **Tanks**. Languages: **English** and **Català** (switch in Settings).
+Games: **Sudoku** and **Tanks**. Languages: **English** and **Català** (switch in Settings).
 The design is dark and monochrome; every page is built from the one component set in `src/styles.css`.
 
 No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used for the build, server and tests.
@@ -14,9 +14,9 @@ No dependencies. Vanilla HTML, CSS and ES modules; Node (≥ 20) is only used fo
 ```bash
 npm run build     # src/ -> dist/, splits it into packs, writes dist/sw.js (VERSION + RELEASE + PACKS) and dist/version.json
 npm run serve     # serve dist/ on http://127.0.0.1:8080 (local testing)
-npm run lan       # build + serve over HTTPS to phones on the same Wi-Fi (setup page: http://<mac>.local:8081/)
+npm run lan       # build + serve over HTTPS to phones on the same Wi-Fi (setup page: http://<mac>.local:8081/), and on http://127.0.0.1:8080
 npm run lan --stop  # stop that server, from any terminal
-npm test          # Sudoku uniqueness, 2048 merge rules, Tanks engine + AI, build + server checks, service-worker downloads
+npm test          # Sudoku uniqueness, Tanks engine + AI, saves, build + server checks, service-worker downloads
 npm run playtest  # Tanks: a scripted bot plays the missions (winnable? how hard?); --map draft.txt for a draft
 npm run icons     # re-render src/icons/*.png (only needed if the icon design changes)
 ```
@@ -105,9 +105,10 @@ Never rename the `cache-only` organization or the repo, and never add a custom d
   strip of its own at the top. iOS reads the style only when the app is added to the Home Screen.
 - `src/shared/storage.js` keeps saves in `localStorage` as `gh:<game>:<key>` → `{ schema, data }`,
   written 250 ms after each move and immediately when the app is hidden. Settings → Export/Import
-  moves all saves as one JSON file.
+  moves all saves as one JSON file. A game gone from `registry.json` takes its saves with it the next
+  time the installed app starts.
 - Sudoku puzzles are generated in a Web Worker (`worker.js`) from a seeded PRNG; the pure rules live in
-  `generator.js` / `solver.js`. 2048's rules live in `logic.js`, separate from the animated UI in `game.js`.
+  `generator.js` / `solver.js`.
 - Tanks keeps its simulation in DOM-free modules: `rules.js` (constants, tank kinds, exact ricochet
   tracing), `engine.js` (the fixed 120 Hz step), `ai.js` (enemy brains) and `missions.js` (the 20 maps).
   `art.js` draws tanks, shots, bombs and the floor on whatever canvas it is given; `render.js` uses it

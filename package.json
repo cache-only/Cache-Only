@@ -1,6 +1,6 @@
 {
   "name": "cache-only",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Cache Only: an offline-first PWA with a small collection of games.",
   "type": "module",

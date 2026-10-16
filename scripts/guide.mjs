@@ -120,18 +120,24 @@ export async function buildGuide() {
     sprayTurn: R.SPRAY_TURN,
     sprayR: R.SPRAY_R,
     velSmooth: R.VEL_SMOOTH,
+    laserCharge: R.LASER_CHARGE,
+    laserBeam: R.LASER_BEAM,
+    twinSpread: R.TWIN_SPREAD,
+    pairGap: R.PAIR_GAP,
   };
   const text = enemyText({ T: R.TYPES, kinds, R: consts, name: (k) => english(`tanks.type.${k}`), note: english });
   const info = {};
   const ink = {};
   const colours = {};
   for (const k of ['player', ...kinds]) {
-    const hex = color[`--tk-${k}`];
-    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) throw new Error(`guide: no hex colour --tk-${k} in tanks/styles.css`);
+    // A night version wears its day kind's colour (art.js deepens its hull).
+    const own = R.TYPES[k]?.base || k;
+    const hex = color[`--tk-${own}`];
+    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) throw new Error(`guide: no hex colour --tk-${own} in tanks/styles.css`);
     // Chip text: whichever of the page's dark and light inks has more contrast on this colour.
     const L = luminance(hex);
     ink[k] = (L + 0.05) / (luminance(CHIP_DARK) + 0.05) >= (luminance(CHIP_LIGHT) + 0.05) / (L + 0.05) ? 'dark' : 'light';
-    colours[k] = { light: hex, dark: darkColor[`--tk-${k}`] };
+    colours[k] = { light: hex, dark: darkColor[`--tk-${own}`] };
     if (k === 'player') continue;
     if (!text[k]) throw new Error(`guide: enemy kind "${k}" has no text in guide/enemies.mjs`);
     if (!SCENES[k]) throw new Error(`guide: enemy kind "${k}" has no scene in guide/enemies.mjs`);

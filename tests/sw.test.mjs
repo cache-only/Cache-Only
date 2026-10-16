@@ -208,30 +208,40 @@ test('every file is requested at its release hash, and a stale copy is refused',
 
 test('downloading several games at once, and without a reply port', async () => {
   const { caches, sw } = await installed();
-  const replies = await sw.message({ type: 'DOWNLOAD', ids: ['sudoku', '2048', 'nope'] });
-  assert.deepEqual(replies.at(-1), { type: 'done', results: { sudoku: true, 2048: true } });
-  await sw.message({ type: 'DOWNLOAD', ids: ['tanks'] }, { port: false });
-  for (const id of ['sudoku', '2048', 'tanks']) {
+  const replies = await sw.message({ type: 'DOWNLOAD', ids: ['sudoku', 'tanks', 'nope'] });
+  assert.deepEqual(replies.at(-1), { type: 'done', results: { sudoku: true, tanks: true } });
+  for (const id of ['sudoku', 'tanks']) {
     assert.equal(await caches.count(packs.games[id].cache), packs.games[id].files.length, id);
   }
+  const quiet = await installed();
+  await quiet.sw.message({ type: 'DOWNLOAD', ids: ['sudoku'] }, { port: false });
+  assert.equal(await quiet.caches.count(packs.games.sudoku.cache), packs.games.sudoku.files.length, 'without a port');
 });
 
 test('an update keeps the games a device had in the old all-in-one cache, and nothing more', async () => {
   const caches = new FakeCaches();
   const host = makeHost();
   const legacy = await caches.open(LEGACY);
-  for (const url of [...packs.core.files, ...packs.games.sudoku.files, ...packs.games['2048'].files]) {
-    await legacy.put(url, new Response('old'));
-  }
+  for (const url of [...packs.core.files, ...packs.games.sudoku.files]) await legacy.put(url, new Response('old'));
   const sw = loadWorker(caches, host);
   await sw.install();
-  for (const id of ['sudoku', '2048']) {
-    assert.equal(await caches.count(packs.games[id].cache), packs.games[id].files.length, `${id} carried over`);
-  }
+  assert.equal(await caches.count(packs.games.sudoku.cache), packs.games.sudoku.files.length, 'sudoku carried over');
   assert.equal(await caches.has(packs.games.tanks.cache), false, 'a game the device never had waits for the player');
   assert.ok(await caches.has(LEGACY), 'the old version keeps serving until the reload');
   await sw.activate();
-  assert.deepEqual((await caches.keys()).sort(), [packs.core.cache, packs.games.sudoku.cache, packs.games['2048'].cache].sort());
+  assert.deepEqual((await caches.keys()).sort(), [packs.core.cache, packs.games.sudoku.cache].sort());
+});
+
+test('an update drops a game the release no longer has', async () => {
+  const caches = new FakeCaches();
+  const host = makeHost();
+  const gone = await caches.open('gamehost-game-retired-000000000000');
+  for (const url of ['/games/retired/', '/games/retired/index.html']) await gone.put(url, new Response('old'));
+  const sw = loadWorker(caches, host);
+  await sw.install();
+  assert.ok(!host.requests.some((p) => p.startsWith('/games/retired/')), 'it is never fetched again');
+  await sw.activate();
+  assert.deepEqual(await caches.keys(), [packs.core.cache]);
 });
 
 test('an update re-downloads only the games that changed', async () => {

@@ -1,8 +1,26 @@
 // Tanks rules shared by the engine, the AI and the renderer. No DOM.
-// World units are grid cells: the arena is COLS x ROWS cells and a block is 1 x 1.
+// World units are grid cells and a block is 1 x 1. Every arena is 4:3, SCALE x 4 cells by
+// SCALE x 3: the campaign's are COLS x ROWS, and a map of your own can be any of SCALES.
 
-export const COLS = 20;
-export const ROWS = 15;
+export const SCALES = [3, 4, 5, 6, 7, 8];
+export const SCALE = 5;
+export const COLS = SCALE * 4;
+export const ROWS = SCALE * 3;
+
+/** The columns and rows of an arena at a scale. */
+export const sizeAt = (scale) => [scale * 4, scale * 3];
+
+/**
+ * A grid's columns and rows, read from its length: every arena is 4:3, so a grid of n cells is
+ * sqrt(n * 4 / 3) wide (exact for every scale). A world needs nothing more to say its size.
+ */
+export function gridSize(grid) {
+  const cols = Math.sqrt((grid.length * 4) / 3);
+  return [cols, grid.length / cols];
+}
+
+/** Whether a grid of n cells is an arena of one of SCALES. */
+export const isArenaLength = (n) => SCALES.some((k) => k * k * 12 === n);
 
 export const FLOOR = 0;
 export const WALL = 1;
@@ -14,6 +32,9 @@ export const TANK_R = 0.38; // body radius against walls and other tanks
 export const HIT_R = 0.36; // how close a shell or blast must get to destroy a tank
 export const SHELL_R = 0.09;
 export const MUZZLE = 0.56; // distance from a tank's centre to where its shells appear
+export const POD = 0.11; // how far either side of its aim a missile tank's two launch pods sit
+export const TWIN_SPREAD = 0.17; // radians either side of its aim a pair of missiles leaves at (Night Red)
+export const PAIR_GAP = 0.25; // seconds between the two missiles of a pair: left pod, then right
 export const MINE_R = 0.24;
 export const MINE_FUSE = 10; // seconds
 export const MINE_TRIGGER = 0.8; // a tank this close sets a mine off
@@ -33,6 +54,9 @@ export const SPIN_DOWN = 2.5; // seconds they take to run down from full speed
 export const SPRAY_TURN = 0.5; // radians per second its turret turns with the barrels at full speed
 export const SPRAY_R = 0.6; // a minigun fires while its line passes this close to your centre
 export const VEL_SMOOTH = 0.12; // seconds: how quickly the AI's read of your velocity follows you
+export const LASER_CHARGE = 0.9; // seconds a laser shows its red line before it fires down it...
+export const LASER_BEAM = 1; // ...and how long the beam then burns
+export const LASER_W = 0.07; // half the beam's width: it burns whatever comes this close to its line
 
 const SHELL = 4.6; // units per second
 const ROCKET = 8.4;
@@ -40,10 +64,12 @@ const MISSILE = 3.2;
 const ROUND = 6.4;
 
 /**
- * What a tank fires. Shells and rockets fly straight, missiles steer, bombs are lobbed, and a
- * minigun sprays rounds once its barrels are spinning.
+ * What a tank fires. Shells and rockets fly straight, missiles steer, bombs are lobbed, a
+ * minigun sprays rounds once its barrels are spinning, and a laser shows a red line for
+ * LASER_CHARGE seconds, then burns down it for LASER_BEAM: through every tank, shot and mine on
+ * the line, until a wall or crate stops it.
  */
-export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb', 'minigun'];
+export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb', 'minigun', 'laser'];
 
 /**
  * Every tank kind. speed 0 = stationary. turn and turret are radians per second.
@@ -56,9 +82,9 @@ export const WEAPONS = ['shell', 'rocket', 'missile', 'bomb', 'minigun'];
  * to the player, in cells), layRate (the chance a minelayer drops a mine when it thinks about
  * it), trap (lays mines by plan rather than by chance: on your way to it, then watches them),
  * detonate (shoots one of the mines on the ground when its blast would catch you), lead (0-1:
- * how much of your motion it aims ahead for). Yellow and Hornet are the enemies that lay mines.
- * Lines: a V2 kind names the first version it upgrades (upgrade); White is Violet's twin, a
- * second V2 of Pink (twin). Kinds with neither stand alone: Red, Black, Olive and Lime.
+ * how much of your motion it aims ahead for). Yellow lays mines; so does its night version.
+ * Every kind stands alone in its own colour. A kind's stronger version is its night version
+ * (NIGHT, below), added here as <kind>Night.
  */
 export const TYPES = {
   player: { speed: 1.9, turn: 7, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 2, reload: 0.12 },
@@ -68,7 +94,7 @@ export const TYPES = {
   },
   ash: {
     speed: 1.0, turn: 4, turret: 1.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 0, reload: 2.2,
-    aim: 'direct', think: 0.25, react: 0.45, spread: 0.07, dodge: 0.2, range: [6, 11], upgrade: 'brown',
+    aim: 'direct', think: 0.25, react: 0.45, spread: 0.07, dodge: 0.2, range: [6, 11],
   },
   marine: {
     speed: 1.0, turn: 4, turret: 1.8, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 1, mines: 0, reload: 2.4,
@@ -79,25 +105,23 @@ export const TYPES = {
     aim: 'direct', think: 0.2, react: 0.45, spread: 0.07, dodge: 0.35, range: [3, 7], layRate: 0.45,
   },
   pink: {
-    speed: 1.0, turn: 4, turret: 2.2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 3, mines: 0, reload: 0.28,
-    aim: 'bank', think: 0.2, react: 0.35, spread: 0.045, dodge: 0.3, range: [4, 9],
+    speed: 1.0, turn: 4, turret: 2.2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 3, mines: 0, reload: 0.6,
+    aim: 'bank', think: 0.2, react: 0.35, spread: 0.045, dodge: 0.4, range: [4, 9], lead: 0.2,
   },
   green: {
     speed: 0, turn: 0, turret: 2.4, weapon: 'rocket', shot: ROCKET, bounces: 2, bullets: 2, mines: 0, reload: 1.7,
-    aim: 'bank', think: 0.25, react: 0.35, spread: 0.02, dodge: 0, upgrade: 'marine',
+    aim: 'bank', think: 0.25, react: 0.35, spread: 0.02, dodge: 0,
   },
-  violet: {
-    speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
-    aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], lead: 0.3, upgrade: 'pink',
-  },
+  // missileTurn and fuel: how fast its missiles turn (radians per second) and for how long.
   red: {
     speed: 1.0, turn: 4, turret: 2.0, weapon: 'missile', shot: MISSILE, bounces: 0, bullets: 1, mines: 0, reload: 3,
+    missileTurn: MISSILE_TURN, fuel: MISSILE_FUEL,
     aim: 'guided', think: 0.2, react: 0.45, spread: 0.03, dodge: 0.3, range: [5, 10],
   },
   white: {
     speed: 1.8, turn: 6, turret: 2.6, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 5, mines: 0, reload: 0.6,
     aim: 'bank', think: 0.15, react: 0.3, spread: 0.04, dodge: 0.5, range: [3, 8], lead: 0.3,
-    invisible: true, upgrade: 'pink', twin: 'violet',
+    invisible: true,
   },
   black: {
     speed: 2.4, turn: 8, turret: 3.2, weapon: 'rocket', shot: ROCKET, bounces: 0, bullets: 3, mines: 0, reload: 0.8,
@@ -111,20 +135,54 @@ export const TYPES = {
     speed: 1.2, turn: 4, turret: 1.5, weapon: 'minigun', shot: ROUND, bounces: 0, bullets: 10, mines: 0, reload: 0.1,
     aim: 'spray', think: 0.2, react: 0.4, spread: 0.1, dodge: 0.15, range: [4, 8],
   },
-  hornet: {
-    speed: 1.8, turn: 6, turret: 2.2, weapon: 'shell', shot: SHELL, bounces: 1, bullets: 1, mines: 4, reload: 2.4,
-    aim: 'direct', think: 0.15, react: 0.35, spread: 0.06, dodge: 0.45, range: [4, 8], trap: true, detonate: true,
-    upgrade: 'yellow',
+  // A laser: no shot speed (the beam is there at once); reload counts from the end of the beam.
+  // track: how fast the beam turns after you while it burns, radians per second (0: it holds).
+  indigo: {
+    speed: 1.0, turn: 4, turret: 1.6, weapon: 'laser', bounces: 0, bullets: 1, mines: 0, reload: 2.6, track: 0,
+    aim: 'direct', think: 0.25, react: 0.5, spread: 0.02, dodge: 0.25, range: [6, 12],
   },
 };
 
 /**
- * Enemy kinds in the order they first appear, for results screens. Lime and Hornet are in no
- * mission yet: the test range only.
+ * Night versions: a kind made stronger, the same tank (colour, weapon, shape) with better numbers
+ * or a better behaviour, never worse on any (a test holds it). Each lists only what changes from
+ * its day kind; null drops a stat. Each becomes TYPES.<kind>Night, with base (its day kind) and
+ * night: true, so every lookup by type works as it is. It is drawn with a deep hull in its day
+ * kind's colour (art.js), and its map letter is the day kind's in upper case.
  */
-export const ENEMY_KINDS = ['brown', 'ash', 'marine', 'yellow', 'pink', 'green', 'violet', 'red', 'white', 'black', 'olive', 'lime', 'hornet'];
+export const NIGHT = {
+  // Faster, more shells in the air, quicker to react and dodge, and leads you further.
+  pink: { speed: 1.8, turn: 6, turret: 2.6, bullets: 5, think: 0.15, react: 0.3, spread: 0.04, dodge: 0.6, range: [3, 7], lead: 0.3 },
+  // Lays 4 mines by plan on your way to it, watches them, and shoots one as you pass.
+  yellow: {
+    turn: 6, turret: 2.2, mines: 4, reload: 2.4, think: 0.15, react: 0.35, spread: 0.06, dodge: 0.45, range: [4, 8],
+    layRate: null, trap: true, detonate: true,
+  },
+  // Fires both pods, left then right PAIR_GAP apart, 10 degrees either side of its aim (pair); its missiles are faster,
+  // turn tighter, steer longer, and follow the open way round walls to you (path).
+  red: { bullets: 2, shot: 3.8, missileTurn: 3.2, fuel: 5, pair: true, path: true, think: 0.18, react: 0.4, dodge: 0.35 },
+  // Dodges more and sooner, and walks its stream across where you would sidestep to: up to walk
+  // cells either side of you.
+  lime: { speed: 1.4, turn: 5, think: 0.12, react: 0.35, dodge: 0.5, walk: 1 },
+  // Turns its beam after you as it burns, slower than you can run round it from 5 cells out.
+  indigo: { speed: 1.2, turn: 5, turret: 2.0, track: 0.4, think: 0.2, react: 0.4, dodge: 0.4 },
+};
+for (const [base, over] of Object.entries(NIGHT)) {
+  const t = { ...TYPES[base], ...over, base, night: true };
+  for (const k of Object.keys(t)) if (t[k] === null) delete t[k];
+  TYPES[`${base}Night`] = t;
+}
 
-/** Map letters for enemy spawns. "@" is the player, "#" wall, "x" crate, "o" hole. */
+/**
+ * Enemy kinds in the order they first appear, for results screens. Lime and the night versions
+ * after it, and Indigo and Night Indigo, are in no mission yet: the test range only.
+ */
+export const ENEMY_KINDS = ['brown', 'ash', 'marine', 'yellow', 'pink', 'green', 'pinkNight', 'red', 'white', 'black', 'olive', 'lime', 'yellowNight', 'redNight', 'limeNight', 'indigo', 'indigoNight'];
+
+/**
+ * Map letters for enemy spawns. "@" is the player, "#" wall, "x" crate, "o" hole. A night
+ * version is its day kind's letter in upper case.
+ */
 export const SPAWN_CODES = {
   b: 'brown',
   a: 'ash',
@@ -132,21 +190,29 @@ export const SPAWN_CODES = {
   y: 'yellow',
   p: 'pink',
   g: 'green',
-  v: 'violet',
   r: 'red',
   w: 'white',
   k: 'black',
   d: 'olive',
   l: 'lime',
-  h: 'hornet',
+  i: 'indigo',
+  P: 'pinkNight',
+  Y: 'yellowNight',
+  R: 'redNight',
+  L: 'limeNight',
+  I: 'indigoNight',
 };
+
+/** Letters of kinds since retired, as saved maps may hold them: Violet is Night Pink, Hornet Night Yellow. */
+export const OLD_CODES = { v: 'P', h: 'Y' };
 
 const EPS = 1e-9;
 export const TAU = Math.PI * 2;
 
 /** Cell value; anything outside the arena is wall. */
 export function cellAt(grid, c, r) {
-  return c < 0 || r < 0 || c >= COLS || r >= ROWS ? WALL : grid[r * COLS + c];
+  const cols = Math.sqrt((grid.length * 4) / 3); // gridSize, inlined: this runs for every cell a shot crosses
+  return c < 0 || r < 0 || c >= cols || r * cols >= grid.length ? WALL : grid[r * cols + c];
 }
 
 export const blocksTank = (v) => v !== FLOOR;
@@ -343,6 +409,20 @@ export function muzzleBlocked(grid, x, y, angle) {
     if (blocksShell(cellAt(grid, Math.floor(x + ux * d), Math.floor(y + uy * d)))) return true;
   }
   return boxBlocked(grid, x + ux * MUZZLE, y + uy * MUZZLE);
+}
+
+/**
+ * A laser's line from a tank at (x, y) aimed at `angle`: from its muzzle to the first wall or
+ * crate. Holes don't stop it. { x0, y0, x1, y1 }.
+ */
+export function beamLine(grid, x, y, angle) {
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const x0 = x + ux * MUZZLE;
+  const y0 = y + uy * MUZZLE;
+  const hit = nextContact(grid, x0, y0, ux, uy, 0.02, 64);
+  const d = hit ? hit.d + 0.02 : 64;
+  return { x0, y0, x1: x0 + ux * d, y1: y0 + uy * d };
 }
 
 /**

@@ -131,11 +131,11 @@ test('nothing in dist/ points at another origin', async () => {
 test('the server never redirects', async () => {
   const get = (p, method = 'GET') => fetch(base + p, { method, redirect: 'manual' });
 
-  for (const p of ['/', '/games/sudoku/', '/games/2048/', '/games/tanks/', '/sw.js', '/manifest.json']) {
+  for (const p of ['/', '/games/sudoku/', '/games/tanks/', '/sw.js', '/manifest.json']) {
     const res = await get(p);
     assert.equal(res.status, 200, p);
   }
-  for (const p of ['/games/sudoku', '/games/2048', '/games/tanks', '/games', '/nope.html', '/../package.json', '/%2e%2e/package.json']) {
+  for (const p of ['/games/sudoku', '/games/tanks', '/games', '/nope.html', '/../package.json', '/%2e%2e/package.json']) {
     const res = await get(p);
     assert.equal(res.status, 404, p);
   }

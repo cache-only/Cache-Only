@@ -10,6 +10,9 @@
 // The test install is its own origin, separate from https://cache-only.github.io: its saves
 // and downloads never touch the real app's.
 //
+// The same process also serves dist/ on http://127.0.0.1:8080 for this Mac's browser, like
+// `npm run serve`, so one Ctrl-C stops everything.
+//
 //   npm run lan                # build, then serve
 //   npm run lan -- --no-build  # serve the current dist/
 //   npm run lan --stop         # stop a running server, from any terminal
@@ -20,12 +23,13 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle } from './serve.mjs';
+import { createServer, handle } from './serve.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CERTS = path.join(ROOT, '.lan');
 const PORT = Number(process.env.PORT) || 8443;
 const SETUP_PORT = Number(process.env.SETUP_PORT) || 8081;
+const LOCAL_PORT = Number(process.env.LOCAL_PORT) || 8080;
 const CA_NAME = 'Cache Only dev CA';
 const CA_FILE = 'cache-only-dev-ca.crt';
 
@@ -161,16 +165,17 @@ function setupServer(appUrl) {
   });
 }
 
-function listen(server, port, label) {
+function listen(server, port, label, host = '0.0.0.0') {
   return new Promise((resolve) => {
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${port} (${label}) is already in use. Is another server running? \`npm run lan --stop\` stops an earlier one.`);
+        console.error(`Port ${port} (${label}) is already in use. Is another server running? \`npm run lan --stop\` stops an earlier one` +
+          (port === LOCAL_PORT ? '; an `npm run serve` stops with Ctrl-C in its terminal.' : '.'));
       }
       else console.error(err);
       process.exit(1);
     });
-    server.listen(port, '0.0.0.0', resolve);
+    server.listen(port, host, resolve);
   });
 }
 
@@ -182,7 +187,7 @@ const alive = (pid) => {
 // on those ports that isn't this script is left alone.
 async function stopServer() {
   const pids = new Set();
-  for (const port of [PORT, SETUP_PORT]) {
+  for (const port of [PORT, SETUP_PORT, LOCAL_PORT]) {
     const r = spawnSync('lsof', ['-t', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
     for (const pid of (r.stdout || '').split('\n').filter(Boolean)) pids.add(Number(pid));
   }
@@ -243,21 +248,29 @@ app.on('tlsClientError', (err, socket) => {
   console.log(`${time}  TLS failed from ${socket._parent?.remoteAddress ?? socket.remoteAddress ?? '?'}: ${err.code || err.message}${hint}`);
 });
 const setup = setupServer(appUrl);
-await Promise.all([listen(app, PORT, 'app'), listen(setup, SETUP_PORT, 'setup')]);
+const local = createServer();
+await Promise.all([
+  listen(app, PORT, 'app'),
+  listen(setup, SETUP_PORT, 'setup'),
+  listen(local, LOCAL_PORT, 'local', '127.0.0.1'),
+]);
 
 console.log(`
   App     ${appUrl}
   Setup   ${setupUrl}   (first time on a phone: open this in Safari)
 ${ips.map((ip) => `          also https://${ip}:${PORT}/ (a different origin; changes with the network)\n`).join('')}
+  Local   http://127.0.0.1:${LOCAL_PORT}/   (this Mac's browser, like \`npm run serve\`)
+
   The phone must be on the same Wi-Fi. If macOS asks whether node may accept incoming
   connections, allow it.${newCA ? '\n\n  New CA created in .lan/: every phone has to trust it again (see the setup page).' : ''}
   Rebuild with \`npm run build\` in another terminal; the server picks up dist/ as it is.
-  Ctrl-C stops it.
+  Ctrl-C stops all three.
 `);
 
 const stop = () => {
-  app.close();
-  setup.close(() => process.exit(0));
+  const servers = [app, setup, local];
+  let open = servers.length;
+  for (const server of servers) server.close(() => --open || process.exit(0));
   setTimeout(() => process.exit(0), 500).unref();
 };
 process.on('SIGINT', stop);

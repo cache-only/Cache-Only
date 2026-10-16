@@ -1,13 +1,12 @@
 // Board art for the launcher: each game's tile, and the suggested game's board bleeding in
 // behind the top of the screen. It lives in the app shell, not in the games' folders, so the
 // launcher never depends on a file inside a game's pack. A game with a save shows its own board
-// (2048's grid, Sudoku's puzzle); an id without art here gets a generic field of pixels.
+// (Sudoku's puzzle); an id without art here gets a generic field of pixels.
 // Styles: .art in styles.css.
 import { createStore } from './storage.js';
 
 const SAMPLE_SUDOKU = '530070000600195000098000060800060003400803001700020006060000280000419005000080079';
 const SAMPLE_SUDOKU_GRID = '534070000670195000098000060800760003400853001700020106060000280000419005000080079';
-const SAMPLE_2048 = [2, 0, 0, 2, 4, 8, 0, 0, 16, 32, 4, 2, 128, 64, 8, 4];
 const SAMPLE_ARENA = [
   '###############',
   '#.............#',
@@ -61,19 +60,6 @@ function sudokuArt() {
   return art;
 }
 
-function tile2048Art() {
-  const saved = createStore('2048').peek('session');
-  const ok = saved && Array.isArray(saved.grid) && saved.grid.length === 16 && saved.grid.some((v) => v > 0);
-  const grid = ok ? saved.grid : SAMPLE_2048;
-  const art = span('art art-2048');
-  for (const v of grid) {
-    const cell = span(v ? `t${v <= 2048 ? v : 'max'}` : '', v ? String(v) : '');
-    if (v) cell.dataset.len = String(v).length;
-    art.append(cell);
-  }
-  return art;
-}
-
 function svg(tag, attrs, ...children) {
   const el = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
@@ -117,7 +103,7 @@ function genericArt(id) {
   return art;
 }
 
-const ART = { sudoku: sudokuArt, 2048: tile2048Art, tanks: tanksArt };
+const ART = { sudoku: sudokuArt, tanks: tanksArt };
 
 /** The board art for a game, as an element. variant: 'tile' | 'hero'. */
 export function gameArt(id, variant = 'tile') {

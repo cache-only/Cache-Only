@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { intercept, pathField, predict, shotTarget, tapTarget } from '../src/games/tanks/ai.js';
-import { VARIANTS } from '../src/games/tanks/art.js';
+import { VARIANTS, makePalette, planePose, planeVariants, recoilAt, tankPlanes, tankPose } from '../src/games/tanks/art.js';
 import { makeBot } from '../scripts/playtest.mjs';
 import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../src/games/tanks/mapcheck.js';
 import { createWorld, fire, isWorld, lob, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
@@ -17,10 +17,13 @@ import {
   ENEMY_KINDS,
   FLOOR,
   HIT_R,
+  LASER_BEAM,
+  LASER_CHARGE,
   LOCK,
   MINE_FUSE,
   MISSILE_TURN,
   MUZZLE,
+  POD,
   ROWS,
   SHELL_R,
   SPAWN_CODES,
@@ -28,15 +31,20 @@ import {
   SPIN_UP,
   SPRAY_TURN,
   STEP,
+  PAIR_GAP,
   TANK_R,
+  TWIN_SPREAD,
   TYPES,
   WALL,
   WEAPONS,
   angleDiff,
+  beamLine,
   blocksShell,
   blocksTank,
   boxBlocked,
   cellAt,
+  nextContact,
+  segmentHit,
   tracePath,
 } from '../src/games/tanks/rules.js';
 
@@ -148,6 +156,97 @@ test('a shell ricochets once, then dies on the next wall; a rocket dies on the f
   assert.equal(count(ev, 'pop'), 1);
 });
 
+test('a gun recoils fast, runs out slower, and is back at rest well within a second', () => {
+  for (const weapon of ['shell', 'rocket', 'missile', 'minigun', 'bomb', 'laser']) {
+    assert.deepEqual([recoilAt(weapon, Infinity).slide, recoilAt(weapon, Infinity).jolt], [0, 0], `${weapon} at rest`);
+    assert.equal(recoilAt(weapon, -0.1).slide, 0, `${weapon} before it fires`);
+    const at = (s) => recoilAt(weapon, s);
+    // Back fast: the spring (and a gun's slide) is at its peak within 40 ms.
+    const first = Array.from({ length: 21 }, (_, i) => at(i * 0.002));
+    assert.ok(Math.max(...first.map((r) => r.jolt)) >= 0.99, `${weapon} jolts at once`);
+    if (weapon !== 'bomb') assert.ok(at(0.04).slide >= 0.99 || weapon === 'minigun', `${weapon} slides back at once`);
+    // Out slower, never jumping forward: the slide only shrinks once it starts back.
+    let last = 1;
+    let low = 0;
+    for (let s = 0.04; s < 1; s += 0.005) {
+      const r = at(s);
+      if (weapon !== 'minigun') assert.ok(r.slide <= last + 1e-9, `${weapon} slides out smoothly at ${s.toFixed(3)} s`);
+      last = r.slide;
+      low = Math.min(low, r.jolt);
+    }
+    assert.ok(low < 0 && low > -0.2, `${weapon}'s spring runs a little past rest (${low.toFixed(3)})`);
+    const done = at(0.9);
+    assert.deepEqual([done.slide, done.jolt], [0, 0], `${weapon} at rest by 0.9 s`);
+  }
+  // Big enough to see: still more than half way back 100 ms after a shell leaves.
+  assert.ok(recoilAt('shell', 0.1).slide > 0.5);
+});
+
+/* ---------- The GPU renderer's pictures (art.js, gl.js) ---------- */
+
+test('every kind cuts into the hull, gun and head the GPU lights, its gun in at most two runs of lit solids', () => {
+  const pal = makePalette(() => '#808080');
+  for (const type of Object.keys(TYPES)) {
+    const P = tankPlanes(pal, type, {});
+    assert.equal(P.body.masks.length, 2, `${type}'s hull`);
+    assert.equal(P.head.masks.length, 2, `${type}'s head`);
+    // Only the mortar has no weapon solids: its tube is on the turret.
+    assert.equal(!!P.gun, TYPES[type].weapon !== 'bomb', `${type}'s gun`);
+    if (P.gun) assert.equal(P.gun.masks.length, 3, `${type}'s gun masks`);
+    assert.equal(!!P.gun?.emission, TYPES[type].weapon === 'minigun', `${type} glows`);
+    assert.deepEqual(P.heights.length, 5);
+    assert.ok(P.heights.every((h, i) => i === 0 || h > P.heights[i - 1]), `${type}'s layers stand each above the last`);
+  }
+});
+
+test('every look a tank shows in play is one the GPU painted ahead of time', () => {
+  // A picture painted mid-battle would cost a frame: whatever recoil, roll, mines and light a
+  // tank shows, its planes' keys are among planeVariants'.
+  for (const type of Object.keys(TYPES)) {
+    const T = TYPES[type];
+    const ahead = { body: new Set(), gun: new Set(), head: new Set() };
+    for (const pose of planeVariants(type)) {
+      const pp = planePose(type, pose);
+      for (const plane of Object.keys(ahead)) ahead[plane].add(pp[plane].key);
+    }
+    for (let age = -0.05; age < 1; age += 0.007) {
+      for (const side of [-1, 0, 1]) {
+        for (let mines = 0; mines <= (T.mines || 0); mines++) {
+          for (const lit of [false, true]) {
+            const { recoil } = tankPose({ type, x: 0, y: 0, body: 0, turret: 0 }, age, side);
+            const pp = planePose(type, { mines, lit, roll: age * 37, recoil });
+            for (const plane of Object.keys(ahead)) assert.ok(ahead[plane].has(pp[plane].key), `${type} ${plane} ${pp[plane].key} (age ${age.toFixed(3)})`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('wall contacts name the face they met, and shots the tank that fired them', () => {
+  // Up and a little right: off the top edge, then down to die on the bottom one.
+  const s = inert(createWorld(level(['', '', '', '', '', '', '', '..@', '', '', '', '', '', '', '.................b'])));
+  const events = run(s, 0.05, { ...IDLE, aim: -Math.PI / 2 + 0.3, fire: true }).concat(run(s, 8));
+  const shot = events.find((e) => e.type === 'shot');
+  assert.equal(shot.id, s.tanks[0].id);
+  const bounce = events.find((e) => e.type === 'bounce');
+  assert.deepEqual([bounce.nx, bounce.ny, bounce.weapon], [0, 1, 'shell']);
+  assert.ok(Math.abs(bounce.y - SHELL_R) < 1e-6, 'the shell touches the face');
+  const pop = events.find((e) => e.type === 'pop');
+  assert.deepEqual([pop.nx, pop.ny], [0, -1]);
+  assert.ok(Math.abs(pop.y - (ROWS - SHELL_R)) < 1e-6);
+
+  // A barrel buried in a wall fizzles, and a mortar's lob says whose it is too.
+  const f = inert(createWorld(level(['', '', '', '', '', '', '', '..@#', '', '', '', '', '', '', '.................b'])));
+  const fizzle = run(f, 0.05, { ...IDLE, aim: 0, fire: true }).find((e) => e.type === 'fizzle');
+  assert.equal(fizzle.id, f.tanks[0].id);
+  const olive = Object.keys(SPAWN_CODES).find((ch) => SPAWN_CODES[ch] === 'olive');
+  const m = inert(createWorld(level(['', '', '', '', '', '', '', `..@...............${olive}`])));
+  const lobs = [];
+  assert.ok(lob(m, m.tanks[1], 10, 7.5, lobs));
+  assert.equal(lobs[0].id, m.tanks[1].id);
+});
+
 test('a bank shot off a wall destroys a tank around a corner', () => {
   const s = inert(createWorld(level(['', '..b', '', '', '.####', '', '', '..@'])));
   const p = s.tanks[0];
@@ -244,25 +343,46 @@ test('blasts chain to nearby mines, and a shell sets a mine off', () => {
   assert.equal(s.mines.length, 0);
 });
 
-test('lines: every V2 names the first version it upgrades, and reacts and thinks at least as fast', () => {
-  const v2 = Object.keys(TYPES).filter((k) => TYPES[k].upgrade);
-  assert.deepEqual(v2.sort(), ['ash', 'green', 'hornet', 'violet', 'white']);
+test('a night version is its day kind made stronger: same weapon and aim, never worse on any number', () => {
+  const nights = Object.keys(TYPES).filter((k) => TYPES[k].night);
+  assert.deepEqual(nights.sort(), ['indigoNight', 'limeNight', 'pinkNight', 'redNight', 'yellowNight']);
   for (const [k, t] of Object.entries(TYPES)) {
-    if (!t.upgrade) {
-      assert.equal(t.twin, undefined, `${k} has a twin but no line`);
+    assert.equal(t.upgrade ?? t.twin, undefined, `${k}: kinds stand alone, with no lines`);
+    if (!t.night) {
+      assert.equal(t.base, undefined, `${k} names a base but isn't a night version`);
       continue;
     }
-    const base = TYPES[t.upgrade];
-    assert.ok(base && !base.upgrade, `${k} upgrades a first version`);
-    if (t.twin) assert.equal(TYPES[t.twin]?.upgrade, t.upgrade, `${k} is the twin of a V2 in its own line`);
-    assert.ok(t.react <= base.react && t.think <= base.think, `${k} is at least as quick as ${t.upgrade}`);
+    const day = TYPES[t.base];
+    assert.ok(day && !day.night, `${k} is the night version of a day kind`);
+    assert.equal(k, `${t.base}Night`);
+    assert.ok(ENEMY_KINDS.includes(k), `${k} can be picked on the test range`);
+    // Its map letter is the day kind's in upper case.
+    const letter = (kind) => Object.keys(SPAWN_CODES).find((ch) => SPAWN_CODES[ch] === kind);
+    assert.equal(letter(k), letter(t.base).toUpperCase());
+    assert.equal(t.weapon, day.weapon);
+    assert.equal(t.aim, day.aim);
+    for (const stat of ['speed', 'turn', 'turret', 'shot', 'bounces', 'bullets', 'mines', 'dodge', 'lead', 'track', 'missileTurn', 'fuel', 'walk']) {
+      assert.ok((t[stat] ?? 0) >= (day[stat] ?? 0), `${k} ${stat} ${t[stat]} is below ${t.base}'s ${day[stat]}`);
+    }
+    for (const stat of ['reload', 'think', 'react', 'spread']) {
+      assert.ok(t[stat] <= day[stat], `${k} ${stat} ${t[stat]} is slower or looser than ${t.base}'s ${day[stat]}`);
+    }
   }
+  // Night Pink and Night Yellow play exactly as Violet and Hornet did, so the missions keep their balance.
+  assert.equal(TYPES.pinkNight.bullets, 5);
+  assert.equal(TYPES.yellowNight.trap, true);
+  assert.equal(TYPES.yellowNight.layRate, undefined, 'Night Yellow lays by plan, not by chance');
 });
 
-test('Yellow and Hornet lay mines: Yellow 2 now and then, Hornet 4 by plan and far more often', () => {
-  assert.deepEqual(ENEMY_KINDS.filter((kind) => TYPES[kind].mines > 0), ['yellow', 'hornet']);
+test('Pink fires its shells spaced out and leads you, rather than in a burst of three', () => {
+  assert.ok(TYPES.pink.reload >= 0.5, `reload ${TYPES.pink.reload}`);
+  assert.ok(TYPES.pink.lead > 0);
+});
+
+test('Yellow and Night Yellow lay mines: Yellow 2 now and then, Night Yellow 4 by plan and far more often', () => {
+  assert.deepEqual(ENEMY_KINDS.filter((kind) => TYPES[kind].mines > 0), ['yellow', 'yellowNight']);
   assert.equal(TYPES.yellow.mines, 2);
-  assert.equal(TYPES.hornet.mines, 4);
+  assert.equal(TYPES.yellowNight.mines, 4);
   // Three of a kind on the test range against the casual playtest bot, nobody firing.
   const laid = (kind) => {
     let n = 0;
@@ -275,24 +395,24 @@ test('Yellow and Hornet lay mines: Yellow 2 now and then, Hornet 4 by plan and f
     return n;
   };
   const yellow = laid('yellow');
-  const hornet = laid('hornet');
-  assert.ok(hornet >= yellow * 1.5, `hornet ${hornet}, yellow ${yellow}`);
+  const night = laid('yellowNight');
+  assert.ok(night >= yellow * 1.5, `night yellow ${night}, yellow ${yellow}`);
 });
 
-test('a Hornet mines your way to it, watches each mine from no nearer you, and never blows itself up', () => {
+test('a Night Yellow mines your way to it, watches each mine from no nearer you, and never blows itself up', () => {
   for (let seed = 1; seed <= 4; seed++) {
-    const s = createWorld(parseLevel(testMap('hornet', 3)), { seed });
+    const s = createWorld(parseLevel(testMap('yellowNight', 3)), { seed });
     for (const t of s.tanks) if (t.ai) t.ai.wait = Infinity;
     const bot = makeBot({ casual: true, seed });
     let laid = 0;
     for (let i = 0; i < Math.round(40 / STEP) && s.phase === 'play'; i++) {
       const events = step(s, { ...bot(s), fire: false, mine: false }, STEP);
       for (const e of events) {
-        assert.ok(!(e.type === 'destroyed' && e.tank === 'hornet'), `seed ${seed}: a Hornet blew up at ${s.time.toFixed(1)} s`);
+        assert.ok(!(e.type === 'destroyed' && e.tank === 'yellowNight'), `seed ${seed}: a Night Yellow blew up at ${s.time.toFixed(1)} s`);
         if (e.type !== 'mine' || e.player) continue;
         laid++;
         // The one that laid it is off to watch it from a cell at least as far from you.
-        const layer = s.tanks.find((t) => t.alive && t.type === 'hornet' && Math.hypot(t.x - e.x, t.y - e.y) < 0.1);
+        const layer = s.tanks.find((t) => t.alive && t.type === 'yellowNight' && Math.hypot(t.x - e.x, t.y - e.y) < 0.1);
         if (!layer || layer.ai.wc < 0) continue;
         const f = pathField(s);
         assert.ok(f[layer.ai.wc] >= f[Math.floor(e.y) * COLS + Math.floor(e.x)], `seed ${seed}: watches from nearer you than its mine`);
@@ -302,26 +422,26 @@ test('a Hornet mines your way to it, watches each mine from no nearer you, and n
   }
 });
 
-test('a Hornet shoots a mine you are beside, but never one whose blast would catch an ally', () => {
+test('a Night Yellow shoots a mine you are beside, but never one whose blast would catch an ally', () => {
   const trial = (rows, mine, setup = () => {}) => {
     const s = createWorld(level(rows), { seed: 3 });
     for (const t of s.tanks) if (t.ai) t.ai.lay = Infinity;
     const brown = s.tanks.find((t) => t.type === 'brown');
     if (brown) brown.ai.wait = Infinity;
-    const hornet = s.tanks.find((t) => t.type === 'hornet');
-    s.mines.push({ id: 900, owner: hornet.id, armed: true, fuse: 9, ...mine });
+    const layer = s.tanks.find((t) => t.type === 'yellowNight');
+    s.mines.push({ id: 900, owner: layer.id, armed: true, fuse: 9, ...mine });
     setup(s);
     return run(s, 6).find((e) => e.type === 'destroyed');
   };
   // You sit a cell from a mine it can see, off its line to you: it fires into the mine.
-  const beside = trial({ 3: '..........#', 4: '..........#', 7: '..@...............h', 9: '..........#' }, { x: 2.9, y: 6.2 });
+  const beside = trial({ 3: '..........#', 4: '..........#', 7: '..@...............Y', 9: '..........#' }, { x: 2.9, y: 6.2 });
   assert.equal(beside?.tank, 'player');
   assert.equal(beside.cause, 'mine');
   // A mine it can't see is left alone.
-  const walled = { 5: '..........#', 6: '..........#', 7: '..@.......#.......h', 8: '..........#', 9: '..........#' };
+  const walled = { 5: '..........#', 6: '..........#', 7: '..@.......#.......Y', 8: '..........#', 9: '..........#' };
   assert.equal(trial(walled, { x: 2.9, y: 6.4 }), undefined);
   // An ally two cells from the mine: it shoots at you instead.
-  const ally = trial({ 4: '...b', 7: '..@...............h' }, { x: 2.9, y: 6.4 });
+  const ally = trial({ 4: '...b', 7: '..@...............Y' }, { x: 2.9, y: 6.4 });
   assert.equal(ally?.tank, 'player');
   assert.equal(ally.cause, 'shell');
 });
@@ -546,6 +666,29 @@ test('you can shoot a missile down', () => {
   assert.equal(s.tanks[0].alive, true);
 });
 
+test('a missile tank fires from its two pods in turn, left first, each missile leaving its own pod', () => {
+  const s = inert(createWorld(level(['', '', '', '', '', '', '', '..@.......r'])));
+  const red = s.tanks[1];
+  const shots = [];
+  for (let i = 0; i < 3; i++) {
+    const events = [];
+    red.reload = 0;
+    s.bullets.length = 0;
+    assert.ok(fire(s, red, Math.PI, events));
+    shots.push(events.find((e) => e.type === 'shot'));
+  }
+  assert.deepEqual(shots.map((e) => e.side), [-1, 1, -1]);
+  // Facing left across the screen, its left is down the screen (+y): the pod a cell-tenth off its aim.
+  assert.ok(Math.abs(shots[0].y - red.y - POD) < 1e-9 && Math.abs(shots[1].y - red.y + POD) < 1e-9);
+  assert.ok(Math.abs(shots[0].x - (red.x - MUZZLE)) < 1e-9);
+  // Other weapons fire down the middle.
+  const grey = inert(createWorld(level(['', '', '', '', '', '', '', '..@.......a'])));
+  const events = [];
+  fire(grey, grey.tanks[1], Math.PI, events);
+  assert.equal(events[0].side, 0);
+  assert.equal(events[0].y, grey.tanks[1].y);
+});
+
 test('a red tank fires missiles that follow you when you dodge sideways', () => {
   const s = createWorld(level(['', '', '', '', '', '', '', '..@..............r']), { seed: 4 });
   // Wait for its missile, then drive up out of the line it was fired on.
@@ -759,6 +902,234 @@ test('a world with a minigun spinning resumes exactly (plain JSON, deterministic
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 });
 
+/* ---------- Dodging ---------- */
+
+test('beside walls a tank dodges a shell it notices without swinging back and forth, and nearly always lives', () => {
+  // Black on open cells beside a wall in two missions, a shell coming at it from five directions.
+  let noticed = 0;
+  let died = 0;
+  let swung = 0;
+  for (const mi of [0, 2]) {
+    const clean = MISSIONS[mi].map((line) => line.replace(/[^#xo]/g, '.'));
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const wall = (dc, dr) => !'.'.includes((clean[r + dr] || '')[c + dc] ?? '#');
+        if (clean[r][c] !== '.' || (c + r) % 3 || ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dc, dr]) => wall(dc, dr))) continue;
+        for (const [angle, off] of [[0, 0.1], [Math.PI / 2, -0.1], [Math.PI, 0.15], [-Math.PI / 2, 0.05], [Math.PI / 4, 0.1]]) {
+          const map = clean.map((line, rr) => (rr === r ? `${line.slice(0, c)}k${line.slice(c + 1)}` : line));
+          const far = map.findIndex((line, rr) => Math.abs(rr - r) > 6);
+          map[far] = `@${map[far].slice(1)}`;
+          if (clean[far][0] !== '.') continue;
+          const s = inert(createWorld(parseLevel(map), { seed: 1 }));
+          const k = s.tanks[1];
+          const x = k.x - Math.cos(angle) * 4 - Math.sin(angle) * off;
+          const y = k.y - Math.sin(angle) * 4 + Math.cos(angle) * off;
+          if (cellAt(s.grid, Math.floor(x), Math.floor(y)) !== FLOOR) continue;
+          if (nextContact(s.grid, x, y, Math.cos(angle), Math.sin(angle), SHELL_R, 3.6)) continue;
+          s.bullets.push({ id: 901, owner: s.tanks[0].id, x, y, vx: Math.cos(angle) * 4.6, vy: Math.sin(angle) * 4.6, left: 0, weapon: 'shell' });
+          let dodged = false;
+          let swings = 0;
+          let prev = null;
+          for (let i = 0; i < Math.round(1.4 / STEP) && k.alive && s.phase === 'play'; i++) {
+            step(s, IDLE, STEP);
+            if (k.ai.dodgeT > 0) dodged = true;
+            if (i % 15) continue;
+            const v = Math.hypot(k.vx, k.vy);
+            if (prev && prev.v > 0.3 && v > 0.3 && (prev.vx * k.vx + prev.vy * k.vy) / (prev.v * v) < -0.7) swings++;
+            prev = { vx: k.vx, vy: k.vy, v };
+          }
+          if (!dodged) continue;
+          noticed++;
+          if (!k.alive) died++;
+          if (swings) swung++;
+        }
+      }
+    }
+  }
+  assert.ok(noticed >= 100, `${noticed} dodges`);
+  assert.ok(died <= noticed * 0.02, `died in ${died} of ${noticed}`);
+  // The old sidestep swung back across the line in about a third of these.
+  assert.ok(swung <= noticed * 0.15, `swung back and forth in ${swung} of ${noticed}`);
+});
+
+/* ---------- N2, N3: Night Red and Night Lime ---------- */
+
+test('Night Red fires a pair: its left pod, then its right PAIR_GAP later, 10 degrees either side of its aim', () => {
+  const s = inert(createWorld(level(['', '', '', '', '', '', '', '..@.........R'])));
+  const red = s.tanks[1];
+  const events = [];
+  assert.ok(fire(s, red, Math.PI, events));
+  assert.deepEqual(events.filter((e) => e.type === 'shot').map((e) => e.side), [-1], 'the left pod first');
+  assert.equal(s.bullets.length, 1);
+  const early = run(s, PAIR_GAP - 0.05);
+  assert.equal(count(early, 'shot'), 0, 'a split second between them');
+  const later = run(s, 0.1);
+  assert.deepEqual(later.filter((e) => e.type === 'shot').map((e) => e.side), [1], 'then the right pod');
+  assert.equal(s.bullets.length, 2);
+  // Each left its own pod, TWIN_SPREAD to its own side of the aim (the turret's aim when it left).
+  const launches = [...events, ...later].filter((e) => e.type === 'shot').map((e) => angleDiff(e.angle, Math.PI));
+  assert.ok(Math.abs(launches[0] + TWIN_SPREAD) < 0.02 && Math.abs(launches[1] - TWIN_SPREAD) < 0.02, `launched at ${launches}`);
+  assert.ok(s.bullets.every((b) => Math.abs(Math.hypot(b.vx, b.vy) - TYPES.redNight.shot) < 1e-9 && b.path));
+  red.reload = 0;
+  assert.equal(fire(s, red, Math.PI, []), false, 'no room for another pair');
+  // The pair close in on each other as they steer for you, and never cancel each other out.
+  const clear = inert(createWorld(level(['', '', '', '', '', '', '', '..@..........R'])));
+  fire(clear, clear.tanks[1], Math.PI, []);
+  const flight = run(clear, 4);
+  assert.equal(count(flight, 'clash'), 0);
+  assert.equal(flight.find((e) => e.type === 'destroyed')?.tank, 'player');
+});
+
+test('a Night Red missile finds its way round a wall to you; a plain one dies on it', () => {
+  const rows = { 4: '.........#', 5: '.........#', 6: '.........#', 7: '.....@...#.......r', 8: '.........#', 9: '.........#', 10: '.........#' };
+  const flight = (path) => {
+    const s = inert(createWorld(level(rows), { seed: 1 }));
+    s.bullets.push({ id: 900, owner: s.tanks[1].id, x: 16.5, y: 6.6, vx: -3.8, vy: 0, left: 0, weapon: 'missile', fuel: 5, turn: 3.2, path });
+    return run(s, 6).find((e) => e.type === 'destroyed');
+  };
+  assert.equal(flight(false), undefined);
+  assert.equal(flight(true)?.tank, 'player');
+});
+
+test('Night Red fires round a corner at you hiding behind a wall, and its missiles find you', () => {
+  const rows = { 4: '.........#', 5: '.........#', 6: '.........#', 7: '.....@...#.......R', 8: '.........#', 9: '.........#', 10: '.........#' };
+  const day = createWorld(level({ ...rows, 7: '.....@...#.......r' }), { seed: 1 });
+  assert.equal(count(run(day, 10), 'shot'), 0, 'day Red needs a straight line');
+  const s = createWorld(level(rows), { seed: 1 });
+  const events = run(s, 10);
+  assert.ok(count(events, 'shot') >= 2, 'it fired round the wall');
+  assert.equal(events.find((e) => e.type === 'destroyed')?.tank, 'player');
+});
+
+test('a Night Red missile swerves round a tank in its way and hits you, not it', () => {
+  const s = inert(createWorld(level({ 7: '..@......b.........' }), { seed: 1 }));
+  s.bullets.push({ id: 900, owner: 99, x: 16.5, y: 7.5, vx: -3.8, vy: 0, left: 0, weapon: 'missile', fuel: 5, turn: 3.2, path: true });
+  const hit = run(s, 6).find((e) => e.type === 'destroyed');
+  assert.equal(hit?.tank, 'player');
+  assert.ok(s.tanks[1].alive, 'the brown in its way lives');
+});
+
+test('Night Lime walks its stream across you; day Lime holds it on you', () => {
+  const swing = (letter) => {
+    const s = createWorld(level(['', '', '', '', '', '', '', `..@.......${letter}`]), { seed: 3 });
+    const lime = s.tanks[1];
+    const offs = [];
+    run(s, 5, (w) => {
+      offs.push(angleDiff(lime.turret, Math.atan2(w.tanks[0].y - lime.y, w.tanks[0].x - lime.x)));
+      return IDLE;
+    });
+    const late = offs.slice(Math.round(2 / STEP));
+    return Math.max(...late) - Math.min(...late);
+  };
+  assert.ok(swing('l') < 0.06, `day Lime swings ${swing('l')}`);
+  const night = swing('L');
+  assert.ok(night > 0.12, `Night Lime swings only ${night}`);
+  assert.ok(night < 2 * Math.atan2(TYPES.limeNight.walk, 7.5) + 0.05, `and no further than a cell either side of you (${night})`);
+});
+
+/* ---------- W5: the laser ---------- */
+
+/** The world's laser tank fires at `angle` by hand; returns the events. */
+function laser(s, angle) {
+  const events = [];
+  assert.ok(fire(s, s.tanks.find((t) => TYPES[t.type].weapon === 'laser'), angle, events));
+  return events;
+}
+
+test('a laser shows its line for LASER_CHARGE s, then burns down it for LASER_BEAM s, then reloads', () => {
+  const s = inert(createWorld(level(['', '', '', '', '', '', '', '..@.........i'])));
+  const t = s.tanks[1];
+  assert.equal(laser(s, Math.PI)[0].type, 'charge');
+  assert.equal(t.beam.phase, 'charge');
+  assert.equal(fire(s, t, 0, []), false, 'one beam at a time');
+  // While it charges nothing burns, and the turret holds the line it showed.
+  const charging = run(s, LASER_CHARGE - 0.05);
+  assert.equal(count(charging, 'destroyed'), 0);
+  assert.equal(t.turret, Math.PI);
+  const burning = run(s, 0.1);
+  assert.equal(count(burning, 'beam'), 1);
+  const hit = burning.find((e) => e.type === 'destroyed');
+  assert.equal(hit?.tank, 'player');
+  assert.equal(hit.cause, 'laser');
+  assert.ok(Math.abs(s.time - LASER_CHARGE) < 0.02, `fired at ${s.time}`);
+  assert.ok(t.reload > TYPES.indigo.reload, 'reload counts from the end of the beam');
+});
+
+test('a beam burns through every tank on its line, stops at a wall or crate, and passes over holes', () => {
+  const through = inert(createWorld(level(['', '', '', '', '', '', '', '..@...b..o..i'])));
+  laser(through, Math.PI);
+  const events = run(through, LASER_CHARGE + 0.1);
+  assert.deepEqual(events.filter((e) => e.type === 'destroyed').map((e) => e.tank).sort(), ['brown', 'player']);
+  for (const block of ['#', 'x']) {
+    const s = inert(createWorld(level(['', '', '', '', '', '', '', `..@..${block}......i`])));
+    laser(s, Math.PI);
+    assert.equal(count(run(s, LASER_CHARGE + LASER_BEAM + 0.1), 'destroyed'), 0, `a ${block} stops it`);
+    assert.equal(s.grid[7 * COLS + 5], block === '#' ? WALL : CRATE, 'and is still there');
+  }
+});
+
+test('a beam burns shots that cross it and sets off a mine on its line', () => {
+  const s = inert(createWorld(level(['', '', '', '', '', '', '', '.............i', '', '', '', '', '', '..@'])));
+  laser(s, Math.PI);
+  run(s, LASER_CHARGE + 0.02);
+  // A shell crossing the line from below, and a mine on it.
+  s.bullets.push({ id: 900, owner: s.tanks[0].id, x: 6.5, y: 8.4, vx: 0, vy: -4.6, left: 1, weapon: 'shell' });
+  s.mines.push({ id: 901, owner: s.tanks[0].id, x: 9.5, y: 7.5, fuse: 9, armed: true });
+  const events = run(s, 0.3);
+  assert.equal(s.bullets.length, 0, 'the shell burned');
+  // Burned, not popped on a wall: it sizzles (tanks.js).
+  assert.ok(events.some((e) => e.type === 'pop' && e.cause === 'laser' && e.weapon === 'shell'), 'the shell went as the laser\'s');
+  assert.ok(events.some((e) => e.type === 'blast'), 'the mine went off');
+});
+
+test('a day laser holds its line as it burns; a night laser turns after you, no faster than its track', () => {
+  const sweep = (kind) => {
+    const s = inert(createWorld(level(['', '', '', '', '', '', '', `..@.........${kind === 'indigo' ? 'i' : 'I'}`])));
+    laser(s, Math.PI);
+    const t = s.tanks[1];
+    const x = t.x;
+    // You run down the screen, off the line, as soon as you see it.
+    run(s, LASER_CHARGE + LASER_BEAM - 0.05, { ...IDLE, my: 1 });
+    assert.equal(t.x, x, 'it stands still while it charges and burns');
+    return angleDiff(t.turret, Math.PI);
+  };
+  assert.equal(sweep('indigo'), 0);
+  const turned = sweep('indigoNight');
+  assert.ok(turned < -0.05, `it turned ${turned} toward you`);
+  assert.ok(Math.abs(turned) <= TYPES.indigoNight.track * LASER_BEAM + 1e-9, `no faster than its track (${turned})`);
+});
+
+test('a laser tank never fires with an ally anywhere on its line, and others keep off a line it shows', () => {
+  const s = createWorld(level(['', '', '', '', '', '', '', '..@......b..i', '', '', '..........a']), { seed: 2 });
+  const events = run(s, 8, (w) => {
+    for (const e of w.tanks) {
+      if (e.type !== 'indigo' || !e.beam || e.beam.phase !== 'charge' || e.beam.left < LASER_CHARGE - STEP * 1.5) continue;
+      const L = beamLine(w.grid, e.x, e.y, e.beam.angle);
+      for (const o of w.tanks) {
+        if (o.slot >= 0 && o !== e && o.alive) assert.ok(segmentHit(L.x0, L.y0, L.x1, L.y1, o.x, o.y, HIT_R + 0.07) < 0, `${o.type} on the line`);
+      }
+    }
+    return IDLE;
+  });
+  assert.ok(!events.some((e) => e.type === 'destroyed' && e.tank !== 'player' && e.cause === 'laser'), 'no ally burned');
+});
+
+test('a world with a laser charging resumes exactly (plain JSON, deterministic)', () => {
+  const lv = level(['', '', '', '', '', '', '', '..@.........I']);
+  const script = (s, i) => ({ mx: 0, my: Math.sin(i / 50), aim: null, fire: false, mine: false });
+  const a = createWorld(lv, { seed: 4 });
+  let i = 0;
+  while (i < 120 * 10 && a.phase === 'play' && !a.tanks[1].beam) step(a, script(a, i++), STEP);
+  assert.ok(a.tanks[1].beam, 'a laser is charging');
+  const b = JSON.parse(JSON.stringify(a));
+  assert.ok(isWorld(b));
+  for (let k = 0; k < 120 * 3; k++) {
+    step(a, script(a, i + k), STEP);
+    step(b, script(b, i + k), STEP);
+  }
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+});
+
 /* ---------- The test range ---------- */
 
 test('the test range is four short walls, _|__|__ and __|__|_, with you on the left and 1 to 6 of one kind', () => {
@@ -921,7 +1292,9 @@ test('every kind has its own colour (a striped variant wears its base kind’s),
   const colours = (text) => Object.fromEntries([...text.matchAll(/--tk-([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map((m) => [m[1], m[2].toLowerCase()]));
   assert.ok(!css.includes('prefers-color-scheme'), 'the arena has no light-mode palette');
   const set = colours(block('.page-tanks {'));
-  const kinds = Object.keys(TYPES);
+  // A night version has no colour of its own: it wears its day kind's (art.js deepens its hull).
+  for (const [k, t] of Object.entries(TYPES)) if (t.night) assert.equal(set[k], undefined, `${k} wears ${t.base}'s colour`);
+  const kinds = Object.keys(TYPES).filter((k) => !TYPES[k].night);
   const ink = { dark: '#16181d', light: '#faf8f2' }; // the field guide's chip text colours
   for (const k of kinds) assert.match(set[k] || '', /^#[0-9a-f]{6}$/, `--tk-${k}`);
   // A variant wears exactly its base kind's colour; the stripes art.js draws tell them apart.
@@ -1016,7 +1389,7 @@ test('your maps must be playable: your tank, 1 to 8 enemies, every enemy within 
 
 test('the editor draws a map exactly as a mission starts, even one not ready yet', () => {
   const pose = (t) => ({ type: t.type, x: t.x, y: t.y, body: t.body, turret: t.turret, alive: t.alive });
-  for (const rows of [...MISSIONS, testMap('hornet', 6)]) {
+  for (const rows of [...MISSIONS, testMap('yellowNight', 6)]) {
     const s = MAPS.mapWorld(rows);
     assert.deepEqual(s.grid, parseLevel(rows).grid);
     assert.deepEqual(s.tanks.map(pose), createWorld(parseLevel(rows)).tanks.map(pose));

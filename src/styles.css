@@ -9,12 +9,11 @@
    Nothing is a pill or a circle: every button starts from the icon button's 8.
       8  every button and control: icon buttons (their 9 x 9 pixel icon fills them, its corner
          pixels dark), buttons, small buttons, number keys, side-menu rows, the segmented
-         control, the switch track, fields; and the rows and cards that sit beside them
-      4  a chip inset 4 inside a control: the selected segment (8 - 4)
+         control, the slider, the switch track, fields; and the rows and cards that sit beside them
+      4  a chip inset 4 inside a control: the selected segment and the slider's thumb (8 - 4)
       5  the switch knob, inset 3 (8 - 3)
      24  a sheet, holding its close button and buttons inset 16 (8 + 16)
      18  a launcher game tile (8 art + 10), and the suggested game's panel (8 button + 10)
-     26  a game board (16 tile + 10)
    Pixels (the logo's and the icons') are rounded squares of their own: 34% of a pixel. */
 
 :root {
@@ -43,31 +42,9 @@
   --r-btn: 8px;
   --r-chip: 4px;
   --r-sheet: 24px;
-  --r-board: 26px;
-  --r-board-tile: 16px;
   --r-game-tile: 18px;
   --r-game-art: 8px;
   --r-pixel: 34%;
-
-  /* The 2048 scale (also drawn by the launcher's tile art): grey steps from the board up to
-     white, then rings, then inverted. */
-  --tile-0: #1d1d1d;
-  --tile-2: #2c2c2c;    --tile-2-ink: #cfcfcf;
-  --tile-4: #3d3d3d;    --tile-4-ink: #e6e6e6;
-  --tile-8: #545454;    --tile-8-ink: #ffffff;
-  --tile-16: #6a6a6a;   --tile-16-ink: #ffffff;
-  --tile-32: #8f8f8f;   --tile-32-ink: #0b0b0b;
-  --tile-64: #b5b5b5;   --tile-64-ink: #0b0b0b;
-  --tile-128: #d6d6d6;  --tile-128-ink: #0b0b0b;
-  --tile-256: #efefef;  --tile-256-ink: #0b0b0b;
-  --tile-512: #efefef;  --tile-512-ink: #0b0b0b;
-  --tile-512-ring: inset 0 0 0 3px #0b0b0b, inset 0 0 0 5px #efefef;
-  --tile-1024: #efefef; --tile-1024-ink: #0b0b0b;
-  --tile-1024-ring: inset 0 0 0 3px #0b0b0b, inset 0 0 0 5px #efefef, inset 0 0 0 8px #0b0b0b, inset 0 0 0 10px #efefef;
-  --tile-2048: #0b0b0b; --tile-2048-ink: #efefef;
-  --tile-2048-ring: inset 0 0 0 2px #efefef;
-  --tile-max: #0b0b0b;  --tile-max-ink: #efefef;
-  --tile-max-ring: inset 0 0 0 2px #efefef, inset 0 0 0 5px #0b0b0b, inset 0 0 0 7px #efefef;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
@@ -98,6 +75,16 @@
    callouts outside of fields, no rubber-banding. app.js blocks the zoom gestures iOS still allows. */
 * {
   touch-action: pan-x pan-y;
+}
+
+/* No scrollbar indicators anywhere: the page, the landscape strip, sheets and menus all still
+   scroll, without the bar. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
 
 html {
@@ -450,9 +437,43 @@ button {
   opacity: 0.4;
 }
 
-.keypad.is-notes .key {
+.keypad.is-notes .key:not(.key-tool) {
   font: 500 19px/1 var(--font-mono);
   color: var(--muted);
+}
+
+/* Tools in the keypad (Sudoku's Notes and Erase): a first row of two keys over the numbers, each a
+   number key's card holding its icon (a smooth shape) and name. A mode that is on (Notes) is solid
+   white, like a pressed icon button. The keypad turns six columns wide: a number takes two, a tool
+   three. */
+.keypad.has-tools {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.keypad.has-tools > .key {
+  grid-column: span 2;
+}
+
+.keypad.has-tools > .key-tool {
+  grid-column: span 3;
+}
+
+.key-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 600 15px/1 var(--font-sans);
+}
+
+.key-tool .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.key-tool[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 @media (max-height: 740px) {
@@ -509,6 +530,11 @@ button {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+/* Six choices with longer labels (Tanks' map sizes): rows of three. */
+.segmented.is-grid.is-thirds {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* A list to pick one from (Tanks' own maps): the same control, one choice per row, its text
    starting where a side-menu row's does. */
 .segmented.is-list {
@@ -520,6 +546,60 @@ button {
   padding: 0 14px;
   text-align: left;
   text-overflow: ellipsis;
+}
+
+/* Slider: one of a row of steps (Sudoku's difficulty), in the segmented control's box (48 tall,
+   radius 8). Each step is a pixel on the track; the thumb is the selected segment's chip (radius
+   4, inset 4) and glides from step to step with the value written in it. A drag anywhere on the
+   track moves it, and so does a tap. setupSlider() in shared/ui.js builds and runs it. */
+.slider {
+  --thumb-w: 48px;
+  position: relative;
+  display: block;
+  height: 48px;
+  border-radius: var(--r-btn);
+  background: var(--card);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.slider[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Thumb and steps sit on the same line: a step's centre is where the thumb's centre stops. */
+.slider-step,
+.slider-thumb {
+  position: absolute;
+  left: calc(4px + var(--at, 0) * (100% - 8px - var(--thumb-w)));
+}
+
+.slider-step {
+  top: 21px;
+  width: 6px;
+  height: 6px;
+  margin-left: calc(var(--thumb-w) / 2 - 3px);
+  border-radius: var(--r-pixel);
+  background: var(--quiet);
+}
+
+.slider-thumb {
+  top: 4px;
+  display: grid;
+  place-items: center;
+  width: var(--thumb-w);
+  height: 40px;
+  border-radius: var(--r-chip);
+  background: var(--ink);
+  color: var(--on-ink);
+  font: 650 15px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  transition: left 0.18s var(--ease);
+}
+
+.slider-thumb:empty {
+  display: none;
 }
 
 /* Switch: track 8, knob 5 inset 3. */
@@ -594,15 +674,6 @@ button {
   padding: 0 18px;
   font: 500 16px/1 var(--font-sans);
   letter-spacing: 0;
-}
-
-/* A code to copy (Sudoku's share string): the one place text can be selected outside a field. */
-.field.is-code {
-  min-height: 0;
-  word-break: break-all;
-  user-select: all;
-  -webkit-user-select: all;
-  -webkit-touch-callout: default;
 }
 
 /* ---------- Surfaces ---------- */
@@ -788,8 +859,10 @@ button {
 
 /* Deep, with -top, -bottom or -side: a blur that deepens all the way to the edge (each layer stays
    on once it has come in), under a shade from transparent to the background there (its <b>; leave
-   that out for the blur alone). The launcher's top edge on its home view, and the Tanks arena's
-   wall past its field: the top and bottom in portrait, the sides (blur alone) in landscape. */
+   that out for the blur alone). The launcher's top edge on its home view. The Tanks arena's wall
+   past its field has the same look, but baked into its canvas (games/tanks/render.js blurEdges,
+   which copies these layers and this shade): for performance, since iOS blurs backdrop-filter
+   layers again on every frame the canvas under them changes. */
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(1) { --b: 3px; --from: 80%; --to: 100%; }
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(2) { --b: 7px; --from: 45%; --to: 80%; }
 :is(.pblur-deep, .launcher[data-view="home"] .edge-top) > i:nth-child(3) { --b: 14px; --from: 10%; --to: 45%; }
@@ -981,6 +1054,125 @@ button {
   height: 18px;
 }
 
+/* Lives (Sudoku's hearts): smooth hearts, full while a life is left and hollow once it's spent.
+   In portrait the row sits in the middle of the header (.bar-center); in landscape it runs down
+   the right edge under the stats, like a meter. A life lost breaks: the heart cracks down the
+   middle and its halves part, then fall away to either side, turning and blurring out, while the
+   hollow heart blurs in where it was. */
+.lives {
+  display: flex;
+  gap: 6px;
+}
+
+.life {
+  --life: 24px;
+  display: grid;
+  grid-template: var(--life) / var(--life);
+}
+
+/* Sized outright: an svg of no size of its own falls back to 150 tall. */
+.life > *,
+.life-half > .icon {
+  display: block;
+  grid-area: 1 / 1;
+  width: var(--life);
+  height: var(--life);
+}
+
+.life-empty {
+  color: var(--muted);
+  opacity: 0;
+}
+
+.life.is-used .life-empty {
+  opacity: 1;
+}
+
+.life.is-used .life-half {
+  opacity: 0;
+}
+
+/* The crack: one zigzag from the notch down to the point, each half's heart clipped to its side
+   of it. The half moves and blurs around its clipped heart, so the blur softens the crack too. */
+.life-half {
+  transform-origin: 50% 86%;
+  pointer-events: none;
+}
+
+.life-half.is-left > .icon {
+  clip-path: polygon(0 0, 50% 0, 50% 27%, 44% 42%, 55% 55%, 46% 69%, 50% 86%, 50% 100%, 0 100%);
+}
+
+.life-half.is-right > .icon {
+  clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 50% 86%, 46% 69%, 55% 55%, 44% 42%, 50% 27%);
+}
+
+.life.is-breaking .life-half.is-left {
+  animation: life-fall-left 0.8s both;
+}
+
+.life.is-breaking .life-half.is-right {
+  animation: life-fall-right 0.8s both;
+}
+
+.life.is-breaking .life-empty {
+  animation: blur-in var(--t-blur) var(--ease) 0.3s both;
+}
+
+/* Parting at the point, quick; then falling, slow to start like a weight. */
+@keyframes life-fall-left {
+  0% {
+    transform: none;
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  22% {
+    transform: translateX(-10%) rotate(-12deg);
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
+  }
+  100% {
+    transform: translate(-50%, 100%) rotate(-36deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+@keyframes life-fall-right {
+  0% {
+    transform: none;
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  22% {
+    transform: translateX(10%) rotate(12deg);
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
+  }
+  100% {
+    transform: translate(50%, 100%) rotate(36deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+/* Portrait: something in the middle of the header row, between the home button and the stats
+   (Sudoku's hearts). Landscape: it joins the stats down the right edge. */
+@media (orientation: portrait) {
+  .bar-center {
+    position: absolute;
+    top: var(--bar-top);
+    left: 50%;
+    height: var(--tap);
+    align-items: center;
+    transform: translateX(-50%);
+  }
+}
+
 /* An icon with two states: .full (a solid shape) and .empty (its outline, a pixel icon of its
    own such as #i-shell-empty). Put .is-used on the svg to show the outline. */
 .slot .empty {
@@ -1033,7 +1225,8 @@ button {
     flex-direction: column;
     align-items: flex-end;
   }
-  .game-page .meter {
+  .game-page .meter,
+  .game-page .lives {
     flex-direction: column;
   }
 }
@@ -1094,19 +1287,12 @@ button {
   -webkit-touch-callout: none;
 }
 
-/* What sits under the board: the moves, or a hint with an action. */
+/* What sits under the board: the moves. */
 .controls {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 @media (max-height: 740px) {
@@ -1128,22 +1314,21 @@ button {
     gap: 32px;
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + var(--side-w)) max(var(--safe-b), 16px) calc(var(--safe-l) + var(--side-w));
   }
+  /* As tall as the play area (or 60% of its width, if less), as a width WebKit can lay out: a
+     width taken from aspect-ratio and a stretched height came out 0 there (a size container's
+     content counts for nothing), and the board vanished in landscape on iPhones. */
   .play > .board-wrap {
-    flex: 0 1 auto;
-    align-self: stretch;
+    --play-h: calc(100vh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
+    --play-h: calc(100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
+    flex: none;
+    width: min(60%, var(--play-h));
     height: auto;
     aspect-ratio: 1;
-    max-width: 60%;
     place-items: center;
   }
   .controls {
     flex: 0 1 340px;
     min-width: 0;
-  }
-  .controls-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
   }
 }
 
@@ -1280,7 +1465,7 @@ dialog.sheet::backdrop {
 }
 
 /* On a glass sheet, flat surfaces turn to glass too, so nothing on it reads as a solid block. */
-dialog.sheet :is(.segmented, .toggle-row, .card, .facts, .field) {
+dialog.sheet :is(.segmented, .slider, .toggle-row, .card, .facts, .field) {
   background: var(--glass);
 }
 
@@ -1521,9 +1706,10 @@ dialog.sheet[open] {
 
 /* The suggested game's square: the logo over its art, the eyebrow and panel at its foot. As wide
    as the page in portrait, and in landscape the two-tile column, which is as tall as the screen
-   allows. */
+   allows. It holds no box of its own, in either orientation, so the art always measures from
+   .home: a containing block that changed with a rotation made iOS lay the art out against the
+   old one for a frame, and it jumped into place. */
 .lead {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1555,19 +1741,21 @@ dialog.sheet[open] {
 }
 
 /* The suggested game's board: a square that runs out to the screen's edges and never past them,
-   so all of it is seen. In portrait it starts at the top of the screen, as wide as the page (16
-   past .lead on each side), and fades out toward the panel; landscape is below. */
+   so all of it is seen. In portrait it starts right under the status bar, as wide as the page
+   (.home, through its safe-area padding), and fades out toward the panel; landscape is below.
+   It keeps to the safe area at the top like the logo over it: rotating into portrait, iOS lays
+   the page out under the status bar for a moment before it moves it below, and art drawn from
+   the page's very top went up with it and then dropped into place. */
 .hero {
-  --hero-fade: to bottom;
   position: absolute;
-  top: calc(-1 * var(--safe-t));
-  left: calc(-16px - var(--safe-l));
-  right: calc(-16px - var(--safe-r));
+  top: var(--safe-t);
+  left: 0;
+  right: 0;
   z-index: 0;
   aspect-ratio: 1;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
-  mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
   pointer-events: none;
 }
 
@@ -1916,11 +2104,9 @@ dialog.sheet[open] {
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px + 44px + 12px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
   }
   /* The column is as tall as two tiles and their gap, so it is square; a note under it takes its
-     room from the logo. No top blur here, so the logo centres in the whole of it. It holds no box
-     of its own, so the art measures from the strip. */
+     room from the logo. No top blur here, so the logo centres in the whole of it. */
   .lead {
     grid-area: 1 / 1;
-    position: static;
     aspect-ratio: auto;
     min-height: 0;
   }
@@ -1938,19 +2124,16 @@ dialog.sheet[open] {
   /* The art runs from the screen's left edge (through the safe area) to the column's far gutter,
      as a square centred on the screen's height, so it fills the height and a notch's wider safe
      area only spills it a little past the top and bottom. It fades out to the right, toward the
-     tiles, the way it fades toward the panel in portrait. */
+     tiles, the way it fades toward the panel in portrait, and to the left, to dark under the left
+     edge's blur. */
   .hero {
-    --hero-fade: to right;
     --hero-side: calc(var(--safe-l) + var(--lead) + 32px);
     top: calc(50% - var(--hero-side) / 2);
     left: 0;
     right: auto;
     width: var(--hero-side);
-  }
-  /* The left edge blur stays out of the way at rest and slides in with the strip, like the top
-     one in portrait. */
-  .launcher[data-view="home"] .edge-left {
-    transform: translateX(calc(min(var(--scrolled, 0px), var(--safe-l) + 16px) - var(--safe-l) - 16px));
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 calc(var(--safe-l) + 16px), #000 55%, transparent 92%);
+    mask-image: linear-gradient(to right, transparent, #000 calc(var(--safe-l) + 16px), #000 55%, transparent 92%);
   }
   .tile-grid {
     grid-template-columns: none;
@@ -1977,19 +2160,31 @@ dialog.sheet[open] {
   .prepare .intro-side {
     grid-area: side;
   }
-  /* The steps take the wider column, so their lines rarely wrap. */
+  /* The browser tab fits the screen with nothing to scroll, so it has no edges to blur and keeps
+     none of their room: the lockup and the steps share the whole height. The steps take the wider
+     column, so their lines rarely wrap, and the name never wraps under the logo. */
+  .launcher[data-view="install"] :is(.edge-top, .edge-bottom) {
+    display: none;
+  }
+  .launcher[data-view="install"] .home {
+    padding-top: max(var(--safe-t), 16px);
+    padding-bottom: max(var(--safe-b), 16px);
+  }
   .install {
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    grid-template-columns: minmax(max-content, 0.85fr) minmax(0, 1.15fr);
     grid-template-areas: "mark side";
     align-content: center;
     column-gap: 40px;
+    min-height: calc(100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
   }
   .install .intro-side {
     grid-area: side;
     gap: 10px;
   }
-  .install .intro-side > .t-title {
+  .install .intro-side > .t-title,
+  .install .intro-side > .install-version {
     padding-bottom: 0;
+    padding-top: 0;
   }
   .install .intro-side > .t-note {
     text-align: center;
@@ -2005,23 +2200,15 @@ dialog.sheet[open] {
   .intro .logo-lg {
     --logo-w: 120px;
   }
+  /* The browser tab's logo stays as large as in portrait while the height allows (the lockup is
+     the logo, 1.19 times as tall as wide, a 20 gap and the 52 name): the field runs on the logo's
+     grid, so a smaller logo would fill the wide screen with twice the pixels to animate. */
+  .install .logo-lg {
+    --logo-w: clamp(120px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - 72px) * 0.84), 176px);
+  }
 }
 
 /* ---------- Board art (shared/game-art.js) ---------- */
-
-/* The 2048 scale as classes, for the game's tiles and the launcher's art alike. */
-.t2 { --tile-bg: var(--tile-2); --tile-fg: var(--tile-2-ink); }
-.t4 { --tile-bg: var(--tile-4); --tile-fg: var(--tile-4-ink); }
-.t8 { --tile-bg: var(--tile-8); --tile-fg: var(--tile-8-ink); }
-.t16 { --tile-bg: var(--tile-16); --tile-fg: var(--tile-16-ink); }
-.t32 { --tile-bg: var(--tile-32); --tile-fg: var(--tile-32-ink); }
-.t64 { --tile-bg: var(--tile-64); --tile-fg: var(--tile-64-ink); }
-.t128 { --tile-bg: var(--tile-128); --tile-fg: var(--tile-128-ink); }
-.t256 { --tile-bg: var(--tile-256); --tile-fg: var(--tile-256-ink); }
-.t512 { --tile-bg: var(--tile-512); --tile-fg: var(--tile-512-ink); --tile-ring: var(--tile-512-ring); }
-.t1024 { --tile-bg: var(--tile-1024); --tile-fg: var(--tile-1024-ink); --tile-ring: var(--tile-1024-ring); }
-.t2048 { --tile-bg: var(--tile-2048); --tile-fg: var(--tile-2048-ink); --tile-ring: var(--tile-2048-ring); }
-.tmax { --tile-bg: var(--tile-max); --tile-fg: var(--tile-max-ink); --tile-ring: var(--tile-max-ring); }
 
 /* The art's own gaps are measured against its frame (a tile's art box or the hero), and what is
    inside the art against the art. */
@@ -2078,26 +2265,6 @@ dialog.sheet[open] {
   color: var(--ink);
   font-weight: 800;
 }
-
-.art-2048 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  gap: 4cqi;
-  aspect-ratio: 1;
-}
-
-/* 5.3% of the art: 8px on a tile, so the corner cells sit concentric in the tile's 18. */
-.art-2048 > span {
-  border-radius: 5.3cqi;
-  background: var(--tile-bg, var(--tile-0));
-  box-shadow: var(--tile-ring, none);
-  color: var(--tile-fg, var(--ink));
-  font: 800 10cqi/1 var(--font-sans);
-  letter-spacing: -0.03em;
-}
-
-.art-2048 > span[data-len="3"] { font-size: 8cqi; }
-.art-2048 > span[data-len="4"] { font-size: 6.4cqi; }
 
 .art-tanks {
   place-items: center;

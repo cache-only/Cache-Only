@@ -4,7 +4,7 @@
 // live (scripts/guide.mjs bundles this file with the game's rules.js, ai.js and engine.js).
 // No DOM.
 import { parseLevel } from './engine.js';
-import { COLS, CRATE, FLOOR, HIT_R, MUZZLE, ROWS, SHELL_R, TYPES, cellAt, muzzleBlocked, tracePath } from './rules.js';
+import { CRATE, FLOOR, HIT_R, MUZZLE, SHELL_R, TYPES, cellAt, muzzleBlocked, tracePath } from './rules.js';
 
 export const MAX_ENEMIES = 8;
 export const OPEN_WARN = 0.75; // more open floor than this earns a nudge
@@ -23,6 +23,46 @@ export function openShare(rows) {
   let open = 0;
   for (const line of rows) for (const ch of line) if (!'#xo'.includes(ch)) open++;
   return open / (rows.length * (rows[0] || '').length || 1);
+}
+
+/**
+ * Tight spots: places a tank can only squeeze through. A tight cell is floor that no 2 x 2
+ * square of drivable floor covers (the arena's edge counts as wall); touching tight cells are
+ * one spot, so a one-cell gap or a one-wide corridor counts once. Returns { cells, spots }.
+ */
+export function tightSpots(rows) {
+  const H = rows.length;
+  const W = (rows[0] || '').length;
+  const free = (c, r) => r >= 0 && r < H && c >= 0 && c < W && !'#xo'.includes(rows[r][c]);
+  const tight = new Set();
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      if (!free(c, r)) continue;
+      const roomy = [[0, 0], [-1, 0], [0, -1], [-1, -1]].some(
+        ([dc, dr]) => free(c + dc, r + dr) && free(c + dc + 1, r + dr) && free(c + dc, r + dr + 1) && free(c + dc + 1, r + dr + 1),
+      );
+      if (!roomy) tight.add(r * W + c);
+    }
+  }
+  let spots = 0;
+  const seen = new Set();
+  for (const start of tight) {
+    if (seen.has(start)) continue;
+    spots++;
+    const queue = [start];
+    seen.add(start);
+    while (queue.length) {
+      const i = queue.pop();
+      const c = i % W;
+      for (const [n, ok] of [[i + 1, c < W - 1], [i - 1, c > 0], [i + W, true], [i - W, true]]) {
+        if (ok && tight.has(n) && !seen.has(n)) {
+          seen.add(n);
+          queue.push(n);
+        }
+      }
+    }
+  }
+  return { cells: tight.size, spots };
 }
 
 /** Cells you can drive to from your start, as "c,r" keys. Crates count: a mine clears them. */
@@ -65,7 +105,7 @@ export function startShot(lv, e) {
 }
 
 /**
- * Checks a map (ROWS strings of COLS characters). `others` are other missions, as
+ * Checks a map (one string per row, at any size of SCALES in rules.js). `others` are other missions, as
  * { name, rows }, whose block layout it must not repeat. Returns { errors, warnings,
  * stats }, where each problem is { code, text, at }: code names the check (parse, count,
  * unreachable, startShot, repeat, open, mirrored), text says it in English, and at is
