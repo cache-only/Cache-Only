@@ -110,6 +110,7 @@ test('each game in the registry is one downloadable pack, and nothing else is', 
     assert.deepEqual(info.games[game.id], { version: pack.version, files: pack.files.length, bytes: pack.bytes });
   }
   assert.ok(packs.games.sudoku.files.includes('/games/sudoku/worker.js'), 'the Sudoku worker ships with Sudoku');
+  assert.ok(packs.games.tanks.files.includes('/games/tanks/floor.js'), 'the Tanks floor worker ships with Tanks');
   for (const mod of ['tanks.js', 'engine.js', 'rules.js', 'ai.js', 'art.js', 'missions.js', 'render.js', 'audio.js', 'styles.css']) {
     assert.ok(packs.games.tanks.files.includes(`/games/tanks/${mod}`), `tanks ${mod} must be in the Tanks pack`);
   }

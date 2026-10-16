@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Cache Only">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/games/nearby/styles.css">
+  <title>Nearby · Cache Only</title>
+  <script type="module" src="/games/nearby/nearby.js"></script>
+</head>
+<!-- TEMPORARY: a test of linking devices directly (nearby.js), not a game. -->
+<body class="game-page nearby-page">
+  <div class="shell">
+    <header class="bar">
+      <button type="button" class="icon-btn" id="homeBtn" data-i18n-label="common.menu">
+        <svg class="icon"><use href="#i-home"/></svg>
+      </button>
+      <div class="bar-stats">
+        <div class="stat">
+          <span class="stat-label" data-n="linked"></span>
+          <span class="stat-value" id="linkedStat">0</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="nearby">
+      <div class="nearby-col">
+        <section class="nearby-section">
+          <h2 class="eyebrow" data-n="thisDevice"></h2>
+          <dl class="facts" id="selfFacts"></dl>
+          <h3 class="eyebrow" data-n="offers"></h3>
+          <ul class="card nearby-lines" id="selfOffers"></ul>
+          <label class="toggle-row">
+            <span data-n="camera"></span>
+            <input type="checkbox" class="switch" id="cameraToggle" role="switch">
+          </label>
+          <p class="t-note" data-n="cameraNote"></p>
+          <label class="toggle-row">
+            <span data-n="lead"></span>
+            <input type="checkbox" class="switch" id="leadToggle" role="switch">
+          </label>
+          <p class="t-note" data-n="leadNote"></p>
+        </section>
+
+        <section class="nearby-section">
+          <h2 class="eyebrow" data-n="devices"></h2>
+          <div class="nearby-peers" id="peerList"></div>
+          <p class="t-body" id="emptyNote" data-n="empty"></p>
+        </section>
+
+        <div class="nearby-actions">
+          <button type="button" class="btn" id="reconnectBtn" data-n="reconnect"></button>
+          <button type="button" class="btn btn-primary" id="waveBtn" data-n="wave" disabled></button>
+        </div>
+
+        <section class="nearby-section">
+          <h2 class="eyebrow" data-n="log"></h2>
+          <ul class="card nearby-lines" id="logList"></ul>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="side-menu" id="sideMenu" hidden>
+    <div class="side-menu-blur pblur pblur-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <nav class="side-menu-list" data-i18n-label="common.menu">
+      <button type="button" class="side-item" id="resumeBtn">
+        <svg class="icon"><use href="#i-play"/></svg><span data-i18n="common.resume"></span>
+      </button>
+      <a class="side-item is-exit" href="/">
+        <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
+      </a>
+    </nav>
+  </div>
+
+  <p class="visually-hidden" id="announce" role="status" aria-live="polite"></p>
+</body>
+</html>

@@ -161,11 +161,18 @@ the plates at the front and back of the hull have rounded corners.
   recess inside with a crack off a corner now and then (`--tk-hole-rim` is gone). The floor has a
   seeded tone per slab, dims into its corners and darkens softly round every block. All of it is
   in the static floor layer, so it costs nothing a frame.
-- **Round tubes** (2026-10-16)**:** a barrel looked flat, a bar with thin lit and shaded edges. A
-  tube (a barrel, a missile pod, a laser's emitter) is now lit round across it (`tubeBands` in
-  `art.js`, and the GPU's tank shader): its sides are lit and shaded in three steps up to 0.62 of
-  its width in, as far as the light falls across it, and when it points along the light a little
-  shade runs down both sides instead, so it never reads flat. Its tip keeps a flat part's edge.
+- **Round tubes** (2026-10-16, redone the same day)**:** a barrel looked flat, a bar with thin lit
+  and shaded edges. Stepped bands down its sides (`tubeBands`) still read as a slab with wide
+  bevels, brightest at its edge, so a round part (a barrel, a missile pod, each of a minigun's
+  barrels, a ring round a barrel: the rocket's muzzle brake and the minigun's clamp) is now lit
+  across as a tube really is under the one light, from as high as `CAST` says (`ROUND`, `roundAt`
+  and `roundLight` in `art.js`): brightest inside its lit half and darker at its lit edge,
+  darkening round to the far side, where light thrown back from the floor lifts the very edge, and
+  a glint along it at any angle. Its sides get no flat part's edge, only its ends, as far as the
+  light falls along it. A ring's glint steps out from its barrel's, which shows it is wider and
+  round. The GPU lights it per pixel from the gun's round map (`tankPlanes` `round`, in the gun's
+  second layer, where its overlay was), with the same numbers. Worked out on a scratch copy at
+  iPhone Pro Max and SE scale against lower and higher lights, stepped bands and no bounce.
 - **Colours:** one per kind, as before. Hornet is cream (`#e8d4a2`) instead of Yellow with hazard
   stripes, so `VARIANTS` is empty; the art still draws stripes for any kind named in it.
 - Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS).
@@ -1103,7 +1110,10 @@ light. Time each on an iPhone (a 3x screen).
   leaves the rod (a soft glow, a glare across it, its red light on the floor round the tank) and
   sparks spit off either side; once it stops, a puff and a spark or two, and the rod cools from
   white-hot to a dull red over 1.4 s. Under reduced motion: steady glows, no sparks drawn in or
-  rings.
+  rings. Then (same day, asked for) the rod became its reload gauge: dark once the beam ends, it
+  fills back up with red over the reload (`charge` in `art.js`, from `t.reload`; its pictures in
+  eighths, all painted ahead), its glow growing, with a glint and a ring the moment it can fire,
+  then steady red. The glow after the beam was cut to 0.5 s so the rod reads dark at once.
 - **Trails by owner:** a rocket's smoke takes a hint of its owner's colour.
 - **Drawn, then left out:** a rocket's flame lighting the floor; a band in the owner's colour on
   rockets and rounds.
@@ -1204,10 +1214,31 @@ Mode). Mission 20 now: about 1 ms of JavaScript a frame, most of it the simulati
 at about 13%; 60 fps at 3x. Shots, mines, bombs and effects match the 2D renderer to within about
 half a level of 255 on a test scene; the field guide is pixel for pixel the same.
 
+### P5. Turning the phone
+**Status:** done 2026-10-16 · **Size:** M
+
+Turning the phone took the arena a few seconds to settle. Measured in the iPhone 16 Pro Max
+simulator, every new layout drew the whole floor again at 3x on the page: about 130 ms for the
+ground (canvas shadows over the whole screen) and 300 ms for the blurred edges (dozens of spare
+canvases), all of it waited for at the floor's upload, since WebKit draws 2D canvases in its GPU
+process. iOS lays a page out two or three times as it turns, so the arena froze for a second or
+more, the old picture stretched meanwhile.
+
+Shipped: the floor is three parts (`render.js`): the field layer (the field and its first cell of
+wall, with the battle's marks on it), plain brick round it (`drawBricks` in `art.js`) and the
+blurred edges, now worked out at half a pixel a CSS pixel from bricks, in numbers. A new layout
+shows a quick picture of the whole floor at 1x at once, a worker paints the field layer at 3x
+meanwhile (`floor.js`, on an `OffscreenCanvas`), and the arena comes into focus over 0.2 s. A
+layout that only moves the screen round the field keeps the field layer pixel for pixel, and the
+last one for each way the phone is held is kept, so turning back is quick. Mid-battle the battle
+holds for 0.35 s as the phone turns (iOS lets go of every thumb then). In the simulator a turn now
+shows the new layout within about 50 ms and sharp within about 150 ms, where each layout froze it
+for about half a second before; the sharp floor matches the old one to within 8 levels of 255.
+
 ## Suggested order
 
 Every entry has shipped (the last, M8, on 2026-10-14) except A3, M5, M6, M7 and the ideas added
-on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P3; P4 shipped 2026-10-16). Next:
+on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P3; P4 and P5 shipped 2026-10-16). Next:
 
 1. **C1 and C2 on a real iPhone:** the floating home button and stats in landscape, the stick
    size, the cancel zone and the 20% opacity.
