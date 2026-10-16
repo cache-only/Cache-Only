@@ -29,9 +29,9 @@
           <span class="stat-value" id="timer">00:00</span>
         </div>
         <div class="lives bar-center" id="lives" role="img">
-          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
-          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
-          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><svg class="icon life-full"><use href="#i-heart"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><svg class="icon life-full"><use href="#i-heart"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
+          <span class="life"><svg class="icon life-empty"><use href="#i-heart-empty"/></svg><svg class="icon life-full"><use href="#i-heart"/></svg><span class="life-half is-left"><svg class="icon"><use href="#i-heart"/></svg></span><span class="life-half is-right"><svg class="icon"><use href="#i-heart"/></svg></span></span>
         </div>
       </div>
     </header>
@@ -43,9 +43,9 @@
       </div>
 
       <div class="controls">
-        <div class="keypad has-tools" id="pad">
-          <button type="button" class="key key-tool" id="notesBtn" aria-pressed="false"><svg class="icon"><use href="#i-pen"/></svg><span data-i18n="sudoku.notes"></span></button>
-          <button type="button" class="key key-tool" id="eraseBtn"><svg class="icon"><use href="#i-backspace"/></svg><span data-i18n="sudoku.erase"></span></button>
+        <div class="keypad" id="pad">
+          <button type="button" class="key key-tool key-mode" id="notesBtn" aria-pressed="false"><span class="key-face"><svg class="icon"><use href="#i-pen"/></svg><span data-i18n="sudoku.notes"></span></span></button>
+          <button type="button" class="key key-tool key-mode-tool" id="eraseBtn" data-i18n-label="sudoku.erase"><svg class="icon"><use href="#i-backspace"/></svg></button>
           <button type="button" class="key" data-d="1">1</button>
           <button type="button" class="key" data-d="2">2</button>
           <button type="button" class="key" data-d="3">3</button>

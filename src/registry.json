@@ -18,5 +18,15 @@
       "en": "Top-down tank battles. Bank shots off the walls, lay mines, clear 20 missions.",
       "ca": "Batalles de tancs vistes des de dalt. Fes rebotar els trets, posa mines i supera 20 missions."
     }
+  },
+  {
+    "id": "ktan",
+    "code": "GP 03",
+    "name": "Ktan",
+    "path": "/games/ktan/",
+    "description": {
+      "en": "Settle an island, trade and build, each friend on their own phone. For now only a test of rooms.",
+      "ca": "Colonitza una illa, comercia i construeix, cada amic amb el seu telèfon. De moment només és una prova de sales."
+    }
   }
 ]

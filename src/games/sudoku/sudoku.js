@@ -659,15 +659,6 @@ function place(d) {
   afterChange();
 }
 
-/** Erase takes a cell's notes away (numbers that stay are right ones). */
-function erase() {
-  if (!canPlay()) return;
-  const i = S.selected;
-  if (i < 0 || !editable(i) || S.grid[i] || !S.notes[i]) return;
-  S.notes[i] = 0;
-  afterChange();
-}
-
 /** A wrong number: a life goes, the number shows a moment in red and blurs away. */
 function miss(i, d) {
   settleWrong();
@@ -697,6 +688,15 @@ function settleWrong() {
   clearTimeout(wrongTimer);
   if (wrongAt >= 0) vals[wrongAt].classList.remove('blur-out');
   wrongAt = -1;
+}
+
+/** Erase takes a cell's notes away (numbers that stay are right ones). */
+function erase() {
+  if (!canPlay()) return;
+  const i = S.selected;
+  if (i < 0 || !editable(i) || S.grid[i] || !S.notes[i]) return;
+  S.notes[i] = 0;
+  afterChange();
 }
 
 function toggleNotes() {

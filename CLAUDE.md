@@ -9,7 +9,8 @@ updates. After that, every downloaded game must run forever with no network. Bei
 the normal state, not an error.
 
 Games at launch: **Sudoku**. **Tanks** came next; more will be added later, and
-each friend chooses which ones to keep.
+each friend chooses which ones to keep. **Ktan**, the first multiplayer game (`KTAN.md`), is on its
+way: so far only its room, to test Star across phones.
 
 Everything below exists to protect one property: once a game is downloaded, it never needs
 the network again.
@@ -18,8 +19,16 @@ the network again.
 
 - **Zero runtime network dependencies.** No CDNs, no Google Fonts, no analytics, no remote
   images, no `fetch` to anything outside the packs. If it isn't in `dist/`, it doesn't exist.
-  The one runtime request is the launcher's `/version.json` check for whether it's online,
-  and it is allowed to fail.
+  Every game, a multiplayer one too, is a downloaded pack that loads and runs with no network.
+  Two runtime requests exist, and both are allowed to fail: the launcher's `/version.json` check
+  for whether it's online, and, only while devices play together, a multiplayer game's room on
+  the rooms Worker (`wss://cache-only-rooms.cache-only.workers.dev`, named only in
+  `shared/star.js`), which carries messages between devices and never files. Nothing else may
+  reach that origin. The one other request: to find rooms on the same Wi-Fi, a multiplayer game
+  asks Cloudflare's STUN server (`stun:stun.cloudflare.com:3478`, also named only in `star.js`)
+  for its network's public address, at most once a minute, on a connection of its own (iCloud
+  Private Relay hides that address from the rooms Worker). No TURN, and no STUN in a link: direct
+  links between devices use local addresses only.
 - **No app dependencies.** Vanilla HTML, CSS and ES modules. No framework, no bundler.
   Node is used only for the build and dev-server scripts, which use built-ins only (no `npm install`).
 - **Every file the app can ever request must be in a pack:** the app shell (everything outside
@@ -42,6 +51,7 @@ the network again.
 cache-only/
   CLAUDE.md
   TANKS.md                # Tanks backlog, by category
+  KTAN.md                 # Ktan and Star (multiplayer): the design and the order to build it in
   package.json            # "type": "module", scripts only, no dependencies
   src/
     index.html            # launcher
@@ -54,11 +64,12 @@ cache-only/
       storage.js          # namespaced save/load + export/import
       sound.js            # the app's one sound switch (Settings), which every game follows
       sw-client.js        # registration, update prompt, "ready offline" check, downloads, online check
+      star.js             # multiplayer: rooms, seats and messages through the rooms Worker (KTAN.md, Part A)
       app.js              # app feel on every page (no zoom) and the icon sprite; the build adds it, never link it by hand
       ui.js               # sheets, confirm sheet, side menu, progressive-blur layers, board sizing
       i18n.js             # English and Catalan strings
       logo.js             # the pixel logo as a grid of spans, its focus (progress) states, and the field around it (fieldShade)
-      pixel-field.js      # the install page's background: the app icon's field across the page, blurring out and in at random
+      pixel-field.js      # the install page's background: the app icon's field across the page, blurring out and in at random (WebGL)
       icons.js            # every icon, as 9 x 9 pixel bitmaps
       game-art.js         # board art for the launcher's tiles and hero (never reads a game's folder)
     icons/
@@ -69,7 +80,11 @@ cache-only/
     games/
       sudoku/  index.html  sudoku.js  generator.js  solver.js  worker.js  styles.css
       tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  mapgen.js  art.js  render.js  gl.js  floor.js  audio.js  styles.css
+      ktan/    index.html  ktan.js  styles.css   (for now only the room test)
+  worker/
+    rooms.js              # the rooms Worker and its Durable Object, on Cloudflare (never in dist/)
   scripts/
+    worker.mjs            # deploys the rooms Worker through Cloudflare's API, then a smoke test
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
     lan.mjs               # build + serve dist/ over HTTPS to phones on the same Wi-Fi (testing)
@@ -181,10 +196,15 @@ service worker with scope `/` covers everything.
   the whole page on the big logo's grid, the mark lit white as its brightest pixels. The field stays
   whole under the text: pixels near a line of text only dim, easing back over a few cells and a
   little unevenly, so no edge or hole shows. About a quarter of the field's pixels are blurring
-  out or back in at any moment (`blurOut()`/`blurIn()`, slowed to `--t-twinkle`); the mark loses
-  about one pixel at a time; the step icons stay still; nothing moves under reduced motion. Turning
-  the phone drops the old pixels before the new layout and lays new ones in the same frame (moving
-  a thousand pixels mid-twinkle cost WebKit far more than drawing them again). Over
+  out or back in at any moment (blur out and blur in, slowed to `--t-twinkle`); the mark loses
+  about one pixel at a time; the step icons stay still; nothing moves under reduced motion. The
+  GPU draws the field on one WebGL canvas, in one draw call 30 times a second: each pixel works
+  out its own blur from the time in the shader, with `--ease` and `--blur-fade`, so a frame runs
+  no JavaScript beyond setting the time. Never go back to an element per pixel: a thousand (four
+  thousand on an iPad) each animating its own filter stalled Safari's Share sheet, and an iPad
+  stopped drawing the blurs at all. Without WebGL the pixels are elements and stay still. Turning
+  the phone lays the field out again in the frame of the new layout, each pixel keeping its
+  place in its blur. Over
   it: the logo with "Cache Only" under it in Display as one lockup (this page has no header), then
   "Install the app" (32/800, centred) heading three steps (Tap Share, Add to Home Screen, Open it
   from the new icon; browser-menu steps off iOS). Each step is a `.glass-row`: its icon in a 44 glass tile (the last step's is `app`, a tile with
@@ -218,9 +238,10 @@ service worker with scope `/` covers everything.
   - **Landscape:** everything runs left to right in one strip that scrolls sideways, from the top
     of the screen down with no header band (the body is the scroller; the page itself never
     scrolls), never a rail or a side-by-side split. It starts with the same square as in
-    portrait, two tiles wide and as tall as the two rows (`--lead`): the art, the logo in the
-    middle of it, the eyebrow and panel at its foot. The other tiles follow in two rows
-    (`--tile`: two rows and their gap fill the height). Settings (and Update) floats, fixed at the
+    portrait, as wide as the rows of tiles are tall (`--lead`): the art, the logo in the
+    middle of it, the eyebrow and panel at its foot. The other tiles follow in rows that fill the
+    height with their gaps (`--tile`): two on a phone, three on a screen 600 tall or more (an
+    iPad), where two would make tiles too big, and four from 1100 (`--rows`). Settings (and Update) floats, fixed at the
     top right, over the tiles; the strip ends with room for the settings button (its 44 and a tile
     gap), so the last tiles clear it once scrolled to the end. Progressive blurs at the left and right edges (`.edge-left/-right`)
     take the place of the top and bottom ones, both always there. A mouse wheel scrolls the strip
@@ -242,7 +263,8 @@ service worker with scope `/` covers everything.
     portrait it starts under the status bar (`top: var(--safe-t)`, so it doesn't jump while iOS
     moves the page below the status bar after a rotation), as wide as the page, and fades out
     toward the panel. In landscape it runs from the screen's left edge (through the safe area) to
-    the column's far gutter, centred on the screen's height, fades to dark at the left under the
+    the column's far gutter, centred on the screen's height and never shorter than the screen (an
+    iPad has no notch to widen it), fades to dark at the left under the
     left edge's blur, and fades out to the right, toward the tiles.
   - **Nothing downloaded yet:** the same layout, with the same panel offering every game
     (`.is-all`): no art behind it, the eyebrow hidden but keeping its room, the title "Download all
@@ -252,7 +274,7 @@ service worker with scope `/` covers everything.
     Once the first game arrives, the panel suggests it. It shows only once the packs are known, so
     a returning friend never sees it flash.
   - **Games:** right under (portrait) or after (landscape) the suggested game, with no heading,
-    square game tiles (2 columns in portrait, 2 rows in landscape) for every game
+    square game tiles (2 columns in portrait, 2 rows in landscape, 3 on an iPad) for every game
     except the suggested one, then 10 fillers (`SOON` in `launcher.js`): empty tiles labelled
     "Coming soon" where a title would be, with nothing to press, hidden from screen readers and
     never counted as games. The grid sits 12 from the suggested game, the same gap the tiles keep between them. A tile shows the game's own board as art (`shared/game-art.js`, from the game's save when
@@ -375,9 +397,15 @@ style a button, header, card, sheet or menu locally.
   Tanks map editor's Play). `.btn-small` is 32 tall with 13px text, only in a section header next to
   a 12px label, its tap area still 44. Disabled is the same button at 40% opacity, never a new
   style. (Tanks' thumbsticks are round: they are sticks, not buttons.) Number keys (`.keypad`,
-  `.key`) are flat cards, radius 8; `.keypad.has-tools` starts with a row of two `.key-tool`s
-  over the numbers, a number key's card holding a smooth icon and its name, pressed (a mode that
-  is on) = solid white (Sudoku's Notes and Erase).
+  `.key`) are flat cards, radius 8; `.key-tool`s make a first row over the numbers, a number
+  key's card holding a smooth icon, with its name or alone, pressed (a mode that is on) = solid
+  white. A `.key-mode` (Sudoku's Notes) is as wide as the pad and, while on, narrows to the left
+  to two keys' width (`--t-key`, 0.22 s), uncovering the `.key-mode-tool` that sits under it in
+  the third column all along (Sudoku's Erase, its icon only). Its face (`.key-face`) is as wide as
+  the pad and only slides, by a transform, so it never jitters, and being a switch it has no
+  pressed flash (that flickered on a tap). As it turns, each number key turns between number and
+  note in place: the digit is drawn twice (`::before`, `::after`) and one shrinks and blurs out as
+  the other grows and blurs in.
 - **Slider** (`.slider`, `setupSlider()` in `shared/ui.js`): one of a row of steps, in the
   segmented control's 48 tall box. Each step is a small pixel on the track; the thumb is the
   selected segment's solid chip (radius 4, inset 4) with the value written in it, gliding from
@@ -418,7 +446,8 @@ style a button, header, card, sheet or menu locally.
   `shared/ui.js`): the one animation for something that steps away and comes back in place. Blur
   out fades it while it goes soft (`--blur-fade`, over `--t-blur`) and leaves it untouchable; blur
   in fades it back as it comes into focus. The home button uses it while the side menu is open,
-  and the install page's pixel field at random, slowed to `--t-twinkle`.
+  and the install page's pixel field at random, slowed to `--t-twinkle` (its shader draws the same
+  fade and blur, `shared/pixel-field.js`).
 - **Progress** is the pixel logo coming into focus (`shared/logo.js`), and a downloading tile
   unblurring. There are no spinners or progress bars.
 - **Header:** portrait, a row under the status bar (icon button, stats right-aligned as a mono
@@ -450,8 +479,8 @@ style a button, header, card, sheet or menu locally.
   is docked: opened with `show()`, with `.sheet-scrim` (`openSheet`) dimming for it, and only the
   header's home button stays above the dim, so the side menu still works; the rest of the header
   dims with the page.
-- **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Notes and Erase
-  over a 3×3 number pad); anything about
+- **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Notes, and Erase
+  while Notes is on, over a 3×3 number pad); anything about
   the whole session lives in the side menu. Boards must stay square and fully visible on an iPhone
   SE and a Pro Max in portrait and in landscape, with no page scrolling during play. Check
   landscape in WebKit, not only Chrome: a size container (`.board-wrap`) whose width came from
@@ -477,7 +506,8 @@ style a button, header, card, sheet or menu locally.
   "Generating…" shows on the board only if one takes longer than 300 ms.
 - **Choosing the difficulty** is a phase of the page (`choosing` in `sudoku.js`), not a sheet:
   the chooser takes the moves' place and room (under the board in portrait, beside it in
-  landscape), so the board stays in full view and never moves. It holds the difficulty's name
+  landscape, where both sit level with the board's bottom edge rather than centred on it), so the
+  board stays in full view and never moves. It holds the difficulty's name
   (Title) with its best time as an eyebrow, a slider over the ladder's rungs (Easy at the left,
   the thumb showing the givens), and Start. Nothing is going while it shows (it follows a first
   open, Solved, Out of lives or Quit puzzle), so there is no Cancel and Start never asks. The
@@ -492,17 +522,19 @@ style a button, header, card, sheet or menu locally.
   other one. With no saved puzzle the page opens straight into choosing. The slider starts at the
   rung nearest the givens of the last puzzle started (`prefs.givens`, Medium's 34 at first),
   keeping to that difficulty on a tie.
-- **Input:** tap a cell, then use the on-screen number pad: Notes (a toggle) and Erase as its
-  first row, then 1 to 9 (`.keypad.has-tools`). There is no undo or redo. A right number stays and
-  can't be changed; Erase only clears a cell's notes.
+- **Input:** tap a cell, then use the on-screen number pad: Notes (a toggle) as its first row,
+  then 1 to 9. While Notes is on it takes two thirds of its row and Erase (its icon only) shows in
+  the last third. There is no undo or redo. A right number stays and can't be changed; Erase only
+  clears a cell's notes (Backspace, Delete or 0 on a keyboard), and one note goes by tapping its
+  number again with Notes on.
 - **Lives:** three per puzzle, as smooth hearts (`.lives` in `styles.css`, `#i-heart` /
   `#i-heart-empty` in `SHAPES`) in the middle of the portrait header between home and the timer,
   and down the right edge under the timer in landscape. A wrong number costs one: it shows a
   moment (0.6 s) in red (`#ff453a`, the board's one colour), then blurs out slowly (`--t-twinkle`)
   and the cell is empty again; another number in the meantime ends it at once.
-  The heart breaks (`.is-breaking`): it cracks down a zigzag from its notch to its point, the two
-  halves part, then fall a little way to either side, turning and blurring out, while the hollow
-  heart blurs in where it was (0.8 s). A hidden live region says how many are left. The grid only ever holds right numbers, so nothing can
+  A heart is drawn whole (`.life-full`) until it breaks (`.is-breaking`): it cracks down a zigzag
+  from its notch to its point, the two halves part, then fall a little way to either side, turning
+  and blurring out, uncovering the hollow heart already in place under them (0.8 s). A hidden live region says how many are left. The grid only ever holds right numbers, so nothing can
   conflict (there is no conflicts switch). Notes never cost a life. With the last heart gone the
   clock stops and a docked "Out of lives" sheet offers Try again (the same puzzle from the start,
   every life back) and New puzzle. A lost puzzle records nothing.
@@ -830,6 +862,49 @@ anything under `src/games/tanks/` and the `tanks.*` strings in `i18n.js`. In the
 3. Republish with the Artifact tool: `file_path` = `guide/out/tanks-field-guide.html`,
    `url` = the link above, so the link stays the same. Then tell Pol it was updated.
 
+## Multiplayer: Star (`shared/star.js`, `worker/rooms.js`)
+
+The design, and what's still to build, is in `KTAN.md` (Part A). What exists today:
+
+- One device hosts a room and is the only authority; members talk to the host alone. A member on
+  the same Wi-Fi as the host reaches it directly, over a WebRTC data channel (it offers, the host
+  answers, both through the room; `iceServers: []`, local addresses only, no STUN or TURN). Any
+  other is relayed by the room: one Durable Object per room on Cloudflare (Workers free plan,
+  SQLite storage, the Hibernation API) at `cache-only-rooms.cache-only.workers.dev`, on Pol's
+  account. Phones keep their room connection open, idle, even when every link is direct, and
+  direct links carry on if the internet goes. A game's message travels as `{ a }` and Star's own
+  as `{ s }`, so the Worker never needs to know about direct links.
+- The room never runs a game. It forwards messages, keeps the seats and their tokens and the
+  host's last backup, and names a new host 20 s after the old one goes (a table first, never a
+  seat still waiting). It deletes itself a day after its last activity.
+- **Joining:** a phone sees the rooms whose host shares its public address (an IPv4 address or an
+  IPv6 /64; `GET /nearby`, listed by a `Net` object per network) and joins without a code, or
+  types the code. The address is the one the Worker sees, unless the request comes through a
+  privacy relay (iCloud Private Relay or WARP, by ASN): a relay's address is shared with strangers
+  and never stands for a network, so each connection also names the addresses STUN gave it
+  (`&at=`), taken as they are behind a relay and otherwise only alongside the address seen. Every new seat knocks and waits: it is let in by itself once it links to the
+  host directly (only possible on the same network: each side strips non-local addresses from
+  both offer and answer, `localOnly`), otherwise when the host taps Let in. While waiting it
+  reaches only the host, broadcasts skip it, and the host ignores its game messages.
+- **Abuse limits:** `Origin` must be the app's or a dev server's (it keeps other websites out, not
+  scripts); per network 10 new rooms, 20 knocks and 120 nearby lookups a minute; per room 12
+  seats, 6 waiting and 2 from any one network but the host's; per socket 16 KB a message and 20 a
+  second for a member (bursts of 40), 128 KB and 200 a second for the host, or the socket is
+  closed. Nothing stops someone spending the free plan's daily allowance; that only stops rooms
+  until 00:00 UTC, at no cost.
+- `star.js` is DOM-free: create, list rooms nearby, join with a 4-letter code (no I or O), knock
+  and be let in (`admit`, `refuse`, events `knock` and `admitted`), come back with the seat's
+  token, reconnect with backoff, `wake()` when the app returns to the foreground (iOS leaves dead
+  sockets looking open), and a queue for what's sent meanwhile. A refusal says why (`reason`).
+  Direct links are tried at once, retried with backoff, pinged every 5 s and dropped back to
+  relayed when quiet. Delivery is at most once and in order on each way, not across a change of
+  way, so games send whole views with a revision.
+- `npm run worker` deploys the Worker by hand (the Pages workflow never touches it), with
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from Pol's shell, then plays a short game of
+  messages against it; `npm run worker --check` only checks. A change to `worker/rooms.js` isn't
+  live until it's deployed, so deploy it in the same task, and keep it accepting what the
+  released app sends (phones update within about 10 minutes of a push, the Worker at once).
+
 ## Adding a game later
 
 1. Create `src/games/<id>/` with an `index.html` that links the shared `styles.css`, starts its
@@ -853,6 +928,7 @@ npm run lan                   # build + https://<mac>.local:8443 for phones on t
 npm run lan --stop            # stop that server, from any terminal
 npm run guide                 # rebuild the Tanks field guide into guide/out/ (then republish it)
 npm run playtest              # Tanks: a bot plays every mission (--missions 4,12  --map draft.txt)
+npm run worker                # deploy the rooms Worker to Cloudflare, then a smoke test (--check: only check)
 npm test                      # every test file, one at a time
 ```
 
@@ -862,6 +938,7 @@ Pushing to `main` is a release. `.github/workflows/pages.yml` runs `npm test`, t
 `npm run build`, then deploys `dist/` with GitHub's Pages actions (Settings → Pages → Source is
 "GitHub Actions"). A failing test stops the deploy and the live site stays as it was. No
 `npm install` step: the scripts use Node built-ins only. Check the run in the repo's Actions tab.
+The rooms Worker is not part of a release: `npm run worker` deploys it on its own.
 Friends see the update within about 10 minutes, the next time they open the app online.
 
 ## Friend install procedure (keep this in README.md too)
@@ -883,7 +960,8 @@ Friends see the update within about 10 minutes, the next time they open the app 
   normal tab only shows how to install. DevTools, Application tab: the service worker is
   activated, the app-shell cache is complete, each downloaded game's cache holds its whole pack,
   and "Offline" plus a hard reload still loads every downloaded game.
-- No request in the Network tab goes to any origin other than `cache-only.github.io`.
+- No request in the Network tab goes to any origin other than `cache-only.github.io`, except a
+  multiplayer game's room (`cache-only-rooms.cache-only.workers.dev`) while it is in one.
 - `curl -I https://cache-only.github.io/games/sudoku/` returns 200 (the slashless form is a
   301 on Pages and a 404 locally; nothing in the app requests it).
 - On a real iPhone: install, download every game, go to airplane mode, force-quit, relaunch, and finish
@@ -931,6 +1009,24 @@ Friends see the update within about 10 minutes, the next time they open the app 
   fake host. The shell installs alone, games download on request and resume after a failure,
   every file is fetched as `?v=<hash>` and a stale CDN copy is refused, and updates keep the games a device has (re-fetching only those that changed), including
   from the single cache used before packs, and drop a game the release no longer has.
+- Multiplayer: `tests/worker.test.mjs` runs the rooms Worker in Node against an in-memory
+  Cloudflare (`tests/fake-rooms.mjs`: storage, alarms, sockets, hibernation, devices at their own
+  addresses): origins, networks (IPv4, IPv6 /64), codes, knocking, letting in and turning away,
+  the waiting limits, relaying (members reach only the host, broadcasts skip the waiting),
+  flooding, the per-network limits, nearby listings (while the room takes seats and its host is
+  in), refusals and their reasons, seats coming back and replacing an older socket, leaving,
+  handing over, a lost host replaced with the backup (a table first, never a waiting seat),
+  ending, expiry and the backup limit. `tests/star.test.mjs` runs `star.js`
+  against it and a fake radio (Wi-Fi networks for WebRTC, which can go quiet): joins and their
+  failures, messages, a dead link found on wake and its queue sent once it's back, reconnecting,
+  host changes, leaving and ending, a table host, and direct links (same Wi-Fi only, a local room
+  sends the room nothing, falling back when quiet and back with the Wi-Fi, outliving the internet,
+  re-forming after a handover), being let in by itself on the same Wi-Fi or by the host from
+  elsewhere, an outsider offering a public address who never links, the address filter, and
+  joining from the nearby list. On phones: create a room on one, join it from the others' "On this
+  Wi-Fi" list (each gets in by itself and shows "Direct, same Wi-Fi") and by code from one on
+  mobile data (it waits for Let in, then shows "Through the room"),
+  wave both ways, lock and unlock a phone, and kill the host's app for 20 s.
 - Saves: `tests/storage.test.mjs` checks that only the saves of games missing from the registry are
   dropped, never the app's own keys or anything outside `gh:`.
 - Icons and logo: `tests/icons.test.mjs` checks that every `#i-<name>` a page or script uses is in

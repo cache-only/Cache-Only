@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Cache Only">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/games/ktan/styles.css">
+  <title>Ktan · Cache Only</title>
+  <script type="module" src="/games/ktan/ktan.js"></script>
+</head>
+<!-- For now only the room: create one, join by code, see who's in and test the links (ktan.js).
+     The game itself comes once Star is verified on phones (KTAN.md, Part C). -->
+<body class="game-page ktan-page">
+  <div class="shell">
+    <header class="bar">
+      <button type="button" class="icon-btn" id="homeBtn" data-i18n-label="common.menu">
+        <svg class="icon"><use href="#i-home"/></svg>
+      </button>
+      <div class="bar-stats">
+        <div class="stat">
+          <span class="stat-label" data-n="room"></span>
+          <span class="stat-value" id="roomStat">—</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="ktan">
+      <div class="ktan-col">
+        <section class="ktan-section" id="lobby" hidden>
+          <h1 class="t-title" data-n="title"></h1>
+          <p class="t-body" data-n="intro"></p>
+          <label class="eyebrow" for="nameInput" data-n="yourName"></label>
+          <input type="text" class="field is-line" id="nameInput" maxlength="24" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+          <button type="button" class="btn btn-primary" id="createBtn" data-n="create"></button>
+          <h2 class="eyebrow ktan-gap" data-n="nearbyTitle"></h2>
+          <div class="ktan-near-list" id="nearbyList"></div>
+          <p class="t-note" id="nearbyEmpty" data-n="nearbyEmpty"></p>
+          <p class="t-note" id="whereNote"></p>
+          <label class="eyebrow ktan-gap" for="codeInput" data-n="joinLabel"></label>
+          <div class="ktan-join">
+            <input type="text" class="field is-line ktan-code-input" id="codeInput" maxlength="4" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+            <button type="button" class="btn" id="joinBtn" data-n="join" disabled></button>
+          </div>
+          <p class="t-note" id="lobbyNote" role="status"></p>
+        </section>
+
+        <section class="ktan-section" id="inRoom" hidden>
+          <p class="eyebrow" data-n="code"></p>
+          <p class="t-display ktan-code" id="codeBig"></p>
+          <p class="t-note" data-n="codeNote"></p>
+          <p class="t-heading" id="waitNote" hidden></p>
+          <p class="t-note" id="waitNote2" data-n="waitingNote" hidden></p>
+          <dl class="facts" id="selfFacts"></dl>
+
+          <h2 class="eyebrow ktan-gap" data-n="members"></h2>
+          <div class="ktan-members" id="memberList"></div>
+
+          <div class="ktan-actions">
+            <button type="button" class="btn" id="leaveBtn"></button>
+            <button type="button" class="btn btn-primary" id="waveBtn" data-n="wave"></button>
+          </div>
+
+          <h2 class="eyebrow ktan-gap" data-n="log"></h2>
+          <ul class="card ktan-lines" id="logList"></ul>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="side-menu" id="sideMenu" hidden>
+    <div class="side-menu-blur pblur pblur-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <nav class="side-menu-list" data-i18n-label="common.menu">
+      <button type="button" class="side-item" id="resumeBtn">
+        <svg class="icon"><use href="#i-play"/></svg><span data-i18n="common.resume"></span>
+      </button>
+      <a class="side-item is-exit" href="/">
+        <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
+      </a>
+    </nav>
+  </div>
+
+  <p class="visually-hidden" id="announce" role="status" aria-live="polite"></p>
+</body>
+</html>
