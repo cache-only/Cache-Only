@@ -215,7 +215,7 @@ layout(location = 1) in vec4 a_pa; // centre (px), hull's axis on screen
 layout(location = 2) in vec4 a_tr; // turret's axis on screen, kick and gun slide (texels)
 layout(location = 3) in vec4 a_ly; // hull, gun (-1: none) and head layers, alpha
 layout(location = 4) in vec4 a_cl; // cleats' colour, how far the treads have rolled (hull units)
-layout(location = 5) in vec4 a_ex; // heat, its white-hot share, flags (1: treads, 2: glowing barrels), its gun's tubes' width (cells)
+layout(location = 5) in vec4 a_ex; // heat, its white-hot share, flags (1: treads, 2: glowing barrels), unused
 uniform vec2 u_size;
 uniform float u_slot;
 uniform float u_margin;
@@ -269,8 +269,24 @@ const float SHADE = ${f(H.shade)};
 const float DROP = ${f(H.drop)};
 const vec4 CLEAT = vec4(${f(CLEATS.pitch)}, ${f(CLEATS.width / 2)}, ${f(CLEATS.from)}, ${f(CLEATS.to)});
 const vec4 HEAT = vec4(${f(HEAT.from)}, ${f(HEAT.mid)}, ${f(HEAT.a1)}, ${f(HEAT.a2)});
-const vec2 TUBE = vec2(${f(H.tube.reach)}, ${f(H.tube.limb)});
-const vec3 TUBE_A = vec3(${f(H.tube.lit)}, ${f(H.tube.shade)}, ${f(H.tube.limbShade)});
+// A round part's light across it (art.js ROUND): lit, shade, glint, sharp; the bounce, from the
+// side and below; the light's height (sine, cosine).
+const vec4 ROUND = vec4(${f(H.round.lit)}, ${f(H.round.shade)}, ${f(H.round.glint)}, ${f(H.round.sharp)});
+const vec3 BOUNCE = vec3(${f(H.round.bounce)}, ${f(H.round.side)}, ${f(H.round.below)});
+const vec2 RISE = vec2(${f(H.round.rise)}, ${f(H.round.lean)});
+// art.js roundAt: the white and the black on a round part at s across it (-1 to 1, along its y
+// axis), the light travelling that far along that axis (across, -1 to 1).
+vec2 roundAt(float s, float across) {
+  float up = sqrt(max(0.0, 1.0 - s * s));
+  float toward = -RISE.y * across;
+  float face = max(0.0, toward * s + RISE.x * up);
+  float back = max(0.0, sign(across) * s * BOUNCE.y - up * BOUNCE.z);
+  float dark = face < RISE.x ? ROUND.y * (1.0 - face / RISE.x) * (1.0 - BOUNCE.x * abs(across) * back) : 0.0;
+  float lit = face > RISE.x ? ROUND.x * (face - RISE.x) / (1.0 - RISE.x) : 0.0;
+  float hz = 1.0 + RISE.x;
+  float glint = ROUND.z * pow(max(0.0, (toward * s + hz * up) / length(vec2(toward, hz))), ROUND.w);
+  return vec2(1.0 - (1.0 - lit) * (1.0 - glint), dark);
+}
 void main() {
   float mid = u_slot * 0.5;
   vec2 pb = mid + back(v_q, v_pa.zw);
@@ -283,8 +299,6 @@ void main() {
   float H = v_ly.z;
   int flags = int(v_ex.z + 0.5);
   float steps[2] = float[2](0.5, 1.0);
-  float tsteps[3] = float[3](${H.tube.steps.map(f).join(', ')});
-  float lsteps[2] = float[2](${H.tube.limbSteps.map(f).join(', ')});
   vec4 hm = at(H + 2.0, pt); // ring, top
   vec4 gm = G >= 0.0 ? at(G + 2.0, pg) : vec4(0.0); // first run, second run, every solid
 
@@ -322,13 +336,22 @@ void main() {
     for (int i = 0; i < 2; i++) c = lay(c, vec3(0.0), DROP * at(H + 2.0, pt - lt * u_drop.w * steps[i]).g * body);
   }
 
-  // The gun, slid back by its recoil: its two runs of solids lit in turn (the second covers the
-  // first's light), a minigun's barrels glowing, its decals, then the ring's and the top's shadows.
+  // The gun, slid back by its recoil: its round parts lit across (art.js roundLight), a minigun's
+  // barrels glowing over their light, its two runs of solids' edges lit in turn (the second covers
+  // the first's light; a round part's only at its ends), then the ring's and the top's shadows.
   vec4 g = vec4(0.0);
   if (G >= 0.0) {
     g = at(G, pg);
+    // How hot each barrel glows (red), and how round the top solid is (art.js tankPlanes round,
+    // premultiplied: blue over alpha) and where across it this is (green over blue).
     vec4 e = at(G + 1.0, pg);
-    if (g.a + e.a > 0.0) {
+    if (g.a > 0.0) {
+      float rounded = e.a > 0.0 ? clamp(e.b / e.a, 0.0, 1.0) : 0.0;
+      if (e.b > 0.0) {
+        vec2 wb = roundAt(clamp(e.g / e.b * 2.0 - 1.0, -1.0, 1.0), lt.y);
+        g = lay(g, vec3(0.0), wb.y * e.b);
+        g = lay(g, vec3(1.0), wb.x * e.b);
+      }
       if ((flags & 2) != 0 && v_ex.x > 0.0) {
         float x = (pg.x - mid) / u_cell;
         float t = clamp((x - HEAT.x) / (${f(MUZZLE)} - HEAT.x), 0.0, 1.0);
@@ -337,34 +360,17 @@ void main() {
         vec3 col = t < HEAT.y ? u_fire : mix(u_fire, tip, (t - HEAT.y) / (1.0 - HEAT.y));
         g = lay(g, col, e.r * v_ex.x * hot);
       }
+      vec2 le = mix(lt, vec2(lt.x, 0.0), rounded);
       for (int i = 0; i < 2; i++) {
         float d = u_band * steps[i];
-        g = lay(g, vec3(1.0), LIT * gm.r * (1.0 - at(G + 2.0, pg - lt * d).r) * (1.0 - gm.g));
-        g = lay(g, vec3(0.0), SHADE * gm.r * (1.0 - at(G + 2.0, pg + lt * d).r) * (1.0 - gm.g));
-      }
-      // The first run is the gun's tubes, if it has any: lit round across them (art.js tubeBands).
-      if (v_ex.w > 0.0 && gm.r > 0.0) {
-        float reach = TUBE.x * v_ex.w * u_cell * lt.y;
-        for (int i = 0; i < 3; i++) {
-          vec2 d = vec2(0.0, reach * tsteps[i]);
-          g = lay(g, vec3(1.0), TUBE_A.x * gm.r * (1.0 - at(G + 2.0, pg - d).r) * (1.0 - gm.g));
-          g = lay(g, vec3(0.0), TUBE_A.y * gm.r * (1.0 - at(G + 2.0, pg + d).r) * (1.0 - gm.g));
-        }
-        float limb = TUBE.y * v_ex.w * u_cell * (1.0 - abs(lt.y));
-        if (limb >= 0.25) {
-          for (int i = 0; i < 2; i++) {
-            vec2 d = vec2(0.0, limb * lsteps[i]);
-            g = lay(g, vec3(0.0), TUBE_A.z * gm.r * (1.0 - at(G + 2.0, pg - d).r) * (1.0 - gm.g));
-            g = lay(g, vec3(0.0), TUBE_A.z * gm.r * (1.0 - at(G + 2.0, pg + d).r) * (1.0 - gm.g));
-          }
-        }
+        g = lay(g, vec3(1.0), LIT * gm.r * (1.0 - at(G + 2.0, pg - le * d).r) * (1.0 - gm.g));
+        g = lay(g, vec3(0.0), SHADE * gm.r * (1.0 - at(G + 2.0, pg + le * d).r) * (1.0 - gm.g));
       }
       for (int i = 0; i < 2; i++) {
         float d = u_band * steps[i];
-        g = lay(g, vec3(1.0), LIT * gm.g * (1.0 - at(G + 2.0, pg - lt * d).g));
-        g = lay(g, vec3(0.0), SHADE * gm.g * (1.0 - at(G + 2.0, pg + lt * d).g));
+        g = lay(g, vec3(1.0), LIT * gm.g * (1.0 - at(G + 2.0, pg - le * d).g));
+        g = lay(g, vec3(0.0), SHADE * gm.g * (1.0 - at(G + 2.0, pg + le * d).g));
       }
-      if ((flags & 2) == 0) g = over(e, g);
       for (int i = 0; i < 2; i++) g = lay(g, vec3(0.0), DROP * at(H + 2.0, pt - lt * u_drop.z * steps[i]).r * gm.b);
       for (int i = 0; i < 2; i++) g = lay(g, vec3(0.0), DROP * at(H + 2.0, pt - lt * u_drop.w * steps[i]).g * gm.b);
     }
@@ -521,11 +527,14 @@ void main() {
 const FLOOR_FS = `${HEAD}
 in vec2 v_uv;
 uniform sampler2D u_floor;
+uniform sampler2D u_prev; // the floor shown before this one (render.js's quick picture), fading out
+uniform float u_fade; // how much of it still shows
 uniform sampler2D u_tracks; // where tread marks have been laid (r: how much), for good
 uniform float u_trail; // how dark a mark stays
 out vec4 o;
 void main() {
   vec4 c = texture(u_floor, v_uv);
+  if (u_fade > 0.0) c = mix(c, texture(u_prev, v_uv), u_fade);
   // The tracks were drawn into, so their first row is the screen's bottom; the floor was uploaded top first.
   o = vec4(c.rgb * (1.0 - u_trail * texture(u_tracks, vec2(v_uv.x, 1.0 - v_uv.y)).r), 1.0);
 }`;
@@ -706,14 +715,18 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    // Laid one texel to a pixel: nearest copies it exactly.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    floor = { ...prog, vao, tex, w: 0, h: 0 };
+    const texture = () => {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+      return tex;
+    };
+    // The floor, and the one before it while it fades out (render.js's quick picture).
+    floor = { ...prog, vao, tex: texture(), prev: texture(), fade: 0, w: 0, h: 0 };
   }
 
   /* ---------- Tread marks that stay: where they have been, one texture the floor is laid through ---------- */
@@ -1023,23 +1036,20 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
       upload(layer + 1, pack(m0.mask, m1.mask, boxBlur(m0.mask, S, blurW), boxBlur(m1.mask, S, blurW)));
       return { layer, n: 2 };
     }
-    const second = p.emission ? { mask: true, paint: p.emission } : { paint: p.overlay };
-    const subs = [{ paint: p.albedo }, second, ...p.masks.map((shape) => ({ mask: true, shape }))];
-    const [alb, ov, ...masks] = paintAll(subs, t);
+    // A gun's second layer is how round it is (art.js round, premultiplied), with how hot each
+    // barrel glows in red; a head's is its overlay.
+    const gun = which === 'gun';
+    const seconds = gun ? [{ paint: p.round }, p.emission ? { mask: true, paint: p.emission } : null] : [{ paint: p.overlay }, null];
+    const subs = [{ paint: p.albedo }, ...seconds, ...p.masks.map((shape) => ({ mask: true, shape }))];
+    const [alb, second, glows, ...masks] = paintAll(subs, t);
     const layer = allocate(3);
     upload(layer, alb.rgba);
-    upload(layer + 1, ov.rgba || pack(ov.mask, null, null, null));
-    if (which === 'gun') upload(layer + 2, pack(masks[0].mask, masks[1].mask, masks[2].mask, boxBlur(masks[2].mask, S, blurW)));
+    if (glows) for (let i = 0; i < S * S; i++) second.rgba[i * 4] = Math.round(glows.mask[i] * 255);
+    upload(layer + 1, second.rgba);
+    if (gun) upload(layer + 2, pack(masks[0].mask, masks[1].mask, masks[2].mask, boxBlur(masks[2].mask, S, blurW)));
     else upload(layer + 2, pack(masks[0].mask, masks[1].mask, boxBlur(masks[0].mask, S, blurW), boxBlur(masks[1].mask, S, blurW)));
     return { layer, n: 3 };
   }
-
-  /** How wide tank kind type's gun's tubes are (cells; 0: none), which the shader lights round. */
-  const tubes = new Map();
-  const tubeOf = (type) => {
-    if (!tubes.has(type)) tubes.set(type, tankPlanes(pal, type, {}).gun?.tube || 0);
-    return tubes.get(type);
-  };
 
   /** The layer a tank plane is in, painted now if it hasn't been (-1: a gun it hasn't got). */
   function plane(type, which, pp) {
@@ -1190,8 +1200,10 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
      * The floor: all of canvas `source` (an opaque 2D canvas the size of this one), or, with
      * rect ({ x, y, w, h }, device px), that part of it again from `source`, an ImageData of it.
      */
-    floor(source, rect = null) {
+    floor(source, rect = null, { smooth = false, keep = false } = {}) {
       if (lost || !floor) return;
+      // keep: the floor shown until now stays, to fade out over this one (fadeFloor).
+      if (keep && !rect) [floor.tex, floor.prev] = [floor.prev, floor.tex];
       gl.bindTexture(gl.TEXTURE_2D, floor.tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -1199,8 +1211,16 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
       if (!rect) {
         floor.w = source.width;
         floor.h = source.height;
+        // Laid one texel to a pixel, nearest copies it exactly; smooth: a smaller picture, smoothed up to the screen.
+        const filter = smooth ? gl.LINEAR : gl.NEAREST;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
       } else if (floor.w) gl.texSubImage2D(gl.TEXTURE_2D, 0, rect.x, rect.y, rect.w, rect.h, gl.RGBA, gl.UNSIGNED_BYTE, source.data);
+    },
+    /** How much of the floor shown before the last one (floor's keep) still shows over it, 0 to 1. */
+    fadeFloor(a) {
+      if (floor) floor.fade = a;
     },
     /** A tread mark laid at world (x, y) by a hull at angle a, at time t (the renderer's clock). */
     addMark(x, y, a, t) {
@@ -1359,11 +1379,11 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
     tanks(list) {
       const rows = [];
       for (const one of list) {
-        const { t: at, alpha = 1, phase = 0, mines, lit = false, roll = 0, fired = Infinity, side = 0, heat = 0 } = one;
+        const { t: at, alpha = 1, phase = 0, mines, lit = false, roll = 0, fired = Infinity, side = 0, heat = 0, charge = 1 } = one;
         const T = TYPES[at.type];
         const tone = pal.tanks[at.type] || pal.tanks.player;
         const { t, recoil } = tankPose(at, fired, side);
-        const pp = planePose(at.type, { mines, lit, roll, recoil });
+        const pp = planePose(at.type, { mines, lit, roll, recoil, charge });
         const B = plane(at.type, 'body', pp.body);
         const G = plane(at.type, 'gun', pp.gun);
         const H = plane(at.type, 'head', pp.head);
@@ -1373,7 +1393,7 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
         const minigun = T.weapon === 'minigun';
         const hot = minigun ? Math.max(0, Math.min(1, heat)) : 0;
         const cleat = rgba(tone.cleat || tone.deep);
-        rows.push({ v: [cx, cy, bx, by, tx, ty, (t.kick || 0) * view.s, pp.gun.slide * view.s, B, G, H, alpha, cleat[0], cleat[1], cleat[2], phase, hot, Math.max(0, hot - 0.5) * 1.6, (T.speed ? 1 : 0) + (minigun ? 2 : 0), tubeOf(at.type)], t, hot, slide: pp.gun.slide, alpha });
+        rows.push({ v: [cx, cy, bx, by, tx, ty, (t.kick || 0) * view.s, pp.gun.slide * view.s, B, G, H, alpha, cleat[0], cleat[1], cleat[2], phase, hot, Math.max(0, hot - 0.5) * 1.6, (T.speed ? 1 : 0) + (minigun ? 2 : 0), 0], t, hot, slide: pp.gun.slide, alpha });
       }
       for (const r of rows) push(progs.shadow, 'over', r.v);
       for (const r of rows) push(progs.tank, 'over', r.v);
@@ -1444,6 +1464,10 @@ export function createGL(canvas, { onRestored = () => {} } = {}) {
         gl.bindTexture(gl.TEXTURE_2D, tracks ? tracks.tex : null);
         gl.uniform1i(floor.u.u_tracks, 2);
         gl.uniform1f(floor.u.u_trail, trail);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, floor.prev);
+        gl.uniform1i(floor.u.u_prev, 3);
+        gl.uniform1f(floor.u.u_fade, floor.fade);
         gl.bindVertexArray(floor.vao);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       } else {

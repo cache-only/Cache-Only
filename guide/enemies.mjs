@@ -157,14 +157,14 @@ export function enemyText({ T, kinds, R, name, note }) {
       role: 'Laser',
       desc: `Fires a laser. First it stops and shows a thin red line for ${num(R.laserCharge)} s: exactly where it will fire. Then it burns down that line for ${num(R.laserBeam)} s, through every tank and shot on it, until a wall or crate stops it; a mine on the line goes off. It holds the line while it burns, and never fires with an ally anywhere on it. It drives at ${pace(t)}, keeps ${t.range[0]} to ${t.range[1]} cells away, and can fire again ${num(t.reload)} s after a beam ends.`,
       perks: ['Laser', 'Pierces', `Warns ${num(R.laserCharge)} s`, `Keeps ${range(t)} cells away`],
-      weak: 'The red line is your warning: get off it. It stands still while it charges and burns, so that is the moment to shoot it, and a wall between you stops the beam.',
+      weak: 'The red line is your warning: get off it. It stands still while it charges and burns, so that is the moment to shoot it, and a wall between you stops the beam. Its ruby rod goes dark when a beam ends and fills back up with red as it reloads: while it is dark, it can\'t fire.',
       scene: 'An indigo tank showing the red line it is about to fire down.',
     }),
     indigoNight: (t) => ({
       role: 'Sweeping laser',
       desc: `Indigo at night: the same red line and beam, but as the beam burns it turns after you at up to ${degs(t.track)}° a second. From far off you can still outrun it sideways; up close you can't, so put a wall between you. It drives at ${pace(t)} and notices ${pct(t.dodge)} of shells.`,
       perks: ['Laser', 'Beam follows you', `Turns ${degs(t.track)}°/s`, `Dodges ${pct(t.dodge)}`],
-      weak: `Its beam turns slower than you can run round it from about ${num(P.speed / t.track)} cells out. Like Indigo, it stands still while it charges and burns.`,
+      weak: `Its beam turns slower than you can run round it from about ${num(P.speed / t.track)} cells out. Like Indigo, it stands still while it charges and burns, and its rod stays dark until it can fire again.`,
       scene: 'A night indigo tank whose beam is swinging after you.',
     }),
   };

@@ -56,6 +56,20 @@ export function createPixelField(layer, logo, { dim = () => [] } = {}) {
   let fade = 0;
 
   let drawn = '';
+  let lastWidth = innerWidth;
+
+  // Turning the phone lays the page out again at another width, and the pixels with it. The old
+  // ones go before that layout (here, ahead of it in the frame), so it never has to place and paint
+  // a thousand pixels mid-twinkle, and draw() puts new ones where they belong in the same frame
+  // (the page calls it from a ResizeObserver). Resizes that keep the width (Safari's toolbar
+  // sliding away) leave the pixels be.
+  addEventListener('resize', () => {
+    if (innerWidth === lastWidth) return;
+    lastWidth = innerWidth;
+    if (!layer.firstChild) return;
+    layer.replaceChildren();
+    drawn = '';
+  });
 
   function draw() {
     layer.style.height = '0';

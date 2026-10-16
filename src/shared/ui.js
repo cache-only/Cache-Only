@@ -10,9 +10,15 @@ export function setupSheet(dialog) {
   return dialog;
 }
 
+// A docked sheet is opened with show(), which gives it no ::backdrop, so one shared scrim stands
+// in for it: the modal backdrop's dim, taking every tap on the page. styles.css shows it while a
+// docked sheet is open and keeps only the header's home button above it.
+let scrim = null;
+
 /**
- * Opens a sheet. A modal sheet covers the page; a docked one (a start screen or a result that
- * belongs to the game state) leaves the header and its side menu working around it.
+ * Opens a sheet. Every sheet dims the page behind it and takes its taps. A modal sheet covers the
+ * whole page and closes on a tap beside it; a docked one (a start screen or a result that belongs
+ * to the game state) stays put and leaves the header's home button, and so the side menu, working.
  */
 export function openSheet(dialog, { docked = false } = {}) {
   if (dialog.open) {
@@ -20,8 +26,15 @@ export function openSheet(dialog, { docked = false } = {}) {
     dialog.close();
   }
   dialog.classList.toggle('sheet-docked', docked);
-  if (docked) dialog.show();
-  else dialog.showModal();
+  if (docked) {
+    if (!scrim) {
+      scrim = document.createElement('div');
+      scrim.className = 'sheet-scrim';
+      scrim.setAttribute('aria-hidden', 'true');
+      document.body.append(scrim);
+    }
+    dialog.show();
+  } else dialog.showModal();
 }
 
 export function closeSheet(dialog) {
@@ -31,9 +44,12 @@ export function closeSheet(dialog) {
 // iOS: rotating while a sheet is scrolled (Tanks' start sheet scrolls in landscape once
 // checkpoints are unlocked) can leave WebKit hit-testing at the old scroll offset, so every tap
 // lands below where it looks: Start pressed the checkpoint under it and the home button stopped
-// answering. After each resize, put the page and every open sheet back at the top, and make each
-// sheet rebuild its scroller by dropping and restoring its overflow.
+// answering. As the phone turns, put the page and every open sheet back at the top, and make each
+// sheet rebuild its scroller by dropping and restoring its overflow. Only then: a resize that
+// keeps the page's width is Safari's toolbar sliding away or the keyboard coming up, and settling
+// would pull a page being scrolled, or a sheet being typed in, back to its top.
 let settling = 0;
+let width = window.innerWidth;
 function settleScroll() {
   window.scrollTo(0, 0);
   document.body.scrollTop = 0;
@@ -46,12 +62,16 @@ function settleScroll() {
 }
 function settleSoon() {
   clearTimeout(settling);
+  width = window.innerWidth;
   // Once now and once more after iOS's rotation animation has finished resizing the page.
   settleScroll();
   settling = setTimeout(settleScroll, 400);
 }
-window.addEventListener('resize', settleSoon);
-window.visualViewport?.addEventListener('resize', settleSoon);
+function resized() {
+  if (window.innerWidth !== width) settleSoon();
+}
+window.addEventListener('resize', resized);
+window.visualViewport?.addEventListener('resize', resized);
 screen.orientation?.addEventListener?.('change', settleSoon);
 
 /** Whether a modal sheet covers the page (docked sheets don't count). */

@@ -481,7 +481,11 @@ function drawFieldSoon() {
     if (!$('install').hidden) installField.draw();
   });
 }
-new ResizeObserver(drawFieldSoon).observe($('install'));
+// A new layout (the phone turned) lays the field out again in the same frame, so it never shows
+// where the page was.
+new ResizeObserver(() => {
+  if (!$('install').hidden) installField.draw();
+}).observe($('install'));
 window.addEventListener('resize', drawFieldSoon);
 
 function renderView() {

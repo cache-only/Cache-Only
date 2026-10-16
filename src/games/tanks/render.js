@@ -13,6 +13,7 @@ import {
   bombAt,
   bombLook,
   drawBomb,
+  drawBricks,
   drawGround,
   drawMine,
   drawShadows,
@@ -27,6 +28,7 @@ import {
   shade,
   wallCell,
 } from './art.js';
+import { paintField } from './floor.js';
 import { createGL } from './gl.js';
 import {
   BLAST_R,
@@ -68,7 +70,7 @@ const MAX_CHIPS = 90;
 const BURN_STEP = 0.05; // seconds of world time between a burning laser's marks where it meets a block
 const EMBER_LIFE = 2.5; // seconds a laser's burn takes to cool once the beam has moved on
 const SEAR_SPREAD = 0.15; // cells a laser's beam moves along a face for what it laid there to count about a third as much toward what it lays next
-const LENS_COOL = 1.4; // seconds a laser's ruby rod takes to cool once its beam stops
+const LENS_COOL = 0.5; // seconds a laser's ruby rod glows on once its beam stops, before it shows dark
 const GATHER = 70; // sparks a second drawn in to a laser's rod as it charges, at full charge (a third of that as it starts)
 const SPIT = 16; // sparks a second thrown off a laser's point while it burns
 const MAX_DENTS = 1500; // dents kept to paint again where the floor is drawn again (a crate breaks); older ones stay until then
@@ -76,8 +78,8 @@ const HEAT_ROUND = 0.04; // how much each round heats a minigun's barrels: full 
 const HEAT_HOLD = 0.2; // seconds after its last round before they start to cool
 
 // PERFORMANCE: the screen's edges past the two cells of wall round the field (the top and bottom
-// in portrait, the sides in landscape) are blurred once, into the floor canvas, whenever it is
-// built for a layout, so they cost nothing per frame. They used to be CSS backdrop-filter layers
+// in portrait, the sides in landscape) are blurred once a layout (blurredEdges) and laid into the
+// floor canvas, so they cost nothing per frame. They used to be CSS backdrop-filter layers
 // over the arena (.pblur-deep), which iOS blurs again on every frame, because the canvas under
 // them is drawn again on every frame. These are .pblur-deep's layers from styles.css, in order:
 // each blurs what the ones before it left (blur: CSS px), whole from the screen's edge to `from`
@@ -90,6 +92,15 @@ const EDGE_BLURS = [
 // In portrait, over the blur, .pblur-deep's shade: the page's background, at these strengths
 // from the screen's edge to the end of the edge's depth.
 const EDGE_SHADE = [[0, 1], [0.24, 0.86], [0.46, 0.68], [0.66, 0.42], [0.84, 0.18], [1, 0]];
+const EDGE_PAD = 48; // CSS px of wall round an edge that its blur reads: three sigma of the deepest layer, and a little for the ones before it
+const EDGE_SCALE = 0.5; // px a CSS px the edges' blur is worked out at: the softest of it is 3 CSS px
+// A new layout (the phone turned) shows the arena at once from a quick picture of the floor, at
+// QUICK px a CSS px, while the sharp field is painted away from the page (floor.js); it comes
+// into focus over FOCUS_MS once that is ready. KEEP_FIELDS field layers are kept, one for each way
+// the phone is held, so turning it back is quick too.
+const QUICK = 1;
+const FOCUS_MS = 200;
+const KEEP_FIELDS = 2;
 
 export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL = true } = {}) {
   const ctx = canvas.getContext('2d');
@@ -118,6 +129,24 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   const floor = document.createElement('canvas');
   // Read back to be uploaded, so kept in memory rather than on the GPU.
   const fctx = floor.getContext('2d', G ? { willReadFrequently: true } : undefined);
+  // The quick picture of the floor, shown while the sharp one is put together (buildFloor).
+  const quickCanvas = document.createElement('canvas');
+  const qctx = quickCanvas.getContext('2d', G ? { willReadFrequently: true } : undefined);
+  // floor.js, painting field layers away from the page. Without it (no OffscreenCanvas, or it
+  // fails), they are painted here, in a task of their own after the quick picture is shown.
+  let worker = null;
+  if (typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined') {
+    try {
+      worker = new Worker('/games/tanks/floor.js', { type: 'module' });
+      worker.onmessage = ({ data }) => painted(data);
+      worker.onerror = (event) => {
+        event.preventDefault?.();
+        paintHere();
+      };
+    } catch {
+      worker = null;
+    }
+  }
   // PERFORMANCE: the tanks' kept pictures (art.js makeSprites), so a tank is
   // painted only when it looks different, not on every frame.
   const sprites = makeSprites(() => document.createElement('canvas'));
@@ -132,6 +161,19 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   let built = null; // the grid the floor was last drawn for
   let lastFrame = null; // the world and options last drawn, to draw again after a lost GPU context
   let floorDirty = null; // what of the floor gl.js hasn't been given yet: 'all', or a box of device px
+  let quick = ''; // the layout and grid version the quick picture was drawn for, while it shows ('': the floor shows)
+  let quickDirty = false; // gl.js hasn't been given the quick picture yet
+  let focusAt = 0; // when the floor took over from the quick picture (performance.now()), which fades out from then
+  let edges = []; // the screen's blurred edges for the layout the floor is put together for (blurredEdges)
+  const edgeSets = new Map(); // the same for the last few layouts, by rimFor()
+  let rimDone = ''; // the layout the floor canvas holds the wall round the field for, with no field on it yet
+  let moved = null; // the field layer cut from the floor as the screen moved round it (cutField)
+  const fields = new Map(); // field layers painted bare, by fieldFor(): { grid, image, gen }, the newest last
+  const asked = new Map(); // field layers being painted, by job id: { id, key, grid, gen, w, h, matrix }
+  let jobs = 0;
+  let gen = 0; // goes up with every new world (reset): field layers painted for an older one are no use
+  let drawnAt = 0; // performance.now() of the last frame drawn
+  let kick = 0; // a frame asked for while the arena comes into focus (kickFrame)
   let marks = [];
   let scorches = [];
   let rubble = []; // splinters where crates stood, on the floor for the rest of the mission
@@ -160,6 +202,7 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
    * the screen: top and bottom (y), left and right (x).
    */
   function layout(screenW, screenH, box, [cols, rows] = [COLS, ROWS]) {
+    const was = { rim: rimFor(), field: fieldFor(), at: fieldLayer(), sharp: !!floorKey && rimKey === rimFor() };
     view.cols = cols;
     view.rows = rows;
     // Upright: the field and its skirts across, its walls and the field down. Flat: the field and
@@ -175,23 +218,32 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     const snap = (v) => Math.round(v * view.dpr) / view.dpr;
     view.x = snap(box.x + (box.w - u * (view.rot ? rows : cols)) / 2);
     view.y = snap(view.rot ? box.y + RING * u : box.y + (box.h - u * rows) / 2);
-    floor.width = Math.round(view.w * view.dpr);
-    floor.height = Math.round(view.h * view.dpr);
+    const width = Math.round(view.w * view.dpr);
+    const height = Math.round(view.h * view.dpr);
+    // Nothing moved (the page laid out again round the arena): everything drawn stays.
+    if (rimFor() === was.rim && floor.width === width && floor.height === height) return { rotated: view.rot, ...walls() };
+    // Only the screen moved round the field (iOS lays a page out under the status bar for a moment
+    // as the phone turns to portrait): its layer stays, pixel for pixel, cut from the floor before
+    // the floor is cleared, to be laid down where the field is now (relayout).
+    moved = was.sharp && fieldFor() === was.field ? cutField(was.at) : null;
+    floor.width = width;
+    floor.height = height;
     canvas.style.width = `${view.w}px`;
     canvas.style.height = `${view.h}px`;
     if (G) {
       // Only touches land on the arena's own canvas now: one clear pixel, stretched.
       canvas.width = canvas.height = 1;
-      G.resize(floor.width, floor.height);
+      G.resize(width, height);
       glCanvas.style.width = canvas.style.width;
       glCanvas.style.height = canvas.style.height;
-      floorDirty = 'all';
-      dropPictures();
+      // Chips are painted as the screen shows them, which only the screen moving keeps.
+      if (fieldFor() !== was.field) dropPictures();
     } else {
-      canvas.width = floor.width;
-      canvas.height = floor.height;
+      canvas.width = width;
+      canvas.height = height;
     }
-    floorKey = rimKey = '';
+    floorDirty = 'all';
+    focusAt = 0; // a quick picture fading out was of the layout before
     return { rotated: view.rot, ...walls() };
   }
 
@@ -203,13 +255,19 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     return { top: view.y - wall, bottom: view.y + fh + wall, left: view.x - wall, right: view.x + fw + wall };
   }
 
-  /** World -> canvas pixel transform for a 2D context. */
-  function worldTransform(c, ox = 0, oy = 0) {
-    const s = view.unit * view.dpr;
-    const x = view.x * view.dpr + ox * s;
-    const y = view.y * view.dpr + oy * s;
+  /** World -> canvas pixel transform for a 2D context: the floor's, or at k px a CSS px. */
+  function worldTransform(c, ox = 0, oy = 0, k = view.dpr) {
+    const s = view.unit * k;
+    const x = view.x * k + ox * s;
+    const y = view.y * k + oy * s;
     if (view.rot) c.setTransform(0, -s, s, 0, x, y + view.cols * s);
     else c.setTransform(s, 0, 0, s, x, y);
+  }
+
+  /** How many of c's pixels a cell is across, as its transform stands. */
+  function scaleOf(c) {
+    const M = c.getTransform();
+    return Math.sqrt(Math.abs(M.a * M.d - M.b * M.c)) || 1;
   }
 
   /** A point in canvas CSS pixels -> world coordinates. */
@@ -278,7 +336,7 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     const rnd = (a, b) => a + rand() * (b - a);
     const T = tones.floor;
     const L = vecToWorld(Math.cos(LIGHT), Math.sin(LIGHT)); // the way the light falls
-    const px = 1 / (view.unit * view.dpr); // one device pixel, in cells
+    const px = 1 / scaleOf(c); // one pixel of c, in cells (the floor's, or the quick picture's)
     const W = 0.082; // a gouge's half width
     const S = 64; // points round its outline
     const poly = (pts, dx = 0, dy = 0) => {
@@ -567,17 +625,35 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     }
   }
 
+  /*
+   * The floor canvas, the size of the screen, is put together from three parts (PERFORMANCE, and
+   * so turning the phone never stalls the arena). Past the field it is all wall (rules.js cellAt),
+   * and nothing past the wall's first cell hangs on the map:
+   *   - the field layer: the field and the cell of wall round it, as drawGround draws them, with
+   *     the battle's marks on it. Only it depends on the map, and only it takes long to draw (a
+   *     phone took the best part of a second for the whole floor at 3x). It is anchored to the
+   *     field, so while only the screen moves round it, it stays as it is (cutField). A new one is
+   *     painted away from the page (floor.js), and the last one for each way the phone is held
+   *     is kept (fields), so turning it back is quick too.
+   *   - the wall round it: brick, with none of drawGround's light and shadows (art.js drawBricks);
+   *   - the screen's edges past the two cells of wall round the field, blurred, and in portrait
+   *     shaded into the page (blurredEdges): worked out once a layout, from bricks drawn small.
+   * Until the field layer is there, a quick picture of the whole floor shows (showQuick), and the
+   * arena comes into focus as the floor takes over (FOCUS_MS).
+   */
+
+  /**
+   * Brings the floor canvas up to date for s. A new layout puts it together again (relayout);
+   * after that, a new map, a crate blown away or a stroke in the editor only draws again the cells
+   * that changed and the cell round them, whose edges and shadows reach in (PERFORMANCE: a crate,
+   * not the field; with the cells three deep round those drawn, whose shadows reach them).
+   */
   function buildFloor(s) {
+    if (rimKey !== rimFor() && !relayout(s)) return;
     const c = fctx;
-    // Past the field it is all wall (rules.js cellAt), and nothing past the wall's first cell
-    // hangs on the map. So once the floor canvas holds all of it for this layout, a new map, a
-    // crate blown away or a stroke in the editor only draws again the cells that changed and the
-    // cell round them, whose edges and shadows reach in (PERFORMANCE: a crate, not the field;
-    // with the cells three deep round those drawn, whose shadows reach them).
-    const whole = rimKey !== rimFor();
     let area = [-RING, -RING, view.cols + RING * 2, view.rows + RING * 2];
     let clip = [-1, -1, view.cols + 2, view.rows + 2];
-    if (!whole && built && built.length === s.grid.length) {
+    if (built && built.length === s.grid.length) {
       const box = changed(built, s.grid, view.cols);
       if (!box) {
         floorKey = keyFor(s);
@@ -587,55 +663,299 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
       area = [box.c0 - 3, box.r0 - 3, box.c1 - box.c0 + 7, box.r1 - box.r0 + 7];
     }
     c.save();
-    if (whole) {
-      // Every cell on the screen.
-      const a = toWorld(0, 0);
-      const b = toWorld(view.w, view.h);
-      const x0 = Math.floor(Math.min(a.x, b.x));
-      const y0 = Math.floor(Math.min(a.y, b.y));
-      area = [x0, y0, Math.ceil(Math.max(a.x, b.x)) - x0, Math.ceil(Math.max(a.y, b.y)) - y0];
-    } else {
-      worldTransform(c);
-      c.beginPath();
-      c.rect(...clip);
-      c.clip();
-    }
+    worldTransform(c);
+    c.beginPath();
+    c.rect(...clip);
+    c.clip();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = pal.frame;
     c.fillRect(0, 0, floor.width, floor.height);
     worldTransform(c);
     // The light is the screen's (art.js LIGHT), so it stays at the top left however the arena turns.
     drawGround(c, pal, { cols: view.cols, rows: view.rows, kindAt: (col, row) => cellAt(s.grid, col, row), area });
-    if (!whole) {
-      // Scorch marks, splinters and dents inside what was drawn again: only there, or the rest would darken each time.
-      worldTransform(c);
-      // PERFORMANCE: only the marks that reach it (a burn lies on its floor cells up to a cell past
-      // its radius, an X within a cell of its middle), as every blast and every tank destroyed
-      // leaves a burn.
-      const [x0, y0, w, h] = clip;
-      for (const m of scorches) {
-        const d = (m.r || 0) + 2;
-        if (m.x + d > x0 && m.x - d < x0 + w && m.y + d > y0 && m.y - d < y0 + h) drawScorch(c, m, s);
-      }
-      if (!G) stampTrails(c, trails);
-      drawRubble(c, rubble);
-      stampDents(c, s, clip[0] - 1, clip[1] - 1, clip[0] + clip[2], clip[1] + clip[3]);
+    // Scorch marks, splinters and dents inside what was drawn again: only there, or the rest would darken each time.
+    worldTransform(c);
+    // PERFORMANCE: only the marks that reach it (a burn lies on its floor cells up to a cell past
+    // its radius, an X within a cell of its middle), as every blast and every tank destroyed
+    // leaves a burn.
+    const [x0, y0, w, h] = clip;
+    for (const m of scorches) {
+      const d = (m.r || 0) + 2;
+      if (m.x + d > x0 && m.x - d < x0 + w && m.y + d > y0 && m.y - d < y0 + h) drawScorch(c, m, s);
+    }
+    if (!G) stampTrails(c, trails);
+    drawRubble(c, rubble);
+    stampDents(c, s, clip[0] - 1, clip[1] - 1, clip[0] + clip[2], clip[1] + clip[3]);
+    c.restore();
+    built = s.grid.slice();
+    floorKey = keyFor(s);
+    floorChanged(...clip);
+  }
+
+  /**
+   * The floor for a new layout: the wall round the field and its edges at once, then the field
+   * layer, if there is one for it (the field cut from the floor as only the screen moved, or one
+   * painted before). Returns false while the field layer is still being painted: the quick picture
+   * shows meanwhile, and the next frame tries again (buildFloor).
+   */
+  function relayout(s) {
+    const rim = rimFor();
+    const key = fieldFor();
+    const at = fieldLayer();
+    const kept = fields.get(key);
+    const layer = moved && moved.key === key && covers(moved, at) ? moved : kept && kept.gen === gen ? kept : null;
+    moved = null;
+    // The worker starts first, while the rest is drawn here.
+    if (!layer) requestField(s);
+    if (!edgeSets.has(rim)) {
+      edgeSets.set(rim, blurredEdges());
+      // A few: turning the phone can lay a page out twice on its way (layout).
+      for (const k of edgeSets.keys()) if (edgeSets.size > 2 * KEEP_FIELDS) edgeSets.delete(k);
+    }
+    edges = edgeSets.get(rim);
+    if (rimDone !== rim) {
+      paintRim(fctx, view.dpr);
+      rimDone = rim;
+    }
+    if (!layer) {
+      if (quick !== `${rim}:${s.gridVer}`) showQuick(s);
+      return false;
+    }
+    fctx.save();
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.drawImage(layer.image, at.ox, at.oy);
+    if (!layer.marked) {
+      // Painted bare: the battle's marks go on it.
+      worldTransform(fctx);
+      for (const m of scorches) drawScorch(fctx, m, s);
+      if (!G) stampTrails(fctx, trails);
+      drawRubble(fctx, rubble);
+      stampDents(fctx, s);
+    }
+    fctx.restore();
+    if (layer.image === cutCanvas) cutCanvas.width = cutCanvas.height = 0; // laid: its memory back
+    // What it was drawn for: buildFloor then draws again whatever has changed since.
+    built = layer.grid.slice();
+    rimKey = rim;
+    floorDirty = 'all';
+    if (quick) {
+      quick = '';
+      focusAt = performance.now();
+    }
+    return true;
+  }
+
+  /**
+   * Where the field layer lies on the floor canvas (ox, oy: whole device px; w x h) and the
+   * world's transform onto a canvas of its own (matrix: [a, b, c, d, e, f]). It moves on the floor
+   * by whole pixels with the field, so its picture stays the same.
+   */
+  function fieldLayer() {
+    const M = worldMatrix();
+    const s = view.unit * view.dpr;
+    const [fw, fh] = view.rot ? [view.rows, view.cols] : [view.cols, view.rows];
+    const x = view.x * view.dpr - s;
+    const y = view.y * view.dpr - s;
+    const ox = Math.floor(x + 1e-6);
+    const oy = Math.floor(y + 1e-6);
+    return {
+      ox,
+      oy,
+      w: Math.max(1, Math.ceil(x + (fw + 2) * s - ox - 1e-6)),
+      h: Math.max(1, Math.ceil(y + (fh + 2) * s - oy - 1e-6)),
+      matrix: [M.a, M.b, M.c, M.d, M.e - ox, M.f - oy],
+    };
+  }
+
+  let cutCanvas = null; // the field layer, cut from the floor as the screen moves round it
+
+  /**
+   * The field layer as it is on the floor now (it lies at `at`), marks and all, for the next
+   * layout to lay down where the field is then (relayout). Only what is on the screen is there
+   * (valid, in its own px).
+   */
+  function cutField(at) {
+    const x0 = Math.max(0, at.ox);
+    const y0 = Math.max(0, at.oy);
+    const x1 = Math.min(floor.width, at.ox + at.w);
+    const y1 = Math.min(floor.height, at.oy + at.h);
+    if (x1 <= x0 || y1 <= y0 || !built) return null;
+    cutCanvas ??= document.createElement('canvas');
+    cutCanvas.width = at.w;
+    cutCanvas.height = at.h;
+    cutCanvas.getContext('2d').drawImage(floor, x0, y0, x1 - x0, y1 - y0, x0 - at.ox, y0 - at.oy, x1 - x0, y1 - y0);
+    return { key: fieldFor(), grid: built, image: cutCanvas, marked: true, w: at.w, h: at.h, valid: [x0 - at.ox, y0 - at.oy, x1 - at.ox, y1 - at.oy] };
+  }
+
+  /** Whether field layer m, cut from the floor before, holds every pixel of it the screen shows at `at`. */
+  function covers(m, at) {
+    const [x0, y0, x1, y1] = m.valid;
+    return m.w === at.w && m.h === at.h && Math.max(0, -at.ox) >= x0 && Math.max(0, -at.oy) >= y0 && Math.min(at.w, floor.width - at.ox) <= x1 && Math.min(at.h, floor.height - at.oy) <= y1;
+  }
+
+  /** Has the field layer for s's grid painted as this layout shows it (floor.js), unless it is on its way. */
+  function requestField(s) {
+    const key = fieldFor();
+    for (const j of asked.values()) if (j.key === key && j.gen === gen) return;
+    const at = fieldLayer();
+    const j = { id: ++jobs, key, gen, grid: s.grid.slice(), w: at.w, h: at.h, matrix: at.matrix };
+    asked.set(j.id, j);
+    if (worker) worker.postMessage({ id: j.id, w: j.w, h: j.h, grid: j.grid, pal, matrix: j.matrix });
+    else paintHere(j);
+  }
+
+  /**
+   * Paints field layer j on the page, in a task of its own, so the quick picture shows first. With
+   * no j, the worker has failed: it goes, and what it was asked for is painted here.
+   */
+  function paintHere(j = null) {
+    if (!j) {
+      worker?.terminate();
+      worker = null;
+      for (const one of asked.values()) paintHere(one);
+      return;
+    }
+    setTimeout(() => {
+      if (asked.get(j.id) !== j) return;
+      const cv = document.createElement('canvas');
+      cv.width = j.w;
+      cv.height = j.h;
+      paintField(cv.getContext('2d'), { grid: j.grid, pal, matrix: j.matrix });
+      painted({ id: j.id, image: cv });
+    }, 0);
+  }
+
+  /** A field layer painted (floor.js, or paintHere), or why it couldn't be: kept, and laid on the next frame. */
+  function painted({ id, bitmap, image = bitmap, error }) {
+    const j = asked.get(id);
+    if (!j) {
+      image?.close?.();
+      return;
+    }
+    if (error || !image) {
+      paintHere();
+      return;
+    }
+    asked.delete(id);
+    if (j.gen !== gen) {
+      image.close?.();
+      return;
+    }
+    const old = fields.get(j.key);
+    if (old) old.image.close?.();
+    fields.delete(j.key);
+    fields.set(j.key, { grid: j.grid, image, gen: j.gen });
+    for (const [k, v] of fields) {
+      if (fields.size <= KEEP_FIELDS) break;
+      v.image.close?.();
+      fields.delete(k);
+    }
+    kickFrame();
+  }
+
+  /**
+   * Draws the last frame again on the next animation frame, unless the game draws one by then: a
+   * sharp floor to lay, or the arena coming into focus, while the game draws nothing (paused, or
+   * under a sheet).
+   */
+  function kickFrame() {
+    if (kick || typeof requestAnimationFrame === 'undefined') return;
+    const since = performance.now();
+    kick = requestAnimationFrame(() => {
+      kick = 0;
+      if (lastFrame && drawnAt <= since) draw(lastFrame.s, lastFrame.opts);
+    });
+  }
+
+  /** Every cell the screen's rectangle x0..x1, y0..y1 (CSS px) touches, as an area ([x, y, w, h], whole cells). */
+  function cellsOn(x0, y0, x1, y1) {
+    const a = toWorld(x0, y0);
+    const b = toWorld(x1, y1);
+    const cx = Math.floor(Math.min(a.x, b.x));
+    const cy = Math.floor(Math.min(a.y, b.y));
+    return [cx, cy, Math.ceil(Math.max(a.x, b.x)) - cx, Math.ceil(Math.max(a.y, b.y)) - cy];
+  }
+
+  /**
+   * Where the wall round the field shows its bricks (paintRim), as up to four rectangles of the
+   * screen (x0, y0, x1, y1: CSS px): all of it but the field layer, laid over it, and what the
+   * blurred edges cover outright (from the screen's edge to 0.8 of their depth; to 0.75 here).
+   */
+  function rimBands() {
+    let [x0, y0, x1, y1] = [0, 0, view.w, view.h];
+    for (const e of edges) {
+      const cut = 0.75 * (e.dx ? e.w : e.h);
+      if (e.dx > 0) x0 = Math.max(x0, cut);
+      else if (e.dx < 0) x1 = Math.min(x1, view.w - cut);
+      else if (e.dy > 0) y0 = Math.max(y0, cut);
+      else y1 = Math.min(y1, view.h - cut);
+    }
+    const u = view.unit;
+    const [fw, fh] = view.rot ? [view.rows, view.cols] : [view.cols, view.rows];
+    const [fx0, fy0, fx1, fy1] = [view.x - u, view.y - u, view.x + (fw + 1) * u, view.y + (fh + 1) * u];
+    const my0 = Math.max(y0, fy0);
+    const my1 = Math.min(y1, fy1);
+    return [
+      [x0, y0, x1, Math.min(y1, fy0)],
+      [x0, Math.max(y0, fy1), x1, y1],
+      [x0, my0, Math.min(x1, fx0), my1],
+      [Math.max(x0, fx1), my0, x1, my1],
+    ].filter(([a, b, c, d]) => c > a && d > b);
+  }
+
+  /**
+   * Everything on the floor but the field layer, on c at k px a CSS px: the wall's bricks where they
+   * show (rimBands), then the screen's edges blurred (blurredEdges) and, in portrait, shaded into
+   * the page.
+   */
+  function paintRim(c, k) {
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = pal.frame;
+    c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+    worldTransform(c, 0, 0, k);
+    for (const band of rimBands()) drawBricks(c, pal, cellsOn(...band));
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.imageSmoothingEnabled = true;
+    for (const e of edges) {
+      c.drawImage(e.image.canvas, 0, 0, e.w * e.image.k, e.h * e.image.k, e.x * k, e.y * k, e.w * k, e.h * k);
+      if (!e.shade) continue;
+      // From the screen's edge in.
+      const [x0, y0, x1, y1] = [e.x * k, e.y * k, (e.x + e.w) * k, (e.y + e.h) * k];
+      const [sx, sy, tx, ty] = e.dx > 0 ? [x0, y0, x1, y0] : e.dx < 0 ? [x1, y0, x0, y0] : e.dy > 0 ? [x0, y0, x0, y1] : [x0, y1, x0, y0];
+      const shadeTo = c.createLinearGradient(sx, sy, tx, ty);
+      for (const [stop, a] of EDGE_SHADE) shadeTo.addColorStop(stop, rgba(page, a));
+      c.fillStyle = shadeTo;
+      c.fillRect(x0, y0, x1 - x0, y1 - y0);
     }
     c.restore();
-    if (whole) {
-      // PERFORMANCE: the blurred screen edges, baked in here once instead of blurred by CSS every frame.
-      blurEdges();
-      worldTransform(c);
-      for (const m of scorches) drawScorch(c, m, s);
-      if (!G) stampTrails(c, trails);
-      drawRubble(c, rubble);
-      stampDents(c, s);
-    }
-    built = s.grid.slice();
-    rimKey = rimFor();
-    floorKey = keyFor(s);
-    if (whole) floorDirty = 'all';
-    else floorChanged(...clip);
+  }
+
+  /**
+   * The quick picture: the whole floor at QUICK px a CSS px, drawn at once for a new layout and
+   * shown until the floor is ready, a ninth of the pixels of a 3x screen, so a ninth of the light
+   * and shadows to work out. The dents a battle has left wait for the floor (each is tens of
+   * shapes); its burns and splinters are on it.
+   */
+  function showQuick(s) {
+    const k = Math.min(QUICK, view.dpr);
+    quickCanvas.width = Math.max(1, Math.round(view.w * k));
+    quickCanvas.height = Math.max(1, Math.round(view.h * k));
+    const c = qctx;
+    paintRim(c, k);
+    c.save();
+    worldTransform(c, 0, 0, k);
+    c.beginPath();
+    c.rect(-1, -1, view.cols + 2, view.rows + 2);
+    c.clip();
+    drawGround(c, pal, { cols: view.cols, rows: view.rows, kindAt: (col, row) => cellAt(s.grid, col, row), area: [-RING, -RING, view.cols + RING * 2, view.rows + RING * 2] });
+    worldTransform(c, 0, 0, k);
+    for (const m of scorches) drawScorch(c, m, s);
+    drawRubble(c, rubble);
+    c.restore();
+    quick = `${rimFor()}:${s.gridVer}`;
+    quickDirty = true;
+    focusAt = 0;
   }
 
   /** Notes that cells x..x+w, y..y+h of the floor were drawn again, for gl.js (which is given them before the next frame). */
@@ -678,14 +998,6 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     return box;
   }
 
-  /** A new canvas at least w x h device px (and 1 x 1). */
-  function canvasOf(w, h) {
-    const cv = document.createElement('canvas');
-    cv.width = Math.max(1, Math.ceil(w));
-    cv.height = Math.max(1, Math.ceil(h));
-    return cv;
-  }
-
   /** The widths of n box blurs that, one after another, blur about as a Gaussian of sigma does (odd, so each has a middle). */
   function boxes(sigma, n) {
     const ideal = Math.sqrt((12 * sigma * sigma) / n + 1);
@@ -696,128 +1008,160 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   }
 
   /**
-   * cur blurred by a box 2r + 1 px wide along (dx, dy), on a new w x h canvas: its shifts laid
-   * one by one, the nth at 1/n strength, which keeps the running average of them all (to within
-   * a level of 255 at each step, where adding them up at 1/(2r + 1) each would lose several).
+   * One pass of a box blur 2r + 1 px wide over src (w x h px of red, green and blue, one after
+   * another) into dst: along its rows, or down its columns. Past its edges it goes on as its edge
+   * pixels.
    */
-  function boxBlur(cur, w, h, r, dx, dy) {
-    const out = canvasOf(w, h);
-    const g = out.getContext('2d');
-    for (let i = -r, n = 1; i <= r; i++, n++) {
-      g.globalAlpha = 1 / n;
-      g.drawImage(cur, i * dx, i * dy);
+  function boxPass(src, dst, w, h, r, rows) {
+    const lines = rows ? h : w;
+    const len = rows ? w : h;
+    const step = rows ? 3 : w * 3;
+    const next = rows ? w * 3 : 3;
+    const end = (len - 1) * step;
+    const k = 1 / (2 * r + 1);
+    for (let l = 0; l < lines; l++) {
+      const o = l * next;
+      let s0 = src[o] * (r + 1);
+      let s1 = src[o + 1] * (r + 1);
+      let s2 = src[o + 2] * (r + 1);
+      for (let i = 1; i <= r; i++) {
+        const j = o + Math.min(i * step, end);
+        s0 += src[j];
+        s1 += src[j + 1];
+        s2 += src[j + 2];
+      }
+      for (let i = 0, at = o; i < len; i++, at += step) {
+        dst[at] = s0 * k;
+        dst[at + 1] = s1 * k;
+        dst[at + 2] = s2 * k;
+        const a = i + r + 1 < len ? o + (i + r + 1) * step : o + end;
+        const b = i > r ? o + (i - r) * step : o;
+        s0 += src[a] - src[b];
+        s1 += src[a + 1] - src[b + 1];
+        s2 += src[a + 2] - src[b + 2];
+      }
     }
-    return out;
   }
 
   /**
-   * The (x, y, w, h) rectangle of src blurred about as CSS blur(sigma) blurs it (sigma device px),
-   * on a new w x h canvas. It reads pad px round the rectangle, so that much round it must be
-   * picture. Halved while sigma is over 4 px at that scale (each halving a plain average of 2 x 2
-   * pixels: art.js soften says why never more at once), blurred there by three box blurs across
-   * and three down, then doubled back the same way.
+   * The screen's edges past the two cells of wall round the field (the top and bottom in portrait,
+   * the sides in landscape), each blurred deeper toward the screen's edge (EDGE_BLURS): where it
+   * lies (x, y, w, h: CSS px, as the floor's device px round them), the way in from the screen's
+   * edge (dx, dy), whether the page's background shades it (portrait), and its picture (blurEdge).
    */
-  function gauss(src, x, y, w, h, sigma, pad) {
-    let n = 0;
-    while (sigma / 2 ** n > 4) n++;
-    const W = w + 2 * pad;
-    const H = h + 2 * pad;
-    const size = (k) => [W / 2 ** k, H / 2 ** k];
-    const scaled = (from, [fw, fh], [tw, th]) => {
-      const to = canvasOf(tw, th);
-      const g = to.getContext('2d');
-      g.imageSmoothingEnabled = true;
-      g.imageSmoothingQuality = 'low';
-      g.drawImage(from, 0, 0, fw, fh, 0, 0, tw, th);
-      return to;
-    };
-    let cur = canvasOf(W, H);
-    cur.getContext('2d').drawImage(src, x - pad, y - pad, W, H, 0, 0, W, H);
-    for (let k = 1; k <= n; k++) cur = scaled(cur, size(k - 1), size(k));
-    const [sw, sh] = size(n);
-    for (const b of boxes(sigma / 2 ** n, 3)) {
-      cur = boxBlur(cur, sw, sh, (b - 1) / 2, 1, 0);
-      cur = boxBlur(cur, sw, sh, (b - 1) / 2, 0, 1);
-    }
-    for (let k = n - 1; k >= 0; k--) cur = scaled(cur, size(k + 1), size(k));
-    const out = canvasOf(w, h);
-    out.getContext('2d').drawImage(cur, pad, pad, w, h, 0, 0, w, h);
-    return out;
-  }
-
-  /**
-   * PERFORMANCE: bakes the blurred screen edges into the floor canvas (EDGE_BLURS says why).
-   * Each layer blurs the floor as the layers before it left it, drawn out past the screen by
-   * repeating its outermost pixels (what a blur at the screen's edge sees), fades it out toward
-   * the field and lays it on the floor. Called whenever the floor is built for a new layout.
-   */
-  function blurEdges() {
+  function blurredEdges() {
     const d = view.dpr;
-    const W = floor.width;
-    const H = floor.height;
     const at = walls();
+    const r = (v) => Math.round(v * d) / d;
+    const [top, bottom, left, right] = [r(at.top), r(at.bottom), r(at.left), r(at.right)];
     const wide = view.w > view.h; // landscape, as styles.css's @media (orientation: landscape) has it
-    // Each edge: its rectangle on the floor canvas (device px), and the way in from the screen's edge.
-    const top = Math.round(at.top * d);
-    const bottom = Math.round(at.bottom * d);
-    const left = Math.round(at.left * d);
-    const right = Math.round(at.right * d);
-    const edges = (
+    const list = (
       wide
-        ? [{ x: 0, y: 0, w: left, h: H, dx: 1, dy: 0 }, { x: right, y: 0, w: W - right, h: H, dx: -1, dy: 0 }]
-        : [{ x: 0, y: 0, w: W, h: top, dx: 0, dy: 1 }, { x: 0, y: bottom, w: W, h: H - bottom, dx: 0, dy: -1 }]
+        ? [{ x: 0, y: 0, w: left, h: view.h, dx: 1, dy: 0 }, { x: right, y: 0, w: view.w - right, h: view.h, dx: -1, dy: 0 }]
+        : [{ x: 0, y: 0, w: view.w, h: top, dx: 0, dy: 1 }, { x: 0, y: bottom, w: view.w, h: view.h - bottom, dx: 0, dy: -1 }]
     ).filter((e) => e.w > 0 && e.h > 0);
-    if (!edges.length) return;
-    // From the screen's edge, inward, across an edge's rectangle (its own coordinates).
-    const across = (g, e) => {
-      const depth = e.dx ? e.w : e.h;
-      const sx = e.dx < 0 ? e.w : 0;
-      const sy = e.dy < 0 ? e.h : 0;
-      return g.createLinearGradient(sx, sy, sx + e.dx * depth, sy + e.dy * depth);
-    };
-    const pad = Math.ceil(3 * EDGE_BLURS[EDGE_BLURS.length - 1].blur * d); // three sigma of the deepest blur
-    const work = canvasOf(W + 2 * pad, H + 2 * pad);
-    const wg = work.getContext('2d');
-    fctx.save();
-    fctx.setTransform(1, 0, 0, 1, 0, 0);
-    for (const layer of EDGE_BLURS) {
-      wg.clearRect(0, 0, work.width, work.height);
-      wg.drawImage(floor, pad, pad);
-      wg.drawImage(floor, 0, 0, W, 1, pad, 0, W, pad);
-      wg.drawImage(floor, 0, H - 1, W, 1, pad, H + pad, W, pad);
-      wg.drawImage(floor, 0, 0, 1, H, 0, pad, pad, H);
-      wg.drawImage(floor, W - 1, 0, 1, H, W + pad, pad, pad, H);
-      for (const [sx, sy, tx, ty] of [[0, 0, 0, 0], [W - 1, 0, W + pad, 0], [0, H - 1, 0, H + pad], [W - 1, H - 1, W + pad, H + pad]]) {
-        wg.drawImage(floor, sx, sy, 1, 1, tx, ty, pad, pad);
-      }
-      for (const e of edges) {
-        const blurred = gauss(work, e.x + pad, e.y + pad, e.w, e.h, layer.blur * d, pad);
-        const g = blurred.getContext('2d');
-        const fade = across(g, e);
-        fade.addColorStop(0, '#000');
-        fade.addColorStop(layer.from, '#000');
-        fade.addColorStop(layer.to, 'rgba(0, 0, 0, 0)');
-        g.globalCompositeOperation = 'destination-in';
-        g.fillStyle = fade;
-        g.fillRect(0, 0, e.w, e.h);
-        fctx.drawImage(blurred, 0, 0, e.w, e.h, e.x, e.y, e.w, e.h);
-      }
+    for (const e of list) {
+      e.shade = !wide;
+      e.image = blurEdge(e);
     }
-    if (!wide) {
-      for (const e of edges) {
-        fctx.save();
-        fctx.translate(e.x, e.y);
-        const shadeTo = across(fctx, e);
-        for (const [stop, a] of EDGE_SHADE) shadeTo.addColorStop(stop, rgba(page, a));
-        fctx.fillStyle = shadeTo;
-        fctx.fillRect(0, 0, e.w, e.h);
-        fctx.restore();
-      }
-    }
-    fctx.restore();
+    return list;
   }
 
-  const rimFor = () => `${view.w}x${view.h}:${view.x},${view.y}@${view.unit}:${view.rot}:${view.dpr}:${view.cols}:${pal && pal.floor}`;
+  let edgeCanvas = null; // where an edge's wall is drawn, to be blurred (blurEdge)
+
+  /**
+   * Edge e's picture, EDGE_SCALE px a CSS px (all of it is softer than that): what its blur lays
+   * over the floor there, colour and how much. The wall under an edge is all brick, so the blur
+   * works from bricks drawn small (drawBricks), running on EDGE_PAD past the edge and past the
+   * screen, rather than from the floor itself, and in numbers: three box blurs across and three
+   * down, about a Gaussian. Each layer blurs the wall as the one before it left it, and is laid
+   * from the screen's edge to its `from` of the edge's depth, fading out by its `to`. PERFORMANCE:
+   * a few milliseconds a layout, where blurring the floor canvas took a phone most of a second.
+   */
+  function blurEdge(e) {
+    const k = EDGE_SCALE;
+    const p = Math.ceil(EDGE_PAD * k);
+    const w = Math.max(1, Math.ceil(e.w * k));
+    const h = Math.max(1, Math.ceil(e.h * k));
+    const W = w + 2 * p;
+    const H = h + 2 * p;
+    edgeCanvas ??= document.createElement('canvas');
+    edgeCanvas.width = W;
+    edgeCanvas.height = H;
+    const c = edgeCanvas.getContext('2d', { willReadFrequently: true });
+    // The world on it: its pixel (p, p) is the edge's top left on the screen.
+    const s = view.unit * k;
+    const ox = (view.x - e.x) * k + p;
+    const oy = (view.y - e.y) * k + p;
+    if (view.rot) c.setTransform(0, -s, s, 0, ox, oy + view.cols * s);
+    else c.setTransform(s, 0, 0, s, ox, oy);
+    drawBricks(c, pal, cellsOn(e.x - p / k, e.y - p / k, e.x + e.w + p / k, e.y + e.h + p / k));
+    const px = c.getImageData(0, 0, W, H).data;
+    const N = W * H;
+    const blur = new Float32Array(N * 3); // the wall, red, green and blue, as the layers so far have blurred it
+    for (let i = 0, j = 0; j < N * 3; i += 4, j += 3) {
+      blur[j] = px[i];
+      blur[j + 1] = px[i + 1];
+      blur[j + 2] = px[i + 2];
+    }
+    const laid = new Float32Array(N * 3); // the colour laid over the floor so far, premultiplied
+    const cover = new Float32Array(N); // and how much of the floor it covers
+    const tmp = new Float32Array(N * 3);
+    const across = e.dx !== 0;
+    const depth = across ? e.w : e.h;
+    // How far in from the screen's edge a column (across) or row is, as a share of the edge's depth.
+    const inAt = (i) => {
+      const v = (across ? e.x : e.y) + (i - p + 0.5) / k;
+      return (e.dx < 0 ? view.w - v : e.dy < 0 ? view.h - v : v) / depth;
+    };
+    const share = new Float32Array(across ? W : H);
+    for (const layer of EDGE_BLURS) {
+      for (const b of boxes(layer.blur * k, 3)) {
+        boxPass(blur, tmp, W, H, (b - 1) / 2, true);
+        boxPass(tmp, blur, W, H, (b - 1) / 2, false);
+      }
+      for (let i = 0; i < share.length; i++) {
+        const t = inAt(i);
+        share[i] = t <= layer.from ? 1 : t >= layer.to ? 0 : (layer.to - t) / (layer.to - layer.from);
+      }
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const a = share[across ? x : y];
+          if (!a) continue;
+          const i = y * W + x;
+          const j = i * 3;
+          laid[j] += (blur[j] - laid[j]) * a;
+          laid[j + 1] += (blur[j + 1] - laid[j + 1]) * a;
+          laid[j + 2] += (blur[j + 2] - laid[j + 2]) * a;
+          cover[i] += (1 - cover[i]) * a;
+        }
+      }
+    }
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const g = out.getContext('2d');
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y + p) * W + x + p;
+        const a = cover[i];
+        if (!a) continue;
+        const o = (y * w + x) * 4;
+        img.data[o] = laid[i * 3] / a;
+        img.data[o + 1] = laid[i * 3 + 1] / a;
+        img.data[o + 2] = laid[i * 3 + 2] / a;
+        img.data[o + 3] = a * 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    return { canvas: out, k };
+  }
+
+  // What the floor canvas is drawn for: the field layer's look (fieldFor), and where the screen
+  // is round it (rimFor); keyFor adds the map's grid as it stands.
+  const fieldFor = () => `${view.unit}@${view.dpr}:${view.rot}:${view.cols}x${view.rows}:${pal && pal.floor}`;
+  const rimFor = () => `${view.w}x${view.h}:${view.x},${view.y}:${fieldFor()}`;
   const keyFor = (s) => `${s.gridVer}:${rimFor()}`;
 
   /* ---------- Effects ---------- */
@@ -1750,6 +2094,16 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
         const b = t.alive && t.beam;
         const g = gun(t.id);
         if (b && !calm) emitter(s, t, b, g, dw);
+        if (TYPES[t.type].weapon === 'laser') {
+          // Reloaded: a glint off the rod, now steady red.
+          const ready = t.alive && !b && t.reload <= 0;
+          if (ready && g.ready === false) {
+            const lens = lensAt(t, s.time - g.fired);
+            add({ kind: 'glow', x: lens.x, y: lens.y, r: 0.4, color: pal.alarm, a: 0.55, life: 0.35, max: 0.35 });
+            ring(lens.x, lens.y, 0.12, 0.36, 0.3, pal.alarm, 0.03);
+          }
+          g.ready = ready;
+        }
         // Charging shows a red line; any other phase is the beam burning (engine.js: 'fire').
         if (!b || b.phase === 'charge') {
           endBurn(s, g);
@@ -1815,6 +2169,12 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     floorKey = '';
     built = null; // the whole field again: the last world's scorch marks, splinters and dents go
     prepared = null;
+    // Field layers of the last world are no use for this one, nor is a quick picture of it.
+    gen++;
+    for (const v of fields.values()) v.image.close?.();
+    fields.clear();
+    moved = null;
+    if (quick) quick = 'stale';
   }
 
   /* ---------- Drawing ---------- */
@@ -2294,6 +2654,12 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   const LAYER = { smoke: 0, glow: 1, flash: 1, muzzle: 2, ring: 2 };
   const layerOf = (p) => LAYER[p.kind] ?? 3;
 
+  /** How far laser tank t has reloaded since its last beam, 0 to 1 (1: it can fire, and while it charges and burns). */
+  function charged(t) {
+    if (TYPES[t.type].weapon !== 'laser' || t.beam) return 1;
+    return Math.max(0, Math.min(1, 1 - t.reload / TYPES[t.type].reload));
+  }
+
   /**
    * Lasers, straight on the arena, drawn with fx: gl.js, or fx2d, the same shapes on the 2D
    * context. While one charges, its ruby rod gathers light (a glow growing on it and the floor,
@@ -2302,7 +2668,9 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
    * red glow round a white-hot core that flickers, flaring where it leaves the rod (brighter and
    * wider for its first half cell, a glare across it, its light on the floor round the tank), with
    * sparks where a wall stops it. Once it goes out the rod glows on, white-hot to orange to a dull
-   * red, cooling over LENS_COOL. Steady under reduced motion. (Sparks drawn in and thrown off: emitter.)
+   * red, cooling over LENS_COOL, while it fills back up with red as it reloads (art.js draws the rod
+   * itself dark, then red again), its glow growing until it can fire. Steady under reduced motion.
+   * (Sparks drawn in and thrown off, and the glint as it is ready again: emitter, update.)
    */
   function drawLasers(s, calm, fx) {
     const ADD = { add: true };
@@ -2312,6 +2680,8 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
       const b = t.beam;
       const lens = lensAt(t, g ? s.time - g.fired : Infinity);
       if (!b) {
+        const k = charged(t);
+        fx.glow(lens.x, lens.y, 0.1 + 0.08 * k, pal.alarm, 0.24 * k * k);
         const h = g && g.ended != null ? 1 - (s.time - g.ended) / LENS_COOL : 0;
         if (h > 0 && h <= 1) {
           fx.glow(lens.x, lens.y, 0.16 + 0.16 * h, pal.alarm, 0.5 * h);
@@ -2458,7 +2828,24 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   let marksGen = -1; // the pictures' generation the GPU's tread marks were laid for
   let trailsAt = -1; // gl.js's tracks the marks that stay were last all laid into
   let floorGen = -1; // the pictures' generation gl.js was last given the whole floor for
+  let glQuick = false; // gl.js has the quick picture as its floor
   const muzzles = new Map(); // a muzzle flame's picture, by its size and kind
+
+  /**
+   * How much of the quick picture still shows over the floor as the arena comes into focus, from
+   * 1 just as the floor takes over to 0 by FOCUS_MS (at once under reduced motion). Frames are
+   * drawn until it has (kickFrame), whether or not the game is drawing any.
+   */
+  function focusing() {
+    if (!focusAt) return 0;
+    const t = (performance.now() - focusAt) / FOCUS_MS;
+    if (t >= 1 || reduceMotion()) {
+      focusAt = 0;
+      return 0;
+    }
+    kickFrame();
+    return (1 - t) * (1 - t);
+  }
 
   /** The world's transform to device px, as worldTransform sets it, moved by (ox, oy) cells (the shake). */
   function worldMatrix(ox = 0, oy = 0) {
@@ -2512,19 +2899,36 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     if (floorGen !== G.generation) {
       floorGen = G.generation;
       floorDirty = 'all';
+      quickDirty = !!quick;
+      focusAt = 0;
     }
-    if (floorDirty === 'all') G.floor(floor);
-    else if (floorDirty) {
-      const { x0, y0, x1, y1 } = floorDirty;
-      G.floor(fctx.getImageData(x0, y0, x1 - x0, y1 - y0), { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    // While the field layer is being painted, the quick picture shows, smoothed up to the screen.
+    // When the floor takes over, the quick picture is kept to fade out (FOCUS_MS).
+    if (quick) {
+      if (quickDirty) G.floor(quickCanvas, null, { smooth: true });
+      quickDirty = false;
+      glQuick = true;
+    } else {
+      if (floorDirty === 'all') G.floor(floor, null, { keep: glQuick && focusAt > 0 });
+      else if (floorDirty) {
+        const { x0, y0, x1, y1 } = floorDirty;
+        G.floor(fctx.getImageData(x0, y0, x1 - x0, y1 - y0), { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+      }
+      floorDirty = null;
+      glQuick = false;
     }
-    floorDirty = null;
+    G.fadeFloor(focusing());
     const jitter = shake > 0 ? shake * 0.12 : 0;
     const M = worldMatrix(jitter ? (Math.random() - 0.5) * jitter : 0, jitter ? (Math.random() - 0.5) * jitter : 0);
     G.begin(M, worldMatrix());
 
+    // A chip is painted once, as the screen shows it. A new layout leaves every live one to paint
+    // again: a few milliseconds' worth a frame, and the rest wait for the next (fading crumbs, a
+    // frame or two without them never shows), so turning the phone mid-battle doesn't stall.
+    const bakeBy = performance.now() + 3;
     for (const m of liveChips(s)) {
       if (!m.pic || m.pic.generation !== G.generation) {
+        if (performance.now() > bakeBy) continue;
         m.pic = G.bake((c) => {
           chipCrumbs(c, m, 1);
           c.save();
@@ -2579,6 +2983,7 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
         fired: g ? s.time - g.fired : Infinity,
         side: g?.side || 0,
         heat: g && t.spin ? Math.min(g.heat, t.spin) : 0,
+        charge: charged(t),
       });
     }
     G.tanks(list);
@@ -2671,6 +3076,7 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
   function draw(s, opts = {}) {
     if (!s || !view.w) return;
     lastFrame = { s, opts };
+    drawnAt = performance.now();
     if (!pal) readPalette();
     if (floorKey !== keyFor(s)) buildFloor(s);
     if (G) {
@@ -2679,7 +3085,17 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
     }
     const { aim = null, reticle = null, beacon = 0, cells = null } = opts;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(floor, 0, 0);
+    // The quick picture while the floor is put together, then fading out over it (drawGL says more).
+    if (quick) ctx.drawImage(quickCanvas, 0, 0, canvas.width, canvas.height);
+    else {
+      ctx.drawImage(floor, 0, 0);
+      const fade = focusing();
+      if (fade > 0) {
+        ctx.globalAlpha = fade;
+        ctx.drawImage(quickCanvas, 0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+      }
+    }
 
     const calm = reduceMotion();
     const jitter = shake > 0 ? shake * 0.12 : 0;
@@ -2720,6 +3136,7 @@ export function createRenderer(canvas, { reduceMotion = () => false, gl: useGL =
         fired: fired(t),
         side: side(t),
         heat: g && t.spin ? Math.min(g.heat, t.spin) : 0,
+        charge: charged(t),
         alpha: a,
         sprites,
       });

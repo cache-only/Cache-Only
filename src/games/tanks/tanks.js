@@ -22,6 +22,7 @@ const BRIEF_MAX = 5;
 const BANNER_AT = 1.1; // after a mission ends: let the explosions play first
 const NEXT_AT = 3.8; // ...then the next mission, a retry or the results
 const MAX_STEPS = 16; // per frame, so a stall never fast-forwards the battle
+const TURN_HOLD = 0.35; // seconds a battle holds as the phone turns: iOS lets go of every thumb then
 
 const $ = (id) => document.getElementById(id);
 const store = createStore('tanks');
@@ -726,6 +727,7 @@ function renderTally(box, kills) {
 let raf = 0;
 let last = 0;
 let acc = 0;
+let holdUntil = 0; // performance.now() until which the battle holds (TURN_HOLD)
 const LOOPING = ['brief', 'play', 'ending'];
 
 function setPhase(next) {
@@ -760,7 +762,7 @@ function frame(now) {
   last = now;
   phaseT += dt;
   if (phase === 'play') {
-    acc += dt;
+    acc = now < holdUntil ? 0 : acc + dt;
     let steps = 0;
     while (acc >= STEP && steps < MAX_STEPS) {
       acc -= STEP;
@@ -1580,6 +1582,9 @@ window.addEventListener('blur', () => {
 
 // Sizing: the arena's canvas covers the screen, and the field goes as big as the play area
 // allows, turned upright on a tall screen. The touch controls float over it, so they take no room.
+// The renderer shows a new layout at once and sharp a moment later (render.js), so turning the
+// phone never stalls the page. Mid-battle the battle holds for TURN_HOLD as it turns.
+let upright = null; // whether the field was last laid out turned upright
 function fit() {
   const shown = world || backdrop;
   const [cols, rows] = shown ? gridSize(shown.grid) : [COLS, ROWS];
@@ -1589,7 +1594,12 @@ function fit() {
   fitted = String([cols, rows]);
   const screen = document.body.getBoundingClientRect();
   const box = wrap.getBoundingClientRect();
-  renderer.layout(screen.width, screen.height, { x: box.left - screen.left, y: box.top - screen.top, w: box.width, h: box.height }, [cols, rows]);
+  const { rotated } = renderer.layout(screen.width, screen.height, { x: box.left - screen.left, y: box.top - screen.top, w: box.width, h: box.height }, [cols, rows]);
+  if (upright !== null && rotated !== upright && phase === 'play') {
+    holdUntil = performance.now() + TURN_HOLD * 1000;
+    releaseInput();
+  }
+  upright = rotated;
   draw();
 }
 

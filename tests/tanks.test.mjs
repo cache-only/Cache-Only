@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { intercept, pathField, predict, shotTarget, tapTarget } from '../src/games/tanks/ai.js';
-import { VARIANTS, makePalette, planePose, planeVariants, recoilAt, tankPlanes, tankPose } from '../src/games/tanks/art.js';
+import { VARIANTS, makePalette, planePose, planeVariants, recoilAt, roundAt, tankPlanes, tankPose } from '../src/games/tanks/art.js';
 import { makeBot } from '../scripts/playtest.mjs';
 import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../src/games/tanks/mapcheck.js';
 import { createWorld, fire, isWorld, lob, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
@@ -193,10 +193,34 @@ test('every kind cuts into the hull, gun and head the GPU lights, its gun in at 
     // Only the mortar has no weapon solids: its tube is on the turret.
     assert.equal(!!P.gun, TYPES[type].weapon !== 'bomb', `${type}'s gun`);
     if (P.gun) assert.equal(P.gun.masks.length, 3, `${type}'s gun masks`);
+    // The GPU keeps how round a gun is where an overlay would go, so a gun has none.
+    if (P.gun) assert.ok(typeof P.gun.round === 'function' && !P.gun.overlay, `${type}'s gun is painted round, with no overlay`);
     assert.equal(!!P.gun?.emission, TYPES[type].weapon === 'minigun', `${type} glows`);
     assert.deepEqual(P.heights.length, 5);
     assert.ok(P.heights.every((h, i) => i === 0 || h > P.heights[i - 1]), `${type}'s layers stand each above the last`);
   }
+});
+
+test('a round part is lit across as a tube, never as a slab with lit edges', () => {
+  // How light it ends up at s across it: the white laid on it, less the black.
+  const tone = (s, across) => {
+    const [lit, dark] = roundAt(s, across);
+    return lit - dark;
+  };
+  // The light falling straight across it from -y: brightest inside its lit half, not at the edge,
+  // and darkest on the far side, the very edge a little lighter (light back from the floor).
+  const line = Array.from({ length: 41 }, (_, i) => -1 + i / 20).map((s) => ({ s, v: tone(s, 1) }));
+  const top = line.reduce((a, b) => (b.v > a.v ? b : a));
+  const low = line.reduce((a, b) => (b.v < a.v ? b : a));
+  assert.ok(top.s < 0 && top.s > -0.9, `brightest at ${top.s}`);
+  assert.ok(tone(-1, 1) < top.v - 0.3, 'its lit edge is darker than its highlight');
+  assert.ok(low.s > 0.4 && low.s < 1, `darkest at ${low.s}`);
+  assert.ok(tone(1, 1) > low.v, 'its far edge catches light from the floor');
+  // Pointing along the light: the same on both sides, brightest down the middle, darker to both edges.
+  for (const s of [0.25, 0.5, 0.75, 1]) assert.equal(tone(s, 0), tone(-s, 0));
+  assert.ok(tone(0, 0) > tone(0.5, 0) && tone(0.5, 0) > tone(1, 0));
+  // Turned the other way round, the light is mirrored across it.
+  for (const s of [-1, -0.5, 0, 0.3, 1]) assert.equal(tone(s, -0.6), tone(-s, 0.6));
 });
 
 test('every look a tank shows in play is one the GPU painted ahead of time', () => {
@@ -214,7 +238,8 @@ test('every look a tank shows in play is one the GPU painted ahead of time', () 
         for (let mines = 0; mines <= (T.mines || 0); mines++) {
           for (const lit of [false, true]) {
             const { recoil } = tankPose({ type, x: 0, y: 0, body: 0, turret: 0 }, age, side);
-            const pp = planePose(type, { mines, lit, roll: age * 37, recoil });
+            // A laser's rod fills back up as it reloads (charge 0 to 1).
+            const pp = planePose(type, { mines, lit, roll: age * 37, recoil, charge: Math.max(0, age) });
             for (const plane of Object.keys(ahead)) assert.ok(ahead[plane].has(pp[plane].key), `${type} ${plane} ${pp[plane].key} (age ${age.toFixed(3)})`);
           }
         }

@@ -68,7 +68,7 @@ cache-only/
       icon-maskable-512.png
     games/
       sudoku/  index.html  sudoku.js  generator.js  solver.js  worker.js  styles.css
-      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  mapgen.js  art.js  render.js  gl.js  audio.js  styles.css
+      tanks/   index.html  tanks.js  engine.js  rules.js  ai.js  missions.js  mapcheck.js  maps.js  mapgen.js  art.js  render.js  gl.js  floor.js  audio.js  styles.css
   scripts/
     build.mjs             # src -> dist, split into packs, write dist/sw.js
     serve.mjs             # static server for dist/ on :8080
@@ -182,7 +182,9 @@ service worker with scope `/` covers everything.
   whole under the text: pixels near a line of text only dim, easing back over a few cells and a
   little unevenly, so no edge or hole shows. About a quarter of the field's pixels are blurring
   out or back in at any moment (`blurOut()`/`blurIn()`, slowed to `--t-twinkle`); the mark loses
-  about one pixel at a time; the step icons stay still; nothing moves under reduced motion. Over
+  about one pixel at a time; the step icons stay still; nothing moves under reduced motion. Turning
+  the phone drops the old pixels before the new layout and lays new ones in the same frame (moving
+  a thousand pixels mid-twinkle cost WebKit far more than drawing them again). Over
   it: the logo with "Cache Only" under it in Display as one lockup (this page has no header), then
   "Install the app" (32/800, centred) heading three steps (Tap Share, Add to Home Screen, Open it
   from the new icon; browser-menu steps off iOS). Each step is a `.glass-row`: its icon in a 44 glass tile (the last step's is `app`, a tile with
@@ -326,7 +328,13 @@ service worker with scope `/` covers everything.
 - iOS has no `navigator.vibrate`, so don't rely on haptics.
 - Rotating while a sheet is scrolled can leave iOS hit-testing at the old scroll offset (every tap
   lands lower than it looks). `shared/ui.js` scrolls the page and every open sheet back to the top
-  and rebuilds each sheet's scroller after every resize; keep that when touching sheets.
+  and rebuilds each sheet's scroller as the phone turns (the page's width changes); keep that when
+  touching sheets. Only then: Safari's toolbar sliding away and the keyboard coming up resize the
+  page too, without changing its width, and settling then would pull a page being scrolled, or a
+  sheet being typed in, back to its top.
+- Turning the phone must look finished in the frame that lays the page out again: nothing redraws
+  a frame later (the install page's pixel field is drawn from a ResizeObserver), and nothing heavy
+  runs then (Tanks, below).
 - Dark only. There is no light mode and no `prefers-color-scheme` theming anywhere (the Tanks
   colour test checks the arena has one palette).
 
@@ -435,9 +443,13 @@ style a button, header, card, sheet or menu locally.
   set slightly apart. The sheet (`dialog.sheet`, `openSheet`):
   content such as settings, confirmations and results, glass from the bottom with top corners 24,
   padding 16 and a 44 close button where one is needed. A sheet is barely tinted (`--sheet`, 40%)
-  and blurs what's behind it (`--blur-sheet`, 40px); a modal one dims the page only lightly, and
-  the flat surfaces on it (segmented control, slider, toggle rows, cards, facts, fields) turn to glass too. A sheet that belongs to the game state (a
-  start screen or a result) is docked: opened with `show()`, so the header and menu still work.
+  and blurs what's behind it (`--blur-sheet`, 40px), and the flat surfaces on it (segmented
+  control, slider, toggle rows, cards, facts, fields) turn to glass too. Every sheet, docked or
+  modal, dims the page lightly (`--scrim`) and nothing behind it takes a tap. A modal sheet
+  closes on a tap beside it. A sheet that belongs to the game state (a start screen or a result)
+  is docked: opened with `show()`, with `.sheet-scrim` (`openSheet`) dimming for it, and only the
+  header's home button stays above the dim, so the side menu still works; the rest of the header
+  dims with the page.
 - **Games:** no back or pause buttons. Moves during play stay on screen (Sudoku: Notes and Erase
   over a 3×3 number pad); anything about
   the whole session lives in the side menu. Boards must stay square and fully visible on an iPhone
@@ -527,18 +539,35 @@ style a button, header, card, sheet or menu locally.
   lives in the top-right, and the field fills the height but for half a cell of wall top and bottom,
   centred on the screen with equal room on both sides; past two cells of wall left and right, the
   wall in the gutters blurs out toward the screen's sides with no shade (the blur alone). Those
-  blurred edges are baked into the floor canvas once per layout (`blurEdges` in `render.js`, with
-  `.pblur-deep`'s layers and shade), never CSS backdrop-filter over the arena: iOS re-blurs those on
-  every frame the canvas changes, which cost battery.
+  blurred edges are worked out once per layout (`blurredEdges` in `render.js`, with `.pblur-deep`'s
+  layers and shade, from bricks drawn at half a pixel a CSS pixel and blurred in numbers) and laid
+  into the floor canvas, never CSS backdrop-filter over the arena: iOS re-blurs those on every frame
+  the canvas changes, which cost battery.
   Everything past the wall's first cell is drawn once per layout; a crate blown away or an editor
   stroke redraws only the cells that changed and the cell round them. Up on screen is always up for input.
+- **Turning the phone** never stalls the arena. The floor canvas is three parts: the field layer
+  (the field and its first cell of wall, as `drawGround` draws them, with the battle's marks on
+  it), plain brick round it (`drawBricks` in `art.js`) and the blurred edges. Only the field layer
+  is slow to draw (a phone took the best part of a second for the whole floor at 3x), so a new
+  layout shows a quick picture of the whole floor at 1x at once (`showQuick`) while a worker paints
+  the field layer at the screen's pixel ratio (`floor.js`, `OffscreenCanvas`; on the page in a task
+  of its own where workers can't draw), and the arena comes into focus over `FOCUS_MS` as the floor
+  takes over (the quick picture fades out, in `gl.js` and the 2D renderer alike). The field layer
+  is anchored to the field: a layout that only moves the screen round it (iOS lays a page out under
+  the status bar for a moment as the phone turns to portrait) keeps it, pixel for pixel
+  (`cutField`), and the last one for each way the phone is held is kept (`fields`), so turning back
+  is quick. In the iPhone simulator a turn shows the new layout within about 50 ms and sharp within
+  about 150 ms, where it froze for about half a second per layout before. Mid-battle the battle
+  holds for `TURN_HOLD` (0.35 s) as the phone turns, since iOS lets go of every thumb then.
 - **Rendering** (`gl.js`, where WebGL2 works; `render.js` keeps the effects and says what goes
   where): the arena is drawn by the GPU on its own canvas (`.arena-gl`), laid over the arena's
   canvas, which only takes the touches, at the screen's own pixel ratio (3 on iPhones; the 2D
   renderer stays at 2). The floor is still built with a 2D context, off the screen
   (`willReadFrequently`), and laid by the GPU from a texture, a broken crate or a new dent sending
   only its own patch again: a big 2D canvas on an iPhone's screen can show blurred and pixelated
-  (it did on opening, until the next layout), which the simulator never shows. A tank is painted
+  (it did on opening, until the next layout), which the simulator never shows. WebKit draws 2D
+  canvases in its GPU process and only waits for them when their pixels are read (an upload,
+  `getImageData`), so a heavy floor costs at that read, not where it is drawn. A tank is painted
   once per look, unlit and facing right (`tankPlanes` in `art.js`: hull, gun and head, each with
   masks of its parts), never once per angle, and lit on the GPU with the bands and drop shadows
   `paintHard` paints, at its exact angle and position; every look a tank can show in play is
@@ -556,7 +585,8 @@ style a button, header, card, sheet or menu locally.
   frame is a few dozen draw calls and one upload per program, so new things to draw should batch
   with the shapes there are; every input `model()` reads goes in `planePose` (or `POSE`, the 2D
   renderer's kept pictures, marked `moving` if it changes every frame); no backdrop-filter over
-  the arena. The 2D renderer's own rules still hold for it: never draw on a spare canvas and lay
+  the arena; nothing slow on a new layout (it goes in `floor.js` or in time slices, as chips are
+  painted again a few milliseconds' worth a frame). The 2D renderer's own rules still hold for it: never draw on a spare canvas and lay
   it down in the same frame (WebKit waits about 1 ms each time), no per-frame clips beyond one per tank.
 - **Rules** (`rules.js`, `engine.js`): one hit destroys a tank. Shells ricochet off walls and crates;
   the player has 5 shells in flight with 1 ricochet each and 2 mines. Shells that meet cancel out
@@ -604,19 +634,23 @@ style a button, header, card, sheet or menu locally.
   the cell they drive to, take turns by right of way, line up before narrow gaps, and back off when
   stuck, so they never jam.
 - **Art** (`art.js`, drawn by `render.js` and by the field guide): shape tells you what a tank can do
-  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods in a mount fixed to the turret, its light on the turret's axis (they fire in turn, left first, and only the pod that fired slides back through the mount: `POD`), a
+  (barrel: weapon, from a thin shell barrel to a rocket's muzzle brake, a missile's twin pods, long and plain, in a mount that runs back under the turret, its light on the turret's axis (they fire in turn, left first, and only the pod that fired slides back through the mount: `POD`), a
   mortar tube, a minigun's spinning bundle and, for a laser, no barrel but a ruby rod held out
-  between two prongs on a squat housing, lit red while it fires; treads or a concrete pad: moves or not; rear-deck
+  between two prongs on a squat housing, bright red while it fires, dark once the beam ends and red
+  again as it reloads (`charge`, in eighths in its pictures); treads or a concrete pad: moves or not; rear-deck
   discs: mines left), colour only
   which kind it is. The colour plan sits above the `--tk-*` colours in `tanks/styles.css`, and a test
   holds new colours to it; past about 14 kinds, a variant can wear another kind's colour with
   hazard stripes (`VARIANTS` in `art.js`, empty today). Nothing has an ink
   outline: one light from the top left of the screen (`LIGHT`), fixed however the arena turns,
-  lights every part on the edges facing it, shades the edges facing away, lights a tube (a barrel or
-  a missile pod) round across it (`tubeBands`: wide stepped bands down its
-  sides, as wide as the light falls across it, and a little shade down both sides when it points
-  along the light; its tip keeps a flat part's edge; a gun's tubes are its first run of solids,
-  which the GPU lights the same way), and gives each part a
+  lights every part on the edges facing it, shades the edges facing away, lights a round part (a
+  barrel, a missile pod, a minigun's barrels, a ring round a barrel: a solid with `round`) across
+  it as a tube instead (`ROUND`, `roundAt`, `roundLight` in `art.js`: from how its surface faces a
+  light as high as `CAST` says, brightest inside its lit half, darkest toward the far side with a
+  little light back from the floor on that edge, and a glint along it; no lit or shaded sides,
+  which make a slab, only its ends, as far as the light falls along it; the GPU lights it from a
+  map of where across each round part a pixel sits, the gun's second layer: `tankPlanes` `round`),
+  and gives each part a
   soft shadow on the one under it and every tank a shadow on the floor built from all its parts,
   each raised by its height. Shells, rockets, rounds, missiles, bombs and mines get the same light;
   only a missile glows and wears its owner's colour. In game, tanks are lit hard (two-step edge
@@ -640,7 +674,8 @@ style a button, header, card, sheet or menu locally.
   the slide in eighths in `POSE`; the jolt only moves where the parts are laid), with a flame, a flash of light on the floor, smoke and sparks at the muzzle; a
   laser's rod gathers light as it charges (a glow, sparks drawn in, rings closing on it), thumps
   back as its beam lights with a burst off its point, flares as it burns (a glare across the beam,
-  its light on the floor) and glows on as it cools (`drawLasers` and `emitter` in `render.js`, at
+  its light on the floor), glows on for half a second, then glows back up with its rod as it
+  reloads, with a glint once it can fire (`drawLasers` and `emitter` in `render.js`, at
   `lensAt` in `art.js`, one function for the GPU and the 2D renderer); Lime's barrels glow
   orange after a long spray and cool as they run down (`heat`); a tank puffs exhaust as it pulls
   away or turns hard (never White). A shot meeting a wall or crate sparks and leaves a dent that
@@ -753,7 +788,8 @@ style a button, header, card, sheet or menu locally.
 - **Sound** is synthesised with Web Audio (no audio files). It follows the iOS silent switch
   (`navigator.audioSession.type = 'ambient'`) and the app's Sound switch in Settings
   (`shared/sound.js`); the game has no sound setting of its own.
-- Leaving the app or the window pauses the battle (the side menu opens). Under reduced motion there is no screen shake,
+- Leaving the app or the window pauses the battle (the side menu opens); turning the phone holds it
+  for a moment (`TURN_HOLD`, Turning the phone above). Under reduced motion there is no screen shake,
   fewer particles (one spark where there would be several), no banner slide, steady lights on mines
   and missiles, and a static bomb mark.
 - **Planned work** lives in `TANKS.md`, grouped by category with ids (R1, W1, A1…). New Tanks ideas
@@ -854,7 +890,10 @@ Friends see the update within about 10 minutes, the next time they open the app 
   a move in each game. Kill the app mid-game and confirm it resumes. In airplane mode, games
   you didn't download keep a dimmed download icon. The status bar is solid, not blurred. In
   Tanks, the arena (walls and floor too) is sharp from the moment a mission opens, not only after
-  a rotation, and tanks stay sharp as they drive and turn.
+  a rotation, and tanks stay sharp as they drive and turn. Turn the phone in each screen (the
+  launcher, the install page in Safari, Sudoku, a Tanks battle, the map editor, an open sheet):
+  the new layout is there as the turn ends, nothing jumps after it, and a Tanks arena comes into
+  focus within a moment.
 - Update path: change a file, push, wait for the Actions run plus about 10 minutes, open the
   installed app online, and confirm "Update available" appears, then reload and check the new version shows and every downloaded game
   still plays offline.

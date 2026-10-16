@@ -38,6 +38,7 @@
   --blur: 20px;
   --blur-panel: 24px;
   --blur-sheet: 40px;
+  --scrim: rgba(0, 0, 0, 0.25); /* the page dimmed behind any open sheet */
 
   --r-btn: 8px;
   --r-chip: 4px;
@@ -1352,7 +1353,7 @@ button {
 .side-menu {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: 10;
   color: var(--ink);
 }
 
@@ -1436,13 +1437,16 @@ button {
 /* ---------- Sheets ---------- */
 
 /* Content (settings, confirmations, results): glass from the bottom, top corners 24, padding 16,
-   a 44 close button at the top right (8 + 16 = 24). A sheet that belongs to the game state
-   (a start screen or a result) is "docked": opened with show() instead of showModal(), so the
-   header and its side menu still work around it. */
+   a 44 close button at the top right (8 + 16 = 24). Every sheet dims the page behind it
+   (--scrim) and takes its taps. A sheet that belongs to the game state (a start screen or a
+   result) is "docked": opened with show() instead of showModal(), so .sheet-scrim (openSheet in
+   shared/ui.js) dims for it, and the header's home button stays above the dim, so the side menu
+   still works. A game page stacks: the play area (up to 6), the header's other items while a
+   docked sheet is open (7), the scrim (8), the docked sheet (9), the side menu (10), the header (11). */
 dialog.sheet {
   position: fixed;
   inset: auto 0 0 0;
-  z-index: 8;
+  z-index: 9;
   width: 100%;
   max-width: 560px;
   max-height: calc(100vh - var(--safe-t) - 24px);
@@ -1460,8 +1464,36 @@ dialog.sheet {
   overscroll-behavior: contain;
 }
 
+/* Written out: older WebKit doesn't pass custom properties to ::backdrop. Keep it --scrim. */
 dialog.sheet::backdrop {
   background: rgba(0, 0, 0, 0.25);
+}
+
+.sheet-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  background: var(--scrim);
+}
+
+body:has(dialog.sheet-docked[open]) > .sheet-scrim {
+  display: block;
+}
+
+/* A game's header items sit over the play area and the side menu on their own (flex items take
+   z-index without a position, which would move .bar-center's anchor), so a docked sheet's dim can
+   pass over all of them but the home button. */
+.game-page .bar {
+  z-index: auto;
+}
+
+.game-page .bar > * {
+  z-index: 11;
+}
+
+.game-page:has(dialog.sheet-docked[open]) .bar > :not(#homeBtn) {
+  z-index: 7;
 }
 
 /* On a glass sheet, flat surfaces turn to glass too, so nothing on it reads as a solid block. */
