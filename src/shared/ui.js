@@ -181,6 +181,98 @@ export function setupSideMenu(menu, button, { onOpen, onClose } = {}) {
   return { open, close, isOpen };
 }
 
+/**
+ * A slider (.slider, an empty element) over a row of steps: drag or tap anywhere on it, or use the
+ * arrow keys once it has focus. setSteps(n, i) lays out n steps and puts the thumb on step i;
+ * describe(thumb, text) writes the thumb's label and what a screen reader hears. onInput(i) runs
+ * whenever the player moves it to another step.
+ */
+export function setupSlider(el, { onInput } = {}) {
+  const thumb = document.createElement('span');
+  thumb.className = 'slider-thumb';
+  thumb.setAttribute('aria-hidden', 'true');
+  el.append(thumb);
+  el.setAttribute('role', 'slider');
+  el.tabIndex = 0;
+  let count = 0;
+  let value = 0;
+  let dragging = null;
+
+  function place(i) {
+    value = i;
+    el.style.setProperty('--at', count > 1 ? i / (count - 1) : 0.5);
+    el.setAttribute('aria-valuenow', String(i));
+  }
+
+  function move(i) {
+    if (!count) return;
+    const next = Math.max(0, Math.min(count - 1, i));
+    if (next === value) return;
+    place(next);
+    onInput?.(next);
+  }
+
+  function stepAt(x) {
+    const box = el.getBoundingClientRect();
+    const w = parseFloat(getComputedStyle(el).getPropertyValue('--thumb-w')) || 48;
+    const span = box.width - 8 - w;
+    const at = span > 0 ? (x - box.left - 4 - w / 2) / span : 0.5;
+    return Math.round(Math.max(0, Math.min(1, at)) * (count - 1));
+  }
+
+  el.addEventListener('pointerdown', (event) => {
+    if (!count || el.getAttribute('aria-disabled') === 'true' || event.button > 0) return;
+    dragging = event.pointerId;
+    el.setPointerCapture?.(event.pointerId);
+    move(stepAt(event.clientX));
+  });
+  el.addEventListener('pointermove', (event) => {
+    if (event.pointerId === dragging) move(stepAt(event.clientX));
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    el.addEventListener(type, (event) => {
+      if (event.pointerId === dragging) dragging = null;
+    });
+  }
+  el.addEventListener('keydown', (event) => {
+    if (!count || el.getAttribute('aria-disabled') === 'true') return;
+    const k = event.key;
+    const to =
+      k === 'ArrowLeft' || k === 'ArrowDown' ? value - 1
+      : k === 'ArrowRight' || k === 'ArrowUp' ? value + 1
+      : k === 'Home' ? 0
+      : k === 'End' ? count - 1
+      : null;
+    if (to === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    move(to);
+  });
+
+  return {
+    setSteps(n, i = 0) {
+      count = n;
+      el.querySelectorAll('.slider-step').forEach((s) => s.remove());
+      for (let k = 0; k < n; k++) {
+        const step = document.createElement('span');
+        step.className = 'slider-step';
+        step.style.setProperty('--at', n > 1 ? k / (n - 1) : 0.5);
+        el.insertBefore(step, thumb);
+      }
+      el.setAttribute('aria-valuemin', '0');
+      el.setAttribute('aria-valuemax', String(Math.max(0, n - 1)));
+      el.setAttribute('aria-disabled', String(!n));
+      if (!n) thumb.textContent = '';
+      place(Math.max(0, Math.min(n - 1, i)));
+    },
+    describe(label, text) {
+      thumb.textContent = label;
+      el.setAttribute('aria-valuetext', text);
+    },
+    value: () => value,
+  };
+}
+
 /** Board sizing fallback for browsers without container query units. */
 export function fitBoard(wrap, board) {
   if (window.CSS && CSS.supports('width', '1cqmin')) return;

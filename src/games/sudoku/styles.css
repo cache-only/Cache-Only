@@ -1,5 +1,6 @@
 /* Sudoku: the board only. Rounded-square cells grouped by box; everything around the board
-   (header, moves, number pad, menu, sheets) comes from /styles.css. */
+   (header, moves, number pad, slider, menu, sheets) comes from /styles.css. This file only says
+   where the difficulty chooser sits. */
 
 .sudoku-board {
   display: grid;
@@ -69,28 +70,14 @@
   color: var(--on-ink);
 }
 
-/* A conflict: the digit at full white with a bar under it (no colour to lean on). */
-.cell.conflict .v {
-  color: var(--ink);
-}
-
-.cell.conflict::after {
-  content: "";
-  position: absolute;
-  left: 26%;
-  right: 26%;
-  bottom: 12%;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--ink);
-}
-
-.cell.selected.conflict .v {
-  color: var(--on-ink);
-}
-
-.cell.selected.conflict::after {
-  background: var(--on-ink);
+/* A wrong number: shown for a moment in red, the one colour on the board, then it blurs out
+   slowly, the way the install page's pixels do (sudoku.js), and the cell is empty again. Red on
+   the selection's white too. */
+.cell.wrong .v,
+.cell.selected.wrong .v {
+  --t-blur: var(--t-twinkle);
+  font-weight: 700;
+  color: #ff453a;
 }
 
 .notes {
@@ -125,7 +112,77 @@
   color: var(--on-ink);
 }
 
-.board.masked .cell .v,
-.board.masked .cell .notes {
+/* Before a puzzle: each square that will hold a given shows its number already, as a ghost
+   blurred past reading. The difficulty slider adds them and takes them away, and they blur in and
+   out the way the install page's pixels do (--t-twinkle). */
+.ghost {
+  --t-blur: var(--t-twinkle);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The number, set exactly as a given's, with the blur at rest on it so blurring in and out stacks
+   on top. Grey while out of focus, like the logo's pixels before they arrive. */
+.ghost::before {
+  content: attr(data-d);
+  font: 800 6.2cqmin/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  filter: blur(var(--ghost-blur, 1.4cqmin));
+}
+
+.ghost.on {
+  opacity: 1;
+}
+
+/* The puzzle starting: each ghost comes into focus where it is, grey to white, and its square
+   lifts to a given's grey with it (sudoku.js staggers them). The givens under them stay hidden
+   until every ghost is sharp, then take over with the same look. The selection shows at once. */
+.sudoku-board.is-revealing .ghost::before {
+  color: var(--ink);
+  filter: blur(0);
+  transition: filter var(--t-twinkle) var(--ease), color var(--t-twinkle) var(--ease);
+  transition-delay: inherit;
+}
+
+.sudoku-board.is-revealing .cell.given .v {
   visibility: hidden;
+}
+
+.sudoku-board.is-revealing .cell.given {
+  transition: background-color var(--t-twinkle) var(--ease);
+}
+
+/* The difficulty chooser takes the moves' place and their room: its name and best time, the
+   slider under it, and Start at the foot, level with the bottom row of keys. */
+.sudoku-page .controls {
+  position: relative;
+}
+
+.chooser {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chooser-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.chooser-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: auto;
 }

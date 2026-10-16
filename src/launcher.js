@@ -348,19 +348,6 @@ document.body.addEventListener('wheel', (event) => {
   event.preventDefault();
 }, { passive: false });
 
-// The left edge blur in landscape stays out of the way at rest, so the suggested game's art is seen
-// right up to the edge, and slides in with whatever scrolls under it. (The top one in portrait is
-// always there.)
-const startEdges = document.querySelectorAll('.edge-left');
-function trackScroll() {
-  const scrolled = `${Math.round(Math.max(window.scrollY, document.body.scrollLeft, 0))}px`;
-  for (const edge of startEdges) edge.style.setProperty('--scrolled', scrolled);
-}
-window.addEventListener('scroll', trackScroll, { passive: true });
-document.body.addEventListener('scroll', trackScroll, { passive: true });
-window.addEventListener('resize', trackScroll);
-trackScroll();
-
 // Opening a game from the launcher counts towards the suggestion.
 document.addEventListener('click', (event) => {
   const link = event.target.closest('a[data-play]');

@@ -9,8 +9,8 @@
    Nothing is a pill or a circle: every button starts from the icon button's 8.
       8  every button and control: icon buttons (their 9 x 9 pixel icon fills them, its corner
          pixels dark), buttons, small buttons, number keys, side-menu rows, the segmented
-         control, the switch track, fields; and the rows and cards that sit beside them
-      4  a chip inset 4 inside a control: the selected segment (8 - 4)
+         control, the slider, the switch track, fields; and the rows and cards that sit beside them
+      4  a chip inset 4 inside a control: the selected segment and the slider's thumb (8 - 4)
       5  the switch knob, inset 3 (8 - 3)
      24  a sheet, holding its close button and buttons inset 16 (8 + 16)
      18  a launcher game tile (8 art + 10), and the suggested game's panel (8 button + 10)
@@ -75,6 +75,16 @@
    callouts outside of fields, no rubber-banding. app.js blocks the zoom gestures iOS still allows. */
 * {
   touch-action: pan-x pan-y;
+}
+
+/* No scrollbar indicators anywhere: the page, the landscape strip, sheets and menus all still
+   scroll, without the bar. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
 
 html {
@@ -427,9 +437,43 @@ button {
   opacity: 0.4;
 }
 
-.keypad.is-notes .key {
+.keypad.is-notes .key:not(.key-tool) {
   font: 500 19px/1 var(--font-mono);
   color: var(--muted);
+}
+
+/* Tools in the keypad (Sudoku's Notes and Erase): a first row of two keys over the numbers, each a
+   number key's card holding its icon (a smooth shape) and name. A mode that is on (Notes) is solid
+   white, like a pressed icon button. The keypad turns six columns wide: a number takes two, a tool
+   three. */
+.keypad.has-tools {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.keypad.has-tools > .key {
+  grid-column: span 2;
+}
+
+.keypad.has-tools > .key-tool {
+  grid-column: span 3;
+}
+
+.key-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 600 15px/1 var(--font-sans);
+}
+
+.key-tool .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.key-tool[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 @media (max-height: 740px) {
@@ -504,6 +548,60 @@ button {
   text-overflow: ellipsis;
 }
 
+/* Slider: one of a row of steps (Sudoku's difficulty), in the segmented control's box (48 tall,
+   radius 8). Each step is a pixel on the track; the thumb is the selected segment's chip (radius
+   4, inset 4) and glides from step to step with the value written in it. A drag anywhere on the
+   track moves it, and so does a tap. setupSlider() in shared/ui.js builds and runs it. */
+.slider {
+  --thumb-w: 48px;
+  position: relative;
+  display: block;
+  height: 48px;
+  border-radius: var(--r-btn);
+  background: var(--card);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.slider[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Thumb and steps sit on the same line: a step's centre is where the thumb's centre stops. */
+.slider-step,
+.slider-thumb {
+  position: absolute;
+  left: calc(4px + var(--at, 0) * (100% - 8px - var(--thumb-w)));
+}
+
+.slider-step {
+  top: 21px;
+  width: 6px;
+  height: 6px;
+  margin-left: calc(var(--thumb-w) / 2 - 3px);
+  border-radius: var(--r-pixel);
+  background: var(--quiet);
+}
+
+.slider-thumb {
+  top: 4px;
+  display: grid;
+  place-items: center;
+  width: var(--thumb-w);
+  height: 40px;
+  border-radius: var(--r-chip);
+  background: var(--ink);
+  color: var(--on-ink);
+  font: 650 15px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  transition: left 0.18s var(--ease);
+}
+
+.slider-thumb:empty {
+  display: none;
+}
+
 /* Switch: track 8, knob 5 inset 3. */
 .switch {
   appearance: none;
@@ -576,15 +674,6 @@ button {
   padding: 0 18px;
   font: 500 16px/1 var(--font-sans);
   letter-spacing: 0;
-}
-
-/* A code to copy (Sudoku's share string): the one place text can be selected outside a field. */
-.field.is-code {
-  min-height: 0;
-  word-break: break-all;
-  user-select: all;
-  -webkit-user-select: all;
-  -webkit-touch-callout: default;
 }
 
 /* ---------- Surfaces ---------- */
@@ -965,6 +1054,125 @@ button {
   height: 18px;
 }
 
+/* Lives (Sudoku's hearts): smooth hearts, full while a life is left and hollow once it's spent.
+   In portrait the row sits in the middle of the header (.bar-center); in landscape it runs down
+   the right edge under the stats, like a meter. A life lost breaks: the heart cracks down the
+   middle and its halves part, then fall away to either side, turning and blurring out, while the
+   hollow heart blurs in where it was. */
+.lives {
+  display: flex;
+  gap: 6px;
+}
+
+.life {
+  --life: 24px;
+  display: grid;
+  grid-template: var(--life) / var(--life);
+}
+
+/* Sized outright: an svg of no size of its own falls back to 150 tall. */
+.life > *,
+.life-half > .icon {
+  display: block;
+  grid-area: 1 / 1;
+  width: var(--life);
+  height: var(--life);
+}
+
+.life-empty {
+  color: var(--muted);
+  opacity: 0;
+}
+
+.life.is-used .life-empty {
+  opacity: 1;
+}
+
+.life.is-used .life-half {
+  opacity: 0;
+}
+
+/* The crack: one zigzag from the notch down to the point, each half's heart clipped to its side
+   of it. The half moves and blurs around its clipped heart, so the blur softens the crack too. */
+.life-half {
+  transform-origin: 50% 86%;
+  pointer-events: none;
+}
+
+.life-half.is-left > .icon {
+  clip-path: polygon(0 0, 50% 0, 50% 27%, 44% 42%, 55% 55%, 46% 69%, 50% 86%, 50% 100%, 0 100%);
+}
+
+.life-half.is-right > .icon {
+  clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 50% 86%, 46% 69%, 55% 55%, 44% 42%, 50% 27%);
+}
+
+.life.is-breaking .life-half.is-left {
+  animation: life-fall-left 0.8s both;
+}
+
+.life.is-breaking .life-half.is-right {
+  animation: life-fall-right 0.8s both;
+}
+
+.life.is-breaking .life-empty {
+  animation: blur-in var(--t-blur) var(--ease) 0.3s both;
+}
+
+/* Parting at the point, quick; then falling, slow to start like a weight. */
+@keyframes life-fall-left {
+  0% {
+    transform: none;
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  22% {
+    transform: translateX(-10%) rotate(-12deg);
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
+  }
+  100% {
+    transform: translate(-50%, 100%) rotate(-36deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+@keyframes life-fall-right {
+  0% {
+    transform: none;
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  22% {
+    transform: translateX(10%) rotate(12deg);
+    opacity: 1;
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
+  }
+  100% {
+    transform: translate(50%, 100%) rotate(36deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+/* Portrait: something in the middle of the header row, between the home button and the stats
+   (Sudoku's hearts). Landscape: it joins the stats down the right edge. */
+@media (orientation: portrait) {
+  .bar-center {
+    position: absolute;
+    top: var(--bar-top);
+    left: 50%;
+    height: var(--tap);
+    align-items: center;
+    transform: translateX(-50%);
+  }
+}
+
 /* An icon with two states: .full (a solid shape) and .empty (its outline, a pixel icon of its
    own such as #i-shell-empty). Put .is-used on the svg to show the outline. */
 .slot .empty {
@@ -1017,7 +1225,8 @@ button {
     flex-direction: column;
     align-items: flex-end;
   }
-  .game-page .meter {
+  .game-page .meter,
+  .game-page .lives {
     flex-direction: column;
   }
 }
@@ -1105,12 +1314,16 @@ button {
     gap: 32px;
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + var(--side-w)) max(var(--safe-b), 16px) calc(var(--safe-l) + var(--side-w));
   }
+  /* As tall as the play area (or 60% of its width, if less), as a width WebKit can lay out: a
+     width taken from aspect-ratio and a stretched height came out 0 there (a size container's
+     content counts for nothing), and the board vanished in landscape on iPhones. */
   .play > .board-wrap {
-    flex: 0 1 auto;
-    align-self: stretch;
+    --play-h: calc(100vh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
+    --play-h: calc(100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
+    flex: none;
+    width: min(60%, var(--play-h));
     height: auto;
     aspect-ratio: 1;
-    max-width: 60%;
     place-items: center;
   }
   .controls {
@@ -1252,7 +1465,7 @@ dialog.sheet::backdrop {
 }
 
 /* On a glass sheet, flat surfaces turn to glass too, so nothing on it reads as a solid block. */
-dialog.sheet :is(.segmented, .toggle-row, .card, .facts, .field) {
+dialog.sheet :is(.segmented, .slider, .toggle-row, .card, .facts, .field) {
   background: var(--glass);
 }
 
@@ -1493,9 +1706,10 @@ dialog.sheet[open] {
 
 /* The suggested game's square: the logo over its art, the eyebrow and panel at its foot. As wide
    as the page in portrait, and in landscape the two-tile column, which is as tall as the screen
-   allows. */
+   allows. It holds no box of its own, in either orientation, so the art always measures from
+   .home: a containing block that changed with a rotation made iOS lay the art out against the
+   old one for a frame, and it jumped into place. */
 .lead {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1527,19 +1741,21 @@ dialog.sheet[open] {
 }
 
 /* The suggested game's board: a square that runs out to the screen's edges and never past them,
-   so all of it is seen. In portrait it starts at the top of the screen, as wide as the page (16
-   past .lead on each side), and fades out toward the panel; landscape is below. */
+   so all of it is seen. In portrait it starts right under the status bar, as wide as the page
+   (.home, through its safe-area padding), and fades out toward the panel; landscape is below.
+   It keeps to the safe area at the top like the logo over it: rotating into portrait, iOS lays
+   the page out under the status bar for a moment before it moves it below, and art drawn from
+   the page's very top went up with it and then dropped into place. */
 .hero {
-  --hero-fade: to bottom;
   position: absolute;
-  top: calc(-1 * var(--safe-t));
-  left: calc(-16px - var(--safe-l));
-  right: calc(-16px - var(--safe-r));
+  top: var(--safe-t);
+  left: 0;
+  right: 0;
   z-index: 0;
   aspect-ratio: 1;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
-  mask-image: linear-gradient(var(--hero-fade), #000 55%, transparent 92%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 92%);
   pointer-events: none;
 }
 
@@ -1888,11 +2104,9 @@ dialog.sheet[open] {
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px + 44px + 12px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
   }
   /* The column is as tall as two tiles and their gap, so it is square; a note under it takes its
-     room from the logo. No top blur here, so the logo centres in the whole of it. It holds no box
-     of its own, so the art measures from the strip. */
+     room from the logo. No top blur here, so the logo centres in the whole of it. */
   .lead {
     grid-area: 1 / 1;
-    position: static;
     aspect-ratio: auto;
     min-height: 0;
   }
@@ -1910,19 +2124,16 @@ dialog.sheet[open] {
   /* The art runs from the screen's left edge (through the safe area) to the column's far gutter,
      as a square centred on the screen's height, so it fills the height and a notch's wider safe
      area only spills it a little past the top and bottom. It fades out to the right, toward the
-     tiles, the way it fades toward the panel in portrait. */
+     tiles, the way it fades toward the panel in portrait, and to the left, to dark under the left
+     edge's blur. */
   .hero {
-    --hero-fade: to right;
     --hero-side: calc(var(--safe-l) + var(--lead) + 32px);
     top: calc(50% - var(--hero-side) / 2);
     left: 0;
     right: auto;
     width: var(--hero-side);
-  }
-  /* The left edge blur stays out of the way at rest and slides in with the strip, like the top
-     one in portrait. */
-  .launcher[data-view="home"] .edge-left {
-    transform: translateX(calc(min(var(--scrolled, 0px), var(--safe-l) + 16px) - var(--safe-l) - 16px));
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 calc(var(--safe-l) + 16px), #000 55%, transparent 92%);
+    mask-image: linear-gradient(to right, transparent, #000 calc(var(--safe-l) + 16px), #000 55%, transparent 92%);
   }
   .tile-grid {
     grid-template-columns: none;

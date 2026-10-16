@@ -39,8 +39,9 @@ const audio = createAudio();
 
 // test: what the test range was last set to. map: the map of yours last picked. kind: the
 // enemy the map editor places. mirror: the editor paints both flanks at once. scale: the size
-// (SCALES) last picked for a map, which a new map starts at.
-const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, map: null, kind: ENEMY_KINDS[0], mirror: false, scale: SCALE, ...(store.load('prefs', 1) || {}) };
+// (SCALES) last picked for a map, which a new map starts at. follow: a stick dragged past its rim
+// comes along. autoAim: a tap on the aim stick fires at the nearest enemy in sight.
+const prefs = { test: { kind: ENEMY_KINDS.at(-1), count: 1 }, map: null, kind: ENEMY_KINDS[0], mirror: false, scale: SCALE, follow: true, autoAim: true, ...(store.load('prefs', 1) || {}) };
 if (!SCALES.includes(prefs.scale)) prefs.scale = SCALE;
 // Kinds since retired: Violet became Night Pink, Hornet Night Yellow.
 const RETIRED = { violet: 'pinkNight', hornet: 'yellowNight' };
@@ -201,9 +202,10 @@ function aimAtNearest() {
 }
 
 // Touch: Brawl Stars-style floating sticks over the bottom half of the screen. A thumb anywhere
-// on its left half drives, with the stick centred where it lands. On its right half, drag to aim
-// and let go to fire, drag back to the middle to cancel, or just tap to fire at the nearest tank
-// in sight (or, with none close, where you last aimed).
+// on its left half drives, with the stick centred where it lands; dragged past the rim, the stick
+// comes along under it. On its right half, drag to aim and let go to fire, drag back to the middle
+// to cancel, or just tap to fire at the nearest tank in sight (or, with none close, where you last
+// aimed). The side menu can switch off both the dragging and the tap's aim (prefs).
 // The round button (right edge in landscape, between the sticks in portrait) lays a mine.
 //
 // The sticks follow touches by identifier, and every touch event carries the full list of
@@ -218,30 +220,43 @@ const AIM_DEAD = 0.25; // share of the stick's reach: inside it, the aim stick h
 function makeStick(el, { start = () => {}, move, end }) {
   const knob = el.querySelector('.knob');
   const stick = { id: null, mag: 0 };
-  let ox = 0;
+  let ox = 0; // the stick's middle, client px
   let oy = 0;
+  let box = null; // the pads' box, from when the thumb landed
   const reach = () => el.offsetWidth / 2 || 56;
   const setKnob = (dx, dy) => {
     knob.style.setProperty('--kx', `${dx}px`);
     knob.style.setProperty('--ky', `${dy}px`);
   };
+  const place = () => {
+    el.style.left = `${ox - box.left}px`;
+    el.style.top = `${oy - box.top}px`;
+  };
   stick.track = (touch) => {
     const r = reach();
-    const dx = touch.clientX - ox;
-    const dy = touch.clientY - oy;
-    const len = Math.hypot(dx, dy);
+    let dx = touch.clientX - ox;
+    let dy = touch.clientY - oy;
+    let len = Math.hypot(dx, dy);
+    if (len > r && prefs.follow) {
+      // Dragged past the rim: the stick follows, keeping the thumb on its rim.
+      ox = touch.clientX - (dx * r) / len;
+      oy = touch.clientY - (dy * r) / len;
+      place();
+      dx = touch.clientX - ox;
+      dy = touch.clientY - oy;
+      len = r;
+    }
     const k = len > r ? r / len : 1;
     setKnob(dx * k, dy * k);
     stick.mag = Math.min(1, len / r);
     move((dx * k) / r, (dy * k) / r, stick.mag);
   };
   stick.begin = (touch, quiet) => {
-    const box = pads.getBoundingClientRect();
+    box = pads.getBoundingClientRect();
     stick.id = touch.identifier;
     ox = touch.clientX;
     oy = touch.clientY;
-    el.style.left = `${ox - box.left}px`;
-    el.style.top = `${oy - box.top}px`;
+    place();
     el.classList.add('active');
     start(quiet);
     stick.track(touch);
@@ -271,12 +286,26 @@ const moveStick = makeStick($('moveStick'), {
 const aimEl = $('aimStick');
 let aimed = false; // the aim stick has left its middle since the thumb landed
 let aimQuiet = false; // the thumb that started the mission: tapping with it doesn't fire
+let knobShown = null; // the aim knob's turn as shown, whole degrees (null: at rest)
+
+/**
+ * Turns the aim stick's shell to `angle` (clockwise from up, radians; null: back to rest),
+ * touching its style only when the turn shown changes. PERFORMANCE: while a tap would fire,
+ * the shell follows the enemy on every frame, and each change restyles the shining knob.
+ */
+function turnKnob(angle) {
+  const deg = angle === null ? null : Math.round((angle * 180) / Math.PI);
+  if (deg === knobShown) return;
+  knobShown = deg;
+  if (deg === null) aimEl.style.removeProperty('--ka');
+  else aimEl.style.setProperty('--ka', `${deg}deg`);
+}
 
 const aimStick = makeStick(aimEl, {
   start(quiet) {
     aimed = false;
     aimQuiet = quiet;
-    aimEl.style.removeProperty('--ka');
+    turnKnob(null);
   },
   move(x, y, mag) {
     if (mag < AIM_DEAD) {
@@ -287,7 +316,7 @@ const aimStick = makeStick(aimEl, {
     aimed = true;
     aimEl.classList.remove('cancel');
     // The knob's shell points along the aim (clockwise from up, as CSS rotates).
-    aimEl.style.setProperty('--ka', `${Math.atan2(x, -y)}rad`);
+    turnKnob(Math.atan2(x, -y));
     const v = renderer.vecToWorld(x, y);
     input.aimDir = Math.atan2(v.y, v.x);
     input.aimPoint = null;
@@ -295,12 +324,12 @@ const aimStick = makeStick(aimEl, {
   },
   end(cancelled) {
     input.guide = false;
-    aimEl.style.removeProperty('--ka');
+    turnKnob(null);
     if (cancelled || phase !== 'play') return;
     if (aimStick.mag >= AIM_DEAD) {
       queueShot();
     } else if (!aimed && !aimQuiet) {
-      aimAtNearest();
+      if (prefs.autoAim) aimAtNearest();
       queueShot();
     }
     // Otherwise it was aimed, then brought back to the middle: cancelled.
@@ -309,7 +338,7 @@ const aimStick = makeStick(aimEl, {
 
 /** The enemy a tap on the aim stick would fire at right now, or null. */
 function tapAim() {
-  if (!touchUI || phase !== 'play') return null;
+  if (!touchUI || !prefs.autoAim || phase !== 'play') return null;
   // A thumb that has dragged aims by hand, and the one that started the mission fires nothing.
   if (aimStick.id !== null && (aimed || aimQuiet)) return null;
   return tapTarget(world);
@@ -323,7 +352,7 @@ function showTapAim() {
   const target = tapAim();
   aimEl.classList.toggle('ready', !!target);
   if (!target) {
-    if (!(aimStick.id !== null && aimed)) aimEl.style.removeProperty('--ka');
+    if (!(aimStick.id !== null && aimed)) turnKnob(null);
     return;
   }
   const p = world.tanks[0];
@@ -332,7 +361,7 @@ function showTapAim() {
   input.aimDir = Math.atan2(dy, dx);
   input.aimPoint = null;
   const v = renderer.vecToScreen(dx, dy);
-  aimEl.style.setProperty('--ka', `${Math.atan2(v.x, -v.y)}rad`);
+  turnKnob(Math.atan2(v.x, -v.y));
 }
 
 const sticks = [moveStick, aimStick];
@@ -796,8 +825,11 @@ function onEvents(events) {
       case 'blast':
         audio.play(e.cause === 'bomb' ? 'impact' : 'blast');
         break;
-      case 'bounce':
       case 'pop':
+        // A shot burned up in a laser's beam sizzles; one that dies on a wall pops.
+        audio.play(e.cause === 'laser' ? 'burn' : 'pop');
+        break;
+      case 'bounce':
       case 'clash':
       case 'crate':
       case 'destroyed':
@@ -1402,6 +1434,7 @@ function hold() {
   else if (custom) quitLabel = custom.from === 'edit' ? 'tanks.backToEditor' : 'tanks.backToMaps';
   $('quitLabel').textContent = t(quitLabel);
   for (const el of document.querySelectorAll('.edit-item')) el.hidden = phase !== 'edit';
+  for (const el of document.querySelectorAll('.pad-item')) el.hidden = phase === 'edit' || !touchUI;
 }
 
 function release() {
@@ -1495,6 +1528,16 @@ $('deleteBtn').addEventListener('click', deleteMap);
 $('mirrorToggle').checked = prefs.mirror;
 $('mirrorToggle').addEventListener('change', (event) => {
   prefs.mirror = event.target.checked;
+  savePrefs();
+});
+$('followToggle').checked = prefs.follow;
+$('followToggle').addEventListener('change', (event) => {
+  prefs.follow = event.target.checked;
+  savePrefs();
+});
+$('autoAimToggle').checked = prefs.autoAim;
+$('autoAimToggle').addEventListener('change', (event) => {
+  prefs.autoAim = event.target.checked;
   savePrefs();
 });
 $('resumeBtn').addEventListener('click', () => menu.close());

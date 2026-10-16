@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { LEVELS, analyze, generate } from '../src/games/sudoku/generator.js';
-
-const PER_LEVEL = 200;
+import { LEVELS, MAX_GIVENS, MIN_GIVENS, ladder, levelOf, rungs } from '../src/games/sudoku/generator.js';
 
 // Independent, deliberately plain solver so the generator isn't checked with its own code.
 function countSolutionsNaive(grid, limit = 2) {
@@ -61,56 +59,56 @@ function isCompleteValid(grid) {
   return true;
 }
 
-for (const [level, [min, max]] of Object.entries(LEVELS)) {
-  test(`${level}: ${PER_LEVEL} generated puzzles each have exactly one solution`, () => {
-    for (let n = 0; n < PER_LEVEL; n++) {
-      const seed = (n * 2654435761 + level.length) >>> 0;
-      const { puzzle, solution, givens } = generate(level, seed);
-      const p = Array.from(puzzle, Number);
-      const s = Array.from(solution, Number);
+const LADDERS = 200;
 
+test(`${LADDERS} ladders: every difficulty has a rung, rungs nest, and each one has exactly one solution`, () => {
+  for (let n = 0; n < LADDERS; n++) {
+    const seed = (n * 2654435761 + 7) >>> 0;
+    const lad = ladder(seed);
+    const s = Array.from(lad.solution, Number);
+    assert.ok(isCompleteValid(s), `seed ${seed}: solution is not a valid grid`);
+
+    const list = rungs(lad);
+    assert.ok(list.length >= 4, `seed ${seed}: only ${list.length} rungs`);
+    let prev = null;
+    for (const { givens, puzzle } of list) {
+      const p = Array.from(puzzle, Number);
       assert.equal(puzzle.length, 81);
       assert.equal(p.filter(Boolean).length, givens);
-      assert.ok(givens >= min && givens <= max, `${level} seed ${seed}: ${givens} givens outside ${min}-${max}`);
-      assert.ok(isCompleteValid(s), `seed ${seed}: solution is not a valid grid`);
+      assert.ok(givens >= MIN_GIVENS && givens <= MAX_GIVENS, `seed ${seed}: ${givens} givens off the slider`);
       p.forEach((v, i) => v && assert.equal(v, s[i], `seed ${seed}: given disagrees with solution`));
       // Removals are symmetric pairs: cell i is empty iff cell 80 - i is.
       p.forEach((v, i) => assert.equal(!v, !p[80 - i], `seed ${seed}: not symmetric at ${i}`));
-      assert.equal(countSolutionsNaive(p), 1, `${level} seed ${seed} is not unique`);
+      if (prev) {
+        // Easiest first: each rung keeps only givens the one before it had, one pair fewer.
+        assert.ok(givens < prev.givens && prev.givens - givens <= 2, `seed ${seed}: ${prev.givens} -> ${givens}`);
+        p.forEach((v, i) => v && assert.ok(prev.p[i], `seed ${seed}: rung ${givens} gives a cell rung ${prev.givens} hid`));
+      }
+      prev = { givens, p };
     }
-  });
-}
 
-test('a seed reproduces the same puzzle', () => {
-  for (const level of Object.keys(LEVELS)) {
-    assert.deepEqual(generate(level, 12345), generate(level, 12345));
+    // A puzzle whose givens hold a unique puzzle's is unique too, so the sparsest rung of each
+    // difficulty vouches for every rung above it. Checked with the independent solver.
+    for (const [level, [min, max]] of Object.entries(LEVELS)) {
+      const mine = list.filter((r) => r.givens >= min && r.givens <= max);
+      assert.ok(mine.length, `seed ${seed}: no ${level} rung`);
+      for (const r of mine) assert.equal(levelOf(r.givens), level);
+      const hardest = Array.from(mine.at(-1).puzzle, Number);
+      assert.equal(countSolutionsNaive(hardest), 1, `${level} seed ${seed} is not unique`);
+    }
   }
-  assert.notEqual(generate('medium', 1).puzzle, generate('medium', 2).puzzle);
 });
 
-test('analyze accepts a unique puzzle and rejects bad ones', () => {
-  const { puzzle, solution } = generate('hard', 99);
-  const ok = analyze(puzzle);
-  assert.equal(ok.solution, solution);
+test('the difficulty ranges meet, so every count on the slider has one', () => {
+  for (let g = MIN_GIVENS; g <= MAX_GIVENS; g++) {
+    const owners = Object.values(LEVELS).filter(([min, max]) => g >= min && g <= max);
+    assert.equal(owners.length, 1, `${g} givens`);
+  }
+  assert.equal(levelOf(MAX_GIVENS + 5), 'easy');
+  assert.equal(levelOf(MIN_GIVENS - 5), 'expert');
+});
 
-  assert.equal(analyze(puzzle.replace(/0/g, '.')).solution, solution, 'dots mean empty');
-  assert.equal(analyze(puzzle.match(/.{9}/g).join('\n')).solution, solution, 'whitespace is ignored');
-  assert.deepEqual(analyze(puzzle.slice(0, 80)), { error: 'length', n: 80 });
-  assert.deepEqual(analyze(puzzle.slice(0, 80) + 'x'), { error: 'chars' });
-  assert.deepEqual(analyze('0'.repeat(81)), { error: 'multiple' });
-
-  // Two 5s in the first row.
-  assert.deepEqual(analyze('55' + '0'.repeat(79)), { error: 'conflict' });
-
-  // Remove givens from a unique puzzle until it has several solutions.
-  const loose = Array.from(puzzle);
-  for (let i = 0; i < 81 && analyze(loose.join('')).error !== 'multiple'; i++) loose[i] = '0';
-  assert.equal(analyze(loose.join('')).error, 'multiple');
-
-  // No conflicting givens but no solution: row 0 needs a 9 in its last cell,
-  // and column 8 already has a 9 further down.
-  const dead = Array(81).fill(0);
-  [1, 2, 3, 4, 5, 6, 7, 8].forEach((d, i) => (dead[i] = d));
-  dead[9 * 4 + 8] = 9;
-  assert.deepEqual(analyze(dead.join('')), { error: 'none' });
+test('a seed reproduces the same ladder', () => {
+  assert.deepEqual(ladder(12345), ladder(12345));
+  assert.notEqual(ladder(1).solution, ladder(2).solution);
 });

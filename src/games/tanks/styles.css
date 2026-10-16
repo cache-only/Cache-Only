@@ -15,7 +15,6 @@
   --tk-crate-dark: #464b58;
   --tk-hole: #111316; /* the bottom of a pit, before the shadow its near edge throws in */
   --tk-track: rgba(0, 0, 0, 0.38);
-  --tk-scorch: rgba(0, 0, 0, 0.5);
   --tk-shell: #f1ede3;
   --tk-aim: #f1ede3;
   --tk-ink: #0b0c0e;
@@ -87,6 +86,16 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   cursor: crosshair;
+}
+
+/* PERFORMANCE: with WebGL, everything that moves is drawn on this canvas, laid over the arena's
+   (render.js, gl.js), which then holds only the floor. Every touch goes through it to the arena. */
+.arena-gl {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: block;
+  pointer-events: none;
 }
 
 /* Past the two cells of wall round the field, the screen's edges blur the wall (deep): in portrait
@@ -228,11 +237,12 @@
 
 /* The mine button has the sticks' rim and fill but a button's corners, with a solid mine in the
    middle that turns hollow while both your mines are down (tanks.js sets .is-used on the icon).
-   Landscape: on the right edge, halfway down, in line with the aim stick's resting place. */
+   Landscape: on the right edge, in line with the aim stick's resting place, just above the
+   screen's middle, where the sticks start (tanks.js), so an aiming thumb never lands on it. */
 .mine-btn {
   position: absolute;
   left: calc(100% - var(--safe-r) - var(--pad-edge) - var(--stick) / 2);
-  top: calc(50% - var(--safe-b) / 2);
+  top: calc(50% - var(--mine-btn) / 2 - 8px);
   display: grid;
   place-items: center;
   width: var(--mine-btn);

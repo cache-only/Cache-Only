@@ -1,11 +1,10 @@
-// Generation and validation off the main thread, so Expert never freezes the UI.
-import { analyze, generate } from './generator.js';
+// Generation off the main thread, so a slow phone never freezes the UI.
+import { ladder } from './generator.js';
 
 self.onmessage = (event) => {
-  const { id, type } = event.data || {};
+  const { id, seed } = event.data || {};
   try {
-    const result = type === 'generate' ? generate(event.data.difficulty, event.data.seed) : analyze(event.data.text);
-    self.postMessage({ id, result });
+    self.postMessage({ id, result: ladder(seed) });
   } catch (err) {
     self.postMessage({ id, error: String(err && err.message ? err.message : err) });
   }

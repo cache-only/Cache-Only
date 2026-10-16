@@ -389,7 +389,7 @@ function burn(s, t, angle, events) {
   for (const b of s.bullets) {
     if (segmentHit(x0, y0, x1, y1, b.x, b.y, SHELL_R + LASER_W) < 0) continue;
     b.dead = true;
-    events.push({ type: 'pop', x: b.x, y: b.y, weapon: b.weapon });
+    events.push({ type: 'pop', x: b.x, y: b.y, weapon: b.weapon, cause: 'laser' });
   }
   s.bullets = s.bullets.filter((b) => !b.dead);
   for (const m of s.mines) if (segmentHit(x0, y0, x1, y1, m.x, m.y, MINE_R + LASER_W) >= 0) m.fuse = Math.min(m.fuse, 0);
@@ -533,8 +533,9 @@ function updateBullets(s, dt, events) {
     if (b.weapon === 'missile') steerMissile(s, b, dt);
     advance(s.grid, b, Math.hypot(b.vx, b.vy) * dt, (q, hit) => {
       // The face it met, as the normal pointing out of it (both axes at a corner): the
-      // velocity is already reflected, so it points the way the shell now leaves.
-      const at = { x: q.x, y: q.y, nx: hit.x ? Math.sign(q.vx) : 0, ny: hit.y ? Math.sign(q.vy) : 0, weapon: q.weapon };
+      // velocity is already reflected, so it points the way the shell now leaves (the renderer
+      // tells a glancing hit from a square one by it).
+      const at = { x: q.x, y: q.y, nx: hit.x ? Math.sign(q.vx) : 0, ny: hit.y ? Math.sign(q.vy) : 0, vx: q.vx, vy: q.vy, weapon: q.weapon };
       if (q.left <= 0) {
         q.dead = true;
         events.push({ type: 'pop', ...at });

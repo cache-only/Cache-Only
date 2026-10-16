@@ -115,6 +115,11 @@ export function createAudio() {
       tone({ type: 'square', from: 184, to: 176, dur: d, vol: 0.025 });
       hiss({ dur: d, vol: 0.09, type: 'bandpass', from: 3200, to: 2400, q: 2 });
     },
+    burn() {
+      // A shot burned up in a laser's beam: a short sizzle in the beam's own crackle.
+      hiss({ dur: 0.2, vol: 0.2, type: 'bandpass', from: 3400, to: 1600, q: 2 });
+      tone({ type: 'sawtooth', from: 180, to: 90, dur: 0.08, vol: 0.04 });
+    },
     minigun() {
       // One round: a short dry crack, light enough to repeat ten times a second.
       hiss({ dur: 0.04, vol: 0.14, from: 2600, to: 1200, q: 1.2 });

@@ -161,6 +161,11 @@ the plates at the front and back of the hull have rounded corners.
   recess inside with a crack off a corner now and then (`--tk-hole-rim` is gone). The floor has a
   seeded tone per slab, dims into its corners and darkens softly round every block. All of it is
   in the static floor layer, so it costs nothing a frame.
+- **Round tubes** (2026-10-16)**:** a barrel looked flat, a bar with thin lit and shaded edges. A
+  tube (a barrel, a missile pod, a laser's emitter) is now lit round across it (`tubeBands` in
+  `art.js`, and the GPU's tank shader): its sides are lit and shaded in three steps up to 0.62 of
+  its width in, as far as the light falls across it, and when it points along the light a little
+  shade runs down both sides instead, so it never reads flat. Its tip keeps a flat part's edge.
 - **Colours:** one per kind, as before. Hornet is cream (`#e8d4a2`) instead of Yellow with hazard
   stripes, so `VARIANTS` is empty; the art still draws stripes for any kind named in it.
 - Worked out in the Tank Paint Study artifact (https://claude.ai/artifact/6vxgbpAqSoL9y26pLp1KQS).
@@ -1027,6 +1032,19 @@ outside the map wall).
 A first version (same day) kept floor past the field, blurred toward the edges in the canvas, with
 a single wall only on the sides facing the header or the gutters; it went for wall all round.
 
+### C10. Sticks that come along, and auto aim you can switch off
+**Status:** done 2026-10-16 · **Size:** S
+
+- A stick dragged past its rim comes along under the thumb, as in Brawl Stars: its middle moves
+  so the thumb stays on the rim, and a drive or an aim keeps its direction however far the thumb
+  wanders. Back toward the stick's new middle, the aim cancels as before.
+- The side menu has two switches, on touch screens only and never in the editor, both on until
+  switched off and kept in `prefs` (`follow`, `autoAim`): "Sticks follow your thumb" and "Auto
+  aim". With auto aim off, the aim stick never shines, the turret never turns to an enemy by
+  itself, and a tap fires where you last aimed.
+- In landscape the mine button sits just above the screen's middle (it was centred on it, where
+  the sticks start), so an aiming thumb never lands on it.
+
 ## P. Polish
 
 Art only: none of it changes what a player can learn or do. From the Paint Study, under R6's
@@ -1074,6 +1092,18 @@ light. Time each on an iPhone (a 3x screen).
   root (a rocket's muzzle brake also blows out of its sides), a flash of its light on the floor,
   smoke pushed out after it and a few sparks. A missile's backblast blows smoke out behind the
   tank; a minigun round gets a small flame and its casing.
+- **A laser's emitter** (**done** 2026-10-16, asked for)**:** the laser tanks' slim barrel with two
+  cooling rings read as a cannon. Now no barrel: a squat housing with two vents holds out a ruby
+  rod between two prongs, its point at the muzzle, dark red at rest and lit red with a white-hot
+  ridge while it charges and burns (`EMITTER`, `PRONG`, `ROD` in `art.js`). At the rod
+  (`lensAt`), from one function both renderers draw with (`drawLasers`): as it charges, a glow
+  growing on it and the floor, blinking with the line, two rings closing on it faster as it nears
+  firing, and sparks drawn in to it (`emitter`); as the beam lights, a 0.06-cell thump back
+  (`RECOIL.laser`), a flash, a ring and sparks off its point; as it burns, the beam flares where it
+  leaves the rod (a soft glow, a glare across it, its red light on the floor round the tank) and
+  sparks spit off either side; once it stops, a puff and a spark or two, and the rod cools from
+  white-hot to a dull red over 1.4 s. Under reduced motion: steady glows, no sparks drawn in or
+  rings.
 - **Trails by owner:** a rocket's smoke takes a hint of its owner's colour.
 - **Drawn, then left out:** a rocket's flame lighting the floor; a band in the owner's colour on
   rockets and rounds.
@@ -1094,8 +1124,52 @@ light. Time each on an iPhone (a 3x screen).
   more cracks, scorched by a rocket or missile; a minigun round, a small one with no cracks for
   1.5 s. Clipped to the blocks, gone with a crate, at most 90. A first version (a pale blob with
   hooked black cracks) looked cheap and was redrawn the same day.
-- **Soft scorch:** scorch marks as soft dark stains, darkest in the middle, in place of today's
-  crossed strokes.
+- **Dents that stay** (**done** 2026-10-16, from playing)**:** the dent stays for the mission,
+  painted into the floor once (`addDent`, so it costs nothing a frame); only the crumbs and the
+  bloom of dust fade. A square hit pocks a wall; a glancing one scrapes it lengthwise (`bounce` and
+  `pop` events now carry the shot's velocity). A crate, a toy, takes a shallow nick instead of a
+  stone spall: dark inside, its rim lit and shaded like the crate's own edges, its paint scuffed
+  either side. A hit beside a dent roughens that dent instead of adding another, growing it a
+  third at most: dents are paint, and blocks never wear away. Dents follow a wall's rounded
+  corners, and sit anywhere along a wall, not pushed apart at the joins between its cells. First
+  tries that were changed the same day: crate dents as pale flakes (they read as stone), then as a
+  deep bite (it read as the crate being eaten); evenly spaced blast pocks (rows of dots).
+- **Blast marks** (**done** 2026-10-16)**:** a mine or bomb leaves a scattered soot burn on the
+  floor (`blastBurn`: an uneven heart of soft blots, a spray of specks thinning outward, some
+  streaked the way they flew, fine grit; floor cells only), and peppers every wall face turned
+  toward it that it can see (`blastScars`): a soot stain on the faces close by, fragments' scores
+  across the block's top the way they flew, and 4 to 18 pits and scrapes a face, spread over the
+  edge and up to a fifth of a cell in, bigger and sooty close in; they never merge. First tries:
+  a star of sharp rays on the floor (it read as points), then too few, too small scars, and the
+  wall round the field left unscarred (blastScars skipped every cell past the map).
+- **Laser burns** (**done** 2026-10-16)**:** where a laser's beam meets a wall or crate it
+  scorches it for good (`laserBurn`): ragged char with pits and a hairline crack or two, in a wide
+  stain of soot reaching about half a cell into the block, in clouds, and streaked outward round a
+  spot where the beam was held; the heat's brown tint lies between the char and the soot. The spot
+  glows white-hot to red as it burns and cools over 2.5 s after. A beam that turns as it burns
+  (Night Indigo) drags one scorched streak along the face, charred deepest where it burned worst.
+  First tries: a thin black line in a faint stain (it read as a line, not a burn), then evenly
+  spaced cracks along a streak (a comb) and thick ones round a spot (a spider). Then (same day,
+  from playing) its soot came in all at once when the beam stopped: now it is laid as the beam
+  burns (`sear`, every 0.05 s), as much as how long the beam has stayed about there (`SEAR_SPREAD`:
+  what it laid counts a third as much 0.15 cells on), so a beam held still grows a wide dark stain
+  with streaks over its second, and Night Indigo's, turning, leaves a thin trail along the face.
+  The char goes in once the beam stops or moves on, as before.
+- **Lasting tracks** (**done** 2026-10-16)**:** tread marks fade over 9 s to a faint trace that
+  stays (`TRAIL_A`). With the GPU renderer the trace is a texture the floor is laid through, where
+  marks that overlap are no darker than one, so a path driven over and over doesn't turn black.
+- **Soft scorch** (**done** 2026-10-16)**:** a soft dark stain under the crossed strokes a destroyed
+  tank leaves. Shipped: a tank blowing up leaves what a landing bomb does (`blastMarks`, radius
+  `BOMB_R`): the Blast marks' soot burn on the floor, its X kept on top, and its shrapnel's scars
+  on every wall and crate face round it that it can see. Paint only: the explosion harms nothing
+  round it. The X is two crossed gouges torn into the floor (`drawX`), so it reads on the burn's
+  black: a ragged rim of ash, broken in places, and soft smudges of it round them; inside each, the
+  near wall in shadow, the charred bottom crazed into small plates with grit on it, and the far
+  wall lit by `LIGHT` as much as it faces it; pale chips spalled off the rims, the heat's brown
+  along them, a hairline crack or two near the ends and flecks of ash. On floor cells only, like
+  the burn. First tries: the burn in place of the X (the X stays); the old X, black on the black
+  burn; tapered gouges (a four-pointed star) with cracks off the tips (thorns); the lit walls in
+  strips (a comb); a ring of ash all round (a sticker).
 - **Spawn marks:** faint corner brackets where each enemy and you start, so a retry shows which
   ones come back.
 - **A tray:** the arena's frame drawn as a wall under the same light, so the tanks sit in a tray.
@@ -1107,16 +1181,33 @@ light. Time each on an iPhone (a 3x screen).
   five missions (concrete, packed earth, steel deck, a dark hangar, all dark enough that the kind
   colours still lead), and the light moving from morning to evening across the campaign.
 
-### P4. Sprites per angle
-**Status:** idea · **Size:** M
+### P4. A GPU renderer
+**Status:** done 2026-10-16 · **Size:** L
 
-Only if soft tanks cost too much on a phone: draw each kind's lit hull and turret once at 64
-angles and reuse them, with cleats and moving parts drawn over.
+Was "Sprites per angle". Tanks looked pixelated on an iPhone 16 Pro Max and the game ran warm.
+Measured in the iPhone 16 Pro Max simulator (mission 20, eight tanks): the 2D renderer drew at 2x
+(the screen stretched it by 1.5, and its kept pictures landed on whole canvas pixels, so moving
+tanks shimmered) and repainted about five kept pictures every frame (a picture per kind, pose and
+degree never keeps up with tanks turning), with the WebKit GPU process at about 48% of a core and
+only about 47 fps. Raising it to 3x thinned the hard light's bands to 0.9 pt and made it worse.
+On the real phone a big 2D canvas on the screen also showed blurred on opening, until a rotation.
+
+Shipped: `gl.js` draws the arena with WebGL2 at the screen's own pixel ratio. A tank is painted
+once per look, unlit, cut into hull, gun and head with masks of their parts (`tankPlanes`), and the
+GPU lights it on every frame at its exact angle and position with `paintHard`'s bands and drop
+shadows (no band thinner than at 2x, in CSS px), lays its floor shadow from blurred masks, rolls its
+cleats and glows a minigun's barrels. Every look a tank can show is painted while the banner is up.
+Mines and bombs are drawn from their numbers, effects are shapes, tread marks are laid on the GPU
+once each, and the floor, built off the screen with a 2D context, is laid from a texture (a broken
+crate sends only its patch again). The 2D renderer stays as the fallback (no WebGL2, Lockdown
+Mode). Mission 20 now: about 1 ms of JavaScript a frame, most of it the simulation; the GPU process
+at about 13%; 60 fps at 3x. Shots, mines, bombs and effects match the 2D renderer to within about
+half a level of 255 on a test scene; the field guide is pixel for pixel the same.
 
 ## Suggested order
 
 Every entry has shipped (the last, M8, on 2026-10-14) except A3, M5, M6, M7 and the ideas added
-on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P4). Next:
+on 2026-10-15 (R7, R8, N1–N3, M9, M10, P1–P3; P4 shipped 2026-10-16). Next:
 
 1. **C1 and C2 on a real iPhone:** the floating home button and stats in landscape, the stick
    size, the cancel zone and the 20% opacity.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { intercept, pathField, predict, shotTarget, tapTarget } from '../src/games/tanks/ai.js';
-import { VARIANTS, recoilAt } from '../src/games/tanks/art.js';
+import { VARIANTS, makePalette, planePose, planeVariants, recoilAt, tankPlanes, tankPose } from '../src/games/tanks/art.js';
 import { makeBot } from '../scripts/playtest.mjs';
 import { MAX_ENEMIES, checkMap, isMirrored, openShare } from '../src/games/tanks/mapcheck.js';
 import { createWorld, fire, isWorld, lob, parseLevel, step, survivors } from '../src/games/tanks/engine.js';
@@ -157,7 +157,7 @@ test('a shell ricochets once, then dies on the next wall; a rocket dies on the f
 });
 
 test('a gun recoils fast, runs out slower, and is back at rest well within a second', () => {
-  for (const weapon of ['shell', 'rocket', 'missile', 'minigun', 'bomb']) {
+  for (const weapon of ['shell', 'rocket', 'missile', 'minigun', 'bomb', 'laser']) {
     assert.deepEqual([recoilAt(weapon, Infinity).slide, recoilAt(weapon, Infinity).jolt], [0, 0], `${weapon} at rest`);
     assert.equal(recoilAt(weapon, -0.1).slide, 0, `${weapon} before it fires`);
     const at = (s) => recoilAt(weapon, s);
@@ -180,6 +180,47 @@ test('a gun recoils fast, runs out slower, and is back at rest well within a sec
   }
   // Big enough to see: still more than half way back 100 ms after a shell leaves.
   assert.ok(recoilAt('shell', 0.1).slide > 0.5);
+});
+
+/* ---------- The GPU renderer's pictures (art.js, gl.js) ---------- */
+
+test('every kind cuts into the hull, gun and head the GPU lights, its gun in at most two runs of lit solids', () => {
+  const pal = makePalette(() => '#808080');
+  for (const type of Object.keys(TYPES)) {
+    const P = tankPlanes(pal, type, {});
+    assert.equal(P.body.masks.length, 2, `${type}'s hull`);
+    assert.equal(P.head.masks.length, 2, `${type}'s head`);
+    // Only the mortar has no weapon solids: its tube is on the turret.
+    assert.equal(!!P.gun, TYPES[type].weapon !== 'bomb', `${type}'s gun`);
+    if (P.gun) assert.equal(P.gun.masks.length, 3, `${type}'s gun masks`);
+    assert.equal(!!P.gun?.emission, TYPES[type].weapon === 'minigun', `${type} glows`);
+    assert.deepEqual(P.heights.length, 5);
+    assert.ok(P.heights.every((h, i) => i === 0 || h > P.heights[i - 1]), `${type}'s layers stand each above the last`);
+  }
+});
+
+test('every look a tank shows in play is one the GPU painted ahead of time', () => {
+  // A picture painted mid-battle would cost a frame: whatever recoil, roll, mines and light a
+  // tank shows, its planes' keys are among planeVariants'.
+  for (const type of Object.keys(TYPES)) {
+    const T = TYPES[type];
+    const ahead = { body: new Set(), gun: new Set(), head: new Set() };
+    for (const pose of planeVariants(type)) {
+      const pp = planePose(type, pose);
+      for (const plane of Object.keys(ahead)) ahead[plane].add(pp[plane].key);
+    }
+    for (let age = -0.05; age < 1; age += 0.007) {
+      for (const side of [-1, 0, 1]) {
+        for (let mines = 0; mines <= (T.mines || 0); mines++) {
+          for (const lit of [false, true]) {
+            const { recoil } = tankPose({ type, x: 0, y: 0, body: 0, turret: 0 }, age, side);
+            const pp = planePose(type, { mines, lit, roll: age * 37, recoil });
+            for (const plane of Object.keys(ahead)) assert.ok(ahead[plane].has(pp[plane].key), `${type} ${plane} ${pp[plane].key} (age ${age.toFixed(3)})`);
+          }
+        }
+      }
+    }
+  }
 });
 
 test('wall contacts name the face they met, and shots the tank that fired them', () => {
@@ -1036,6 +1077,8 @@ test('a beam burns shots that cross it and sets off a mine on its line', () => {
   s.mines.push({ id: 901, owner: s.tanks[0].id, x: 9.5, y: 7.5, fuse: 9, armed: true });
   const events = run(s, 0.3);
   assert.equal(s.bullets.length, 0, 'the shell burned');
+  // Burned, not popped on a wall: it sizzles (tanks.js).
+  assert.ok(events.some((e) => e.type === 'pop' && e.cause === 'laser' && e.weapon === 'shell'), 'the shell went as the laser\'s');
   assert.ok(events.some((e) => e.type === 'blast'), 'the mine went off');
 });
 
