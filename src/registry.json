@@ -18,15 +18,5 @@
       "en": "Top-down tank battles. Bank shots off the walls, lay mines, clear 20 missions.",
       "ca": "Batalles de tancs vistes des de dalt. Fes rebotar els trets, posa mines i supera 20 missions."
     }
-  },
-  {
-    "id": "nearby",
-    "code": "TEST",
-    "name": { "en": "Nearby (test)", "ca": "A prop (prova)" },
-    "path": "/games/nearby/",
-    "description": {
-      "en": "Temporary: links devices on the same network directly, to test multiplayer.",
-      "ca": "Temporal: connecta directament dispositius de la mateixa xarxa per provar el multijugador."
-    }
   }
 ]
