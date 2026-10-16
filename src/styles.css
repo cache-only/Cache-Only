@@ -411,10 +411,13 @@ button {
 
 /* Number keys: flat cards, radius 8 like every button. */
 .keypad {
+  --key-gap: 8px;
+  --t-key: 0.22s; /* a mode key turning on or off, and the numbers changing with it */
+  container-type: inline-size; /* its width, for a mode key's face (100cqw) */
   flex: none;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--key-gap);
 }
 
 .key {
@@ -438,28 +441,60 @@ button {
   opacity: 0.4;
 }
 
-.keypad.is-notes .key:not(.key-tool) {
+/* A number key shows its digit twice, as a number (::before) and as a note (::after), and Notes
+   turns one into the other in place: the number shrinks to the note's size and blurs out as the
+   note blurs in from the number's size. The key's own text stays for screen readers, at no size. */
+.key[data-d] {
+  position: relative;
+  font-size: 0;
+}
+
+.key[data-d]::before,
+.key[data-d]::after {
+  content: attr(data-d);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity var(--t-key) var(--ease), filter var(--t-key) var(--ease),
+    transform var(--t-key) var(--ease);
+}
+
+.key[data-d]::before {
+  font-size: 24px;
+}
+
+.key[data-d]::after {
   font: 500 19px/1 var(--font-mono);
   color: var(--muted);
+  opacity: 0;
+  filter: blur(var(--blur-fade));
+  transform: scale(1.26); /* 24 / 19 */
 }
 
-/* Tools in the keypad (Sudoku's Notes and Erase): a first row of two keys over the numbers, each a
-   number key's card holding its icon (a smooth shape) and name. A mode that is on (Notes) is solid
-   white, like a pressed icon button. The keypad turns six columns wide: a number takes two, a tool
-   three. */
-.keypad.has-tools {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+.keypad.is-notes .key[data-d]::before {
+  opacity: 0;
+  filter: blur(var(--blur-fade));
+  transform: scale(0.79); /* 19 / 24 */
 }
 
-.keypad.has-tools > .key {
-  grid-column: span 2;
+.keypad.is-notes .key[data-d]::after {
+  opacity: 1;
+  filter: none;
+  transform: none;
 }
 
-.keypad.has-tools > .key-tool {
-  grid-column: span 3;
-}
-
+/* Tools in the keypad (Sudoku's Notes and Erase): a first row over the numbers, each a number key's
+   card holding its icon (a smooth shape), with its name or alone. A mode that is on is solid white,
+   like a pressed icon button. The mode (.key-mode, Notes) is as wide as the pad; while it is on it
+   narrows to the left to two keys' width, uncovering the tool that goes with it (.key-mode-tool,
+   Erase) in the third column, which sits under it all along, out of reach until it shows. Its
+   face (icon and name) is as wide as the pad and only slides, by a transform, to stay centred:
+   centred again by layout every frame as the key narrowed, it jittered. A mode is a switch: it
+   turns white when it turns on, with no flash while pressed (that flashed white, dark, white on a
+   tap). */
 .key-tool {
+  grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -477,12 +512,62 @@ button {
   color: var(--on-ink);
 }
 
+.key-mode {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: 100%;
+  overflow: hidden;
+  transition: width var(--t-key) var(--ease), background-color var(--t-key) var(--ease),
+    color var(--t-key) var(--ease);
+}
+
+.key-mode:not([aria-pressed="true"]):active {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.key-mode[aria-pressed="true"] {
+  width: calc((200% - var(--key-gap)) / 3);
+}
+
+.key-face {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 100cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform var(--t-key) var(--ease);
+}
+
+/* Half of what the key gives up (a key and a gap). */
+.key-mode[aria-pressed="true"] .key-face {
+  transform: translateX(calc((100cqw + var(--key-gap)) / -6));
+}
+
+/* Hidden only once the mode has covered it again (a visibility transition shows at once and hides
+   at its end). Inherit, so a keypad stepping away hides it too. */
+.key-mode-tool {
+  grid-column: -2 / -1;
+  visibility: hidden;
+  transition: visibility var(--t-key);
+}
+
+.key-mode[aria-pressed="true"] + .key-mode-tool {
+  visibility: inherit;
+}
+
 @media (max-height: 740px) {
   .key {
     height: 48px;
   }
   .keypad {
-    gap: 6px;
+    --key-gap: 6px;
   }
 }
 
@@ -965,7 +1050,8 @@ button {
 
 /* The browser tab's background: the app icon's scatter of dim pixels across the whole page, with
    the mark lit white in it. Its pixels blur out and back in at random, slower than anything else
-   (--t-twinkle). */
+   (--t-twinkle). The GPU draws them on one canvas, with the blur out and blur in of Motion (below);
+   without WebGL each pixel is an element (i) and they stay still. */
 .pixel-field {
   --t-blur: var(--t-twinkle);
   position: absolute;
@@ -976,15 +1062,15 @@ button {
   pointer-events: none;
 }
 
+.pixel-field canvas {
+  display: block;
+}
+
 .pixel-field i {
   position: absolute;
   width: var(--dot);
   height: var(--dot);
   border-radius: var(--r-pixel);
-}
-
-.pixel-field i.mark {
-  background: var(--ink);
 }
 
 /* ---------- Header ---------- */
@@ -1057,9 +1143,9 @@ button {
 
 /* Lives (Sudoku's hearts): smooth hearts, full while a life is left and hollow once it's spent.
    In portrait the row sits in the middle of the header (.bar-center); in landscape it runs down
-   the right edge under the stats, like a meter. A life lost breaks: the heart cracks down the
-   middle and its halves part, then fall away to either side, turning and blurring out, while the
-   hollow heart blurs in where it was. */
+   the right edge under the stats, like a meter. A heart is whole (.life-full) until its life is
+   lost; then it breaks: it cracks down the middle and its halves part, then fall away to either
+   side, turning and blurring out, uncovering the hollow heart already in place under them. */
 .lives {
   display: flex;
   gap: 6px;
@@ -1089,13 +1175,16 @@ button {
   opacity: 1;
 }
 
-.life.is-used .life-half {
+.life.is-used .life-full {
   opacity: 0;
 }
 
 /* The crack: one zigzag from the notch down to the point, each half's heart clipped to its side
-   of it. The half moves and blurs around its clipped heart, so the blur softens the crack too. */
+   of it. The half moves and blurs around its clipped heart, so the blur softens the crack too. The
+   halves show only while the heart breaks (their animation): side by side, the crack shows as a
+   seam, so a heart at rest is the whole one. */
 .life-half {
+  opacity: 0;
   transform-origin: 50% 86%;
   pointer-events: none;
 }
@@ -1114,10 +1203,6 @@ button {
 
 .life.is-breaking .life-half.is-right {
   animation: life-fall-right 0.8s both;
-}
-
-.life.is-breaking .life-empty {
-  animation: blur-in var(--t-blur) var(--ease) 0.3s both;
 }
 
 /* Parting at the point, quick; then falling, slow to start like a weight. */
@@ -1314,15 +1399,18 @@ button {
     justify-content: center;
     gap: 32px;
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + var(--side-w)) max(var(--safe-b), 16px) calc(var(--safe-l) + var(--side-w));
-  }
-  /* As tall as the play area (or 60% of its width, if less), as a width WebKit can lay out: a
-     width taken from aspect-ratio and a stretched height came out 0 there (a size container's
-     content counts for nothing), and the board vanished in landscape on iPhones. */
-  .play > .board-wrap {
+    /* The play area's height, and the board's: as tall as the play area, or 60% of its width if
+       less (a percentage here is of the play area's width wherever it is used). */
     --play-h: calc(100vh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
     --play-h: calc(100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px));
+    --board-h: min(60%, var(--play-h));
+  }
+  /* The board's height given as a width WebKit can lay out: a width taken from aspect-ratio and a
+     stretched height came out 0 there (a size container's content counts for nothing), and the
+     board vanished in landscape on iPhones. */
+  .play > .board-wrap {
     flex: none;
-    width: min(60%, var(--play-h));
+    width: var(--board-h);
     height: auto;
     aspect-ratio: 1;
     place-items: center;
@@ -2088,12 +2176,14 @@ dialog.sheet[open] {
    screen down, with no header band: settings floats at the top right over it. The strip starts
    with the suggested game laid out as in portrait, in a column two tiles wide: its art bleeding in
    from the top, the logo large in the middle of it, the eyebrow and panel at its foot. The other
-   tiles and the fillers follow in two rows. */
+   tiles and the fillers follow in two rows, or more on a taller screen (below). */
 @media (orientation: landscape) {
   .launcher {
-    /* Two rows of tiles and the gap between them fill the height. */
-    --tile: clamp(96px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - 12px) / 2), 260px);
-    --lead: calc(2 * var(--tile) + 12px);
+    /* The rows of tiles and the gaps between them fill the height, and the suggested game's column
+       is as wide as they are tall. */
+    --rows: 2;
+    --tile: max(96px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - (var(--rows) - 1) * 12px) / var(--rows)));
+    --lead: calc(var(--rows) * var(--tile) + (var(--rows) - 1) * 12px);
   }
   .home {
     max-width: none;
@@ -2135,8 +2225,8 @@ dialog.sheet[open] {
        the last tiles clear it once scrolled to the end. */
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + 16px + 44px + 12px) max(var(--safe-b), 16px) calc(var(--safe-l) + 16px);
   }
-  /* The column is as tall as two tiles and their gap, so it is square; a note under it takes its
-     room from the logo. No top blur here, so the logo centres in the whole of it. */
+  /* The column is as tall as the rows of tiles and their gaps, so it is square; a note under it
+     takes its room from the logo. No top blur here, so the logo centres in the whole of it. */
   .lead {
     grid-area: 1 / 1;
     aspect-ratio: auto;
@@ -2154,12 +2244,12 @@ dialog.sheet[open] {
     align-self: end;
   }
   /* The art runs from the screen's left edge (through the safe area) to the column's far gutter,
-     as a square centred on the screen's height, so it fills the height and a notch's wider safe
-     area only spills it a little past the top and bottom. It fades out to the right, toward the
-     tiles, the way it fades toward the panel in portrait, and to the left, to dark under the left
-     edge's blur. */
+     as a square centred on the screen's height, never shorter than the screen, so it fills the
+     height and a notch's wider safe area only spills it a little past the top and bottom. It fades
+     out to the right, toward the tiles, the way it fades toward the panel in portrait, and to the
+     left, to dark under the left edge's blur. */
   .hero {
-    --hero-side: calc(var(--safe-l) + var(--lead) + 32px);
+    --hero-side: max(100dvh, calc(var(--safe-l) + var(--lead) + 32px));
     top: calc(50% - var(--hero-side) / 2);
     left: 0;
     right: auto;
@@ -2169,7 +2259,7 @@ dialog.sheet[open] {
   }
   .tile-grid {
     grid-template-columns: none;
-    grid-template-rows: repeat(2, var(--tile));
+    grid-template-rows: repeat(var(--rows), var(--tile));
     grid-auto-flow: column;
     grid-auto-columns: var(--tile);
   }
@@ -2237,6 +2327,20 @@ dialog.sheet[open] {
      grid, so a smaller logo would fill the wide screen with twice the pixels to animate. */
   .install .logo-lg {
     --logo-w: clamp(120px, calc((100dvh - max(var(--safe-t), 16px) - max(var(--safe-b), 16px) - 72px) * 0.84), 176px);
+  }
+}
+
+/* A screen tall enough that two rows would make the tiles too big (an iPad) takes a third row,
+   and a taller one a fourth: a phone's landscape height is 440 at most, an iPad's 744 or more. */
+@media (orientation: landscape) and (min-height: 600px) {
+  .launcher {
+    --rows: 3;
+  }
+}
+
+@media (orientation: landscape) and (min-height: 1100px) {
+  .launcher {
+    --rows: 4;
   }
 }
 

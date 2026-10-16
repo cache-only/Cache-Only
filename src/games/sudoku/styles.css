@@ -1,6 +1,6 @@
 /* Sudoku: the board only. Rounded-square cells grouped by box; everything around the board
    (header, moves, number pad, slider, menu, sheets) comes from /styles.css. This file only says
-   where the difficulty chooser sits. */
+   where the moves and the difficulty chooser sit. */
 
 .sudoku-board {
   display: grid;
@@ -185,4 +185,15 @@
   grid-auto-columns: minmax(0, 1fr);
   gap: 10px;
   margin-top: auto;
+}
+
+/* Landscape: the moves (or the chooser) sit at the foot of the board beside them, their bottom
+   row level with its bottom edge, rather than centred on it. The board is centred in the play
+   area, so where it is shorter than the area (60% of its width) the moves rise by half the
+   difference. */
+@media (orientation: landscape) {
+  .sudoku-page .controls {
+    align-self: flex-end;
+    margin-bottom: calc((var(--play-h) - var(--board-h)) / 2);
+  }
 }

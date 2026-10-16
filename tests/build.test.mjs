@@ -117,13 +117,21 @@ test('each game in the registry is one downloadable pack, and nothing else is', 
   assert.equal(info.bytes, allPacks().reduce((n, p) => n + p.bytes, 0));
 });
 
-test('nothing in dist/ points at another origin', async () => {
+test('nothing in dist/ points at another origin, but multiplayer at its rooms', async () => {
   const allowed = ['http://www.w3.org/2000/svg'];
+  // Star's rooms Worker carries messages between devices, never files, and only star.js names it.
+  const ROOMS = 'wss://cache-only-rooms.cache-only.workers.dev';
   for (const file of await walk(DIST)) {
     if (!/\.(html|js|css|json|svg)$/.test(file)) continue;
     const text = await readFile(file, 'utf8');
-    for (const url of text.match(/https?:\/\/[^\s"'`)<>]+/g) || []) {
-      assert.ok(allowed.includes(url), `${path.relative(DIST, file)} references ${url}`);
+    const rel = path.relative(DIST, file);
+    for (const url of text.match(/(?:https?|wss?):\/\/[^\s"'`)<>]+/g) || []) {
+      if (url === ROOMS && rel === path.join('shared', 'star.js')) continue;
+      assert.ok(allowed.includes(url), `${rel} references ${url}`);
+    }
+    // One STUN server, asked only by star.js for the network's address (never used in a link).
+    for (const stun of text.match(/\bstuns?:[^\s"'`)<>]+/g) || []) {
+      assert.ok(stun === 'stun:stun.cloudflare.com:3478' && rel === path.join('shared', 'star.js'), `${rel} names ${stun}`);
     }
     assert.ok(!/@import\s+url\(\s*['"]?\/\//.test(text), `${file} imports a protocol-relative URL`);
   }

@@ -1,6 +1,6 @@
 {
   "name": "cache-only",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Cache Only: an offline-first PWA with a small collection of games.",
   "type": "module",
@@ -11,6 +11,7 @@
     "icons": "node scripts/make-icons.mjs",
     "guide": "node scripts/guide.mjs",
     "playtest": "node scripts/playtest.mjs",
+    "worker": "node scripts/worker.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "engines": {
