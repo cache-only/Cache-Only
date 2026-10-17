@@ -651,6 +651,19 @@ Pol's account): **https://claude.ai/artifact/WMSS59EueoKaYmwd56Y1RF**. Build Kta
   a 64 px disc with their mark.
 - **Motion:** everything that moves has a reduced-motion state that shows the end at once. The
   phone and the table run shared moments on the same clock.
+- **Battery: the sea is the cost.** The design proposals page
+  (https://claude.ai/artifact/Q63rM2wKggQsyVbaiKAzzB, private like the canvas) adds a moving sea:
+  waves rolling in, breaking on the beach and on the jetties' piles. Drawn there in a 2D canvas, it
+  repaints the whole iPad 30 times a second with about 650 draw calls a frame; by estimate (not
+  measured) that costs 15–25 % of an iPad's battery an hour, against about 10 % for a still screen.
+  Everything else on the table is painted once and kept, and the phones barely move on their own.
+  If the moving sea is built, build it this way:
+  - **On the GPU:** one WebGL draw call a frame, the waves worked out in the shader from the time,
+    as the install page's field does (`shared/pixel-field.js`) and as Tanks moved its arena to
+    `gl.js` (its 2D renderer kept WebKit's GPU process near 48 %, WebGL about 13 %). The 2D sea
+    stays only as the fallback without WebGL.
+  - **Calm when nobody plays:** after a minute with no touch on any phone, the waves slow right
+    down (or stop, under reduced motion) until the next roll or touch.
 - **Not drawn yet:** the Build sheet; the robber and discard screens; setup; the end of a game;
   the side menu and Rules; the room screens without a table (create, join, nearby); the giver's
   phone in a trade at a table; the Harvest, Embargo and Road building flows; the 5 to 6 player
@@ -676,7 +689,8 @@ Pol's account): **https://claude.ai/artifact/WMSS59EueoKaYmwd56Y1RF**. Build Kta
    here on, ready for the table. Star doesn't need the engine, so it can be built alongside steps 1
    and 2; its tests run on fake transports, and only the first deploy needs the account (A11).
 4. **The table** (B4, B8): seats picked on the phones and shown as glows, the island morphing or
-   folding to face each turn, cards leaving by the edges into the phones, placing on the table.
+   folding to face each turn, cards leaving by the edges into the phones, placing on the table. A
+   moving sea is drawn on the GPU and calms when nobody plays (B8, Battery).
 5. **Star, direct:** direct tries, going local, coming back, handing over and losing the host.
    **Done so far (2026-10-16):** direct tries and retries, local rooms, falling back to relayed,
    direct links outliving the internet, handing over and losing the host online (built with step 3).

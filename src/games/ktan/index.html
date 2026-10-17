@@ -17,64 +17,171 @@
   <title>Ktan · Cache Only</title>
   <script type="module" src="/games/ktan/ktan.js"></script>
 </head>
-<!-- For now only the room: create one, join by code, see who's in and test the links (ktan.js).
-     The game itself comes once Star is verified on phones (KTAN.md, Part C). -->
-<body class="game-page ktan-page">
+<!-- Ktan (KTAN.md): the start screen, a game on this phone passed round the table, a room for
+     several phones (shared/star.js), the table (an iPad in the middle) and the game itself. ktan.js
+     shows one of them at a time (data-screen on body). -->
+<body class="game-page ktan-page" data-screen="start">
   <div class="shell">
-    <header class="bar">
+    <header class="bar ktan-bar">
       <button type="button" class="icon-btn" id="homeBtn" data-i18n-label="common.menu">
         <svg class="icon"><use href="#i-home"/></svg>
       </button>
-      <div class="bar-stats">
-        <div class="stat">
-          <span class="stat-label" data-n="room"></span>
-          <span class="stat-value" id="roomStat">—</span>
+      <div class="ktan-status" id="status" role="status" aria-live="polite">
+        <p class="eyebrow" id="statusBrow"></p>
+        <p class="ktan-status-line" id="statusLine"></p>
+      </div>
+      <div class="ktan-bar-right">
+        <div class="stat ktan-room-stat" id="roomStat" hidden>
+          <span class="stat-label" data-i18n="ktan.room"></span>
+          <span class="stat-value mono" id="roomCode"></span>
         </div>
+        <button type="button" class="icon-btn" id="guideBtn" data-i18n-label="ktan.guide" aria-expanded="false" hidden>
+          <svg class="icon"><use href="#i-help"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="boardBtn" data-i18n-label="ktan.showBoard" aria-pressed="false" hidden>
+          <svg class="icon"><use href="#i-board"/></svg>
+        </button>
       </div>
     </header>
 
-    <main class="ktan">
+    <!-- The start: a game on this phone, a room, joining one, or the table. -->
+    <main class="ktan-screen ktan-start" id="startScreen">
       <div class="ktan-col">
-        <section class="ktan-section" id="lobby" hidden>
-          <h1 class="t-title" data-n="title"></h1>
-          <p class="t-body" data-n="intro"></p>
-          <label class="eyebrow" for="nameInput" data-n="yourName"></label>
-          <input type="text" class="field is-line" id="nameInput" maxlength="24" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
-          <button type="button" class="btn btn-primary" id="createBtn" data-n="create"></button>
-          <h2 class="eyebrow ktan-gap" data-n="nearbyTitle"></h2>
-          <div class="ktan-near-list" id="nearbyList"></div>
-          <p class="t-note" id="nearbyEmpty" data-n="nearbyEmpty"></p>
-          <p class="t-note" id="whereNote"></p>
-          <label class="eyebrow ktan-gap" for="codeInput" data-n="joinLabel"></label>
+        <h1 class="t-title" data-i18n="ktan.title"></h1>
+        <p class="t-body" data-i18n="ktan.intro"></p>
+        <section class="sheet-section">
+          <label class="eyebrow" for="nameInput" data-i18n="ktan.yourName"></label>
+          <input type="text" class="field is-line" id="nameInput" maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        </section>
+        <div class="ktan-start-actions">
+          <button type="button" class="btn btn-primary" id="newRoomBtn" data-i18n="ktan.newRoom"></button>
+          <button type="button" class="btn" id="localBtn" data-i18n="ktan.onePhone"></button>
+        </div>
+        <section class="sheet-section" id="nearbySection">
+          <h2 class="eyebrow" data-i18n="ktan.nearby"></h2>
+          <div class="ktan-near" id="nearbyList"></div>
+          <p class="t-note" id="nearbyEmpty" data-i18n="ktan.nearbyEmpty"></p>
+        </section>
+        <section class="sheet-section">
+          <label class="eyebrow" for="codeInput" data-i18n="ktan.joinCode"></label>
           <div class="ktan-join">
             <input type="text" class="field is-line ktan-code-input" id="codeInput" maxlength="4" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
-            <button type="button" class="btn" id="joinBtn" data-n="join" disabled></button>
+            <button type="button" class="btn" id="joinBtn" data-i18n="ktan.join" disabled></button>
           </div>
-          <p class="t-note" id="lobbyNote" role="status"></p>
         </section>
-
-        <section class="ktan-section" id="inRoom" hidden>
-          <p class="eyebrow" data-n="code"></p>
-          <p class="t-display ktan-code" id="codeBig"></p>
-          <p class="t-note" data-n="codeNote"></p>
-          <p class="t-heading" id="waitNote" hidden></p>
-          <p class="t-note" id="waitNote2" data-n="waitingNote" hidden></p>
-          <dl class="facts" id="selfFacts"></dl>
-
-          <h2 class="eyebrow ktan-gap" data-n="members"></h2>
-          <div class="ktan-members" id="memberList"></div>
-
-          <div class="ktan-actions">
-            <button type="button" class="btn" id="leaveBtn"></button>
-            <button type="button" class="btn btn-primary" id="waveBtn" data-n="wave"></button>
-          </div>
-
-          <h2 class="eyebrow ktan-gap" data-n="log"></h2>
-          <ul class="card ktan-lines" id="logList"></ul>
+        <p class="msg" id="startMsg" role="status"></p>
+        <section class="sheet-section ktan-table-offer">
+          <h2 class="eyebrow" data-i18n="ktan.tableTitle"></h2>
+          <p class="t-note" data-i18n="ktan.tableIntro"></p>
+          <button type="button" class="btn" id="tableBtn" data-i18n="ktan.beTable"></button>
         </section>
+        <p class="t-note" data-i18n="ktan.hotspot"></p>
+      </div>
+    </main>
+
+    <!-- A game on this phone, passed round the table: who plays, in turn order. -->
+    <main class="ktan-screen" id="localScreen">
+      <div class="ktan-col">
+        <h1 class="t-title" data-i18n="ktan.onePhoneTitle"></h1>
+        <p class="t-body" data-i18n="ktan.onePhoneIntro"></p>
+        <div class="ktan-players" id="localPlayers"></div>
+        <div class="ktan-row-actions">
+          <button type="button" class="btn" id="localAdd" data-i18n="ktan.addPlayer"></button>
+        </div>
+        <section class="sheet-section">
+          <h2 class="eyebrow" data-i18n="ktan.island"></h2>
+          <div class="segmented" role="group" id="localIsland"></div>
+          <p class="t-note" id="localIslandNote"></p>
+        </section>
+        <div class="ktan-row-actions">
+          <button type="button" class="btn" id="localBack" data-i18n="common.cancel"></button>
+          <button type="button" class="btn btn-primary" id="localStart" data-i18n="ktan.start"></button>
+        </div>
+      </div>
+    </main>
+
+    <!-- A room: its code, who's in, your colour, and Start for the host. -->
+    <main class="ktan-screen" id="roomScreen">
+      <div class="ktan-col">
+        <p class="eyebrow" data-i18n="ktan.roomCode"></p>
+        <p class="t-display ktan-code" id="roomBig"></p>
+        <p class="t-note" id="roomNote"></p>
+        <p class="t-heading" id="roomWait" hidden></p>
+        <section class="sheet-section" id="seatSection" hidden>
+          <h2 class="eyebrow" data-i18n="ktan.whereSit"></h2>
+          <p class="t-note" data-i18n="ktan.whereSitNote"></p>
+          <div class="ktan-seat-pick" id="seatPick"></div>
+          <p class="t-note" id="seatNote"></p>
+        </section>
+        <section class="sheet-section" id="colourSection">
+          <h2 class="eyebrow" data-i18n="ktan.yourColour"></h2>
+          <div class="ktan-colours" id="colourGrid" role="group"></div>
+          <p class="t-note" id="colourNote"></p>
+        </section>
+        <section class="sheet-section">
+          <h2 class="eyebrow" data-i18n="ktan.inRoom"></h2>
+          <div class="ktan-players" id="roomPlayers"></div>
+        </section>
+        <section class="sheet-section" id="roomOptions" hidden>
+          <h2 class="eyebrow" data-i18n="ktan.island"></h2>
+          <div class="segmented" role="group" id="roomIsland"></div>
+          <h2 class="eyebrow" data-i18n="ktan.away"></h2>
+          <div class="segmented" role="group" id="roomAway"></div>
+        </section>
+        <p class="msg" id="roomMsg" role="status"></p>
+        <div class="ktan-row-actions">
+          <button type="button" class="btn" id="roomLeave"></button>
+          <button type="button" class="btn btn-primary" id="roomStart" data-i18n="ktan.start"></button>
+        </div>
+      </div>
+    </main>
+
+    <!-- The game. Its regions are placed by ktan.js's layout for the screen's size. -->
+    <main class="ktan-screen ktan-game" id="gameScreen">
+      <div class="ktan-board" id="boardBox">
+        <canvas class="ktan-board-cv" id="boardCv" role="img" data-i18n-label="ktan.board"></canvas>
+        <div class="ktan-board-hit" id="boardHit"></div>
+        <div class="ktan-dice" id="dice" aria-hidden="true"></div>
+      </div>
+      <div class="ktan-chips" id="chips"></div>
+      <div class="ktan-hand" id="hand"></div>
+      <div class="ktan-shelf" id="shelf"></div>
+      <div class="ktan-throw" id="throw" hidden></div>
+      <div class="ktan-moves" id="moves">
+        <button type="button" class="btn" id="moveA"></button>
+        <button type="button" class="btn" id="moveB"></button>
+        <button type="button" class="btn btn-primary" id="moveC"></button>
+      </div>
+    </main>
+
+    <!-- The table: the island for everyone, the glows of the seats round its edges. -->
+    <main class="ktan-screen ktan-table" id="tableScreen">
+      <canvas class="ktan-table-cv" id="tableCv" role="img" data-i18n-label="ktan.board"></canvas>
+      <div class="ktan-table-hit" id="tableHit"></div>
+      <div class="ktan-glows" id="glows" aria-hidden="true"></div>
+      <div class="ktan-table-lobby" id="tableLobby" hidden>
+        <p class="eyebrow ktan-table-brow" data-i18n="ktan.room"></p>
+        <p class="ktan-table-code mono" id="tableCode"></p>
+        <p class="ktan-table-note" data-i18n="ktan.tableJoin"></p>
+        <div class="ktan-table-waiting" id="tableWaiting"></div>
+        <button type="button" class="btn btn-primary ktan-table-start" id="tableStart"></button>
       </div>
     </main>
   </div>
+
+  <div class="ktan-fx" id="fx" aria-hidden="true"></div>
+
+  <div class="ktan-cover" id="cover" hidden>
+    <div class="ktan-cover-inner">
+      <span class="ktan-cover-mark" id="coverMark"></span>
+      <p class="eyebrow" id="coverBrow"></p>
+      <h2 class="t-title" id="coverTitle"></h2>
+      <p class="t-body" id="coverNote"></p>
+      <button type="button" class="btn btn-primary" id="coverBtn"></button>
+    </div>
+  </div>
+
+  <div class="ktan-inspect" id="inspect" hidden></div>
 
   <div class="side-menu" id="sideMenu" hidden>
     <div class="side-menu-blur pblur pblur-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
@@ -82,11 +189,27 @@
       <button type="button" class="side-item" id="resumeBtn">
         <svg class="icon"><use href="#i-play"/></svg><span data-i18n="common.resume"></span>
       </button>
+      <button type="button" class="side-item" id="logBtn">
+        <svg class="icon"><use href="#i-list"/></svg><span data-i18n="ktan.log"></span>
+      </button>
+      <button type="button" class="side-item" id="rulesBtn">
+        <svg class="icon"><use href="#i-help"/></svg><span data-i18n="ktan.rules"></span>
+      </button>
+      <button type="button" class="side-item" id="roomBtn">
+        <svg class="icon"><use href="#i-room"/></svg><span data-i18n="ktan.roomMenu"></span>
+      </button>
+      <button type="button" class="side-item" id="leaveBtn">
+        <svg class="icon"><use href="#i-flag"/></svg><span id="leaveLabel" data-i18n="ktan.leave"></span>
+      </button>
       <a class="side-item is-exit" href="/">
         <svg class="icon"><use href="#i-games"/></svg><span data-i18n="common.back"></span>
       </a>
     </nav>
   </div>
+
+  <!-- Sheets: their content is laid out by ktan.js for what they ask. -->
+  <dialog class="sheet ktan-sheet" id="sheet"></dialog>
+  <dialog class="sheet ktan-sheet" id="sheet2"></dialog>
 
   <p class="visually-hidden" id="announce" role="status" aria-live="polite"></p>
 </body>

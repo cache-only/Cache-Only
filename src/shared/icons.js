@@ -266,6 +266,42 @@ export const ICONS = {
     '....####.',
     '.........',
   ],
+  // A question mark: Ktan's guide to what things cost.
+  help: [
+    '.........',
+    '...###...',
+    '..#...#..',
+    '......#..',
+    '.....#...',
+    '....#....',
+    '....#....',
+    '.........',
+    '....#....',
+  ],
+  // A hexagon: Ktan's island, brought onto a phone at a table.
+  board: [
+    '.........',
+    '...###...',
+    '..##.##..',
+    '.##...##.',
+    '.#.....#.',
+    '.##...##.',
+    '..##.##..',
+    '...###...',
+    '.........',
+  ],
+  // Waves going out: a room of phones.
+  room: [
+    '.........',
+    '..#####..',
+    '.#.....#.',
+    '#..###..#',
+    '..#...#..',
+    '....#....',
+    '...###...',
+    '...###...',
+    '.........',
+  ],
 };
 
 // Tanks' shell and mine are not pixel art: they stay smooth shapes on a 24 x 24 grid, solid while

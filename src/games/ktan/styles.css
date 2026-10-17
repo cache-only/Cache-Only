@@ -1,7 +1,25 @@
-/* Ktan. For now only the room page (ktan.js): unlike a game it scrolls, a column of facts. The
-   board's styles come with the game. */
+/* Ktan. Every button, sheet, field and menu comes from /styles.css; this places the game's own
+   regions (ktan.js lays the game out for the screen's size) and draws what is the game's: the
+   players' chips, the card stacks, the colours to pick, the table's glows. */
 
-.ktan {
+/* ---------- Screens: one at a time ---------- */
+
+.ktan-screen {
+  display: none;
+}
+
+.ktan-page[data-screen="start"] #startScreen,
+.ktan-page[data-screen="local"] #localScreen,
+.ktan-page[data-screen="room"] #roomScreen,
+.ktan-page[data-screen="game"] #gameScreen,
+.ktan-page[data-screen="table"] #tableScreen {
+  display: block;
+}
+
+/* The start, a game on this phone and the room scroll, a column of choices. */
+#startScreen,
+#localScreen,
+#roomScreen {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -9,7 +27,9 @@
 }
 
 @media (orientation: landscape) {
-  .ktan {
+  #startScreen,
+  #localScreen,
+  #roomScreen {
     padding: max(var(--safe-t), 16px) calc(var(--safe-r) + var(--side-w)) max(var(--safe-b), 16px) calc(var(--safe-l) + var(--side-w));
   }
 }
@@ -17,54 +37,22 @@
 .ktan-col {
   max-width: 560px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.ktan-section,
-.ktan-members,
-.ktan-member {
+.ktan-start-actions,
+.ktan-row-actions {
   display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
-.ktan-members {
-  gap: 20px;
-}
-
-.ktan-gap {
-  margin-top: 18px;
-}
-
-/* A room on this Wi-Fi: its host's name and code, and Join. */
-.ktan-near-list {
-  display: grid;
+.ktan-join {
+  display: flex;
   gap: 10px;
-}
-
-.ktan-near-list:empty {
-  display: none;
-}
-
-.ktan-near {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 8px 8px 18px;
-}
-
-.ktan-near-text {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  overflow-wrap: anywhere;
-}
-
-.ktan-join,
-.ktan-actions,
-.ktan-member-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .ktan-join .field {
@@ -82,46 +70,1504 @@
   letter-spacing: 0.12em;
 }
 
-.ktan-actions {
-  margin-top: 8px;
+.ktan-near,
+.ktan-players {
+  display: grid;
+  gap: 8px;
 }
 
-.ktan-actions .btn {
-  flex: 1;
+.ktan-near:empty {
+  display: none;
 }
 
-.ktan-member-head .t-heading {
+/* A row in a list of players or rooms: a mark in the player's colour, a name, a note, a button. */
+.ktan-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--r-btn);
+  background: var(--card);
+}
+
+.ktan-row-text {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ktan-row-name {
+  font: 600 16px/1.2 var(--font-sans);
   overflow-wrap: anywhere;
 }
 
-.ktan-lines {
-  margin: 0;
-  padding: 12px 18px;
-  list-style: none;
-  font: 500 13px/1.6 var(--font-mono);
+.ktan-row .field.is-line {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+}
+
+.ktan-row .btn {
+  height: 44px;
+  padding: 0 16px;
+}
+
+/* A player's mark on their colour: a small rounded square (radius 22% of it), the mark cut in the
+   ink that reads on that colour. */
+.ktan-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--mark, 26px);
+  height: var(--mark, 26px);
+  border-radius: calc(var(--mark, 26px) * 0.22);
+  background: var(--c);
+  color: var(--mk);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.22);
+}
+
+.ktan-mark svg {
+  width: 58%;
+  height: 58%;
+  fill: currentColor;
+}
+
+/* ---------- Colours: twelve, one per player (the proposals page's picker) ---------- */
+
+.ktan-colours {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 6px;
+}
+
+.ktan-swatch {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-height: var(--tap);
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: none;
   color: var(--muted);
-  overflow-wrap: anywhere;
+  font: 500 11px/1.1 var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 
-.ktan-lines:empty::before {
-  content: '—';
+.ktan-swatch-dot {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--c);
+  color: var(--mk);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 160ms var(--ease);
 }
 
-/* A wave from that seat. */
-.ktan-member.is-waved .facts {
-  animation: ktan-wave 900ms ease-out;
+.ktan-swatch-dot svg {
+  width: 44%;
+  height: 44%;
+  fill: currentColor;
 }
 
-@keyframes ktan-wave {
-  from {
-    background: var(--ink);
+.ktan-swatch[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.ktan-swatch[aria-pressed="true"] .ktan-swatch-dot {
+  outline: 2.5px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.ktan-swatch:disabled {
+  cursor: default;
+}
+
+.ktan-swatch:disabled .ktan-swatch-dot {
+  opacity: 0.4;
+}
+
+/* Where you sit at the table: the iPad drawn in its own proportions, its edges to tap. */
+.ktan-seat-pick {
+  position: relative;
+  height: 300px;
+  border-radius: 20px;
+  background: var(--card);
+  touch-action: none;
+}
+
+.ktan-seat-pick canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- The header in the game ---------- */
+
+.ktan-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The turn in a line: whose it is (an eyebrow) and what happens now. Centred in the header row in
+   portrait; in landscape the game lays it at the top of its panel. */
+.ktan-status {
+  position: absolute;
+  top: var(--bar-top);
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  width: calc(100% - 2 * (max(var(--safe-l), var(--safe-r)) + 16px + 44px + 8px));
+  height: var(--tap);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* At a table the header holds the guide and the board buttons on the right: the turn's line takes the
+   room between home and them. */
+.ktan-page.has-board-btn .ktan-status {
+  left: calc(var(--safe-l) + 16px + 44px + 8px);
+  width: calc(100% - var(--safe-l) - var(--safe-r) - 2 * 16px - 3 * 44px - 3 * 8px);
+  transform: none;
+}
+
+.ktan-status-line {
+  max-width: 100%;
+  overflow: hidden;
+  font: 600 15px/1.2 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ktan-status:empty,
+.ktan-page:not([data-screen="game"]) .ktan-status {
+  display: none;
+}
+
+.ktan-page:not([data-screen="game"]):not([data-screen="table"]) #guideBtn,
+.ktan-page:not([data-screen="game"]) #boardBtn {
+  display: none;
+}
+
+@media (orientation: landscape) {
+  .ktan-page[data-screen="game"] .ktan-status {
+    top: var(--status-top, 16px);
+    left: var(--status-left, 50%);
+    width: var(--status-w, 320px);
+    transform: none;
+    justify-items: start;
+    text-align: left;
   }
 }
 
+/* The table has no header but its home button, faded: nothing on the table faces one way. */
+.ktan-page[data-screen="table"] .ktan-bar-right > :not(#guideBtn),
+.ktan-page[data-screen="table"] #guideBtn {
+  display: none;
+}
+
+.ktan-page[data-screen="table"] #homeBtn {
+  opacity: 0.35;
+}
+
+/* ---------- The game ---------- */
+
+.ktan-game {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.ktan-board,
+.ktan-chips,
+.ktan-hand,
+.ktan-shelf,
+.ktan-moves,
+.ktan-throw {
+  position: absolute;
+}
+
+.ktan-board {
+  touch-action: none;
+}
+
+.ktan-board-cv,
+.ktan-table-cv {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ktan-board-hit,
+.ktan-table-hit {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+/* The dice in the board's corner: they shake there on every phone. */
+.ktan-dice {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.ktan-dice canvas {
+  width: var(--die, 28px);
+  height: var(--die, 28px);
+}
+
+/* The others, a chip each: colour and mark, name, points, cards in hand, and the medal of an award.
+   The player whose turn it is has a brass ring round their chip. Glass, radius 8. */
+.ktan-chips {
+  display: grid;
+  grid-template-columns: repeat(var(--chip-cols, 4), minmax(0, 1fr));
+  gap: 6px 8px;
+}
+
+.ktan-chip {
+  position: relative;
+  display: grid;
+  grid-template: auto 1fr / auto minmax(0, 1fr);
+  align-content: space-between;
+  gap: 4px 6px;
+  height: var(--chip-h, 54px);
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-btn);
+  background: var(--glass);
+  color: var(--ink);
+  text-align: left;
+}
+
+.ktan-chip .ktan-mark {
+  --mark: 16px;
+  border-radius: 4px;
+}
+
+.ktan-chip-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font: 600 13px/16px var(--font-sans);
+  white-space: nowrap;
+}
+
+.ktan-chip-name > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ktan-chip-name canvas {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.ktan-chip-stats {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ktan-chip-pts {
+  font: 750 17px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.ktan-chip-pts small {
+  margin-left: 2px;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ktan-chip-cards {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font: 500 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: #cfcfcf;
+}
+
+/* a card's outline, beside how many they hold */
+.ktan-chip-cards::before {
+  content: "";
+  align-self: center;
+  width: 7px;
+  height: 10px;
+  border: 1.2px solid var(--muted);
+  border-radius: 1.6px;
+}
+
+/* their turn: a brass ring round the chip, lit at the top left like all the brass, with a little
+   warm light spilling out of it */
+.ktan-chip.is-turn {
+  border-color: transparent;
+  background: linear-gradient(rgba(29, 29, 29, 0.92), rgba(29, 29, 29, 0.92)) padding-box, linear-gradient(135deg, #f6e3ad, #c9a961 45%, #8e7440) border-box;
+  border-width: 1.75px;
+  box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.12), 0 0 10px rgba(201, 169, 97, 0.18);
+}
+
+/* a card landing on it, or leaving it: its edge flashes in the player's colour */
+.ktan-chip.is-flash {
+  animation: ktan-flash 520ms ease-out;
+}
+
+@keyframes ktan-flash {
+  0% { box-shadow: 0 0 0 2.5px var(--c); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* an answer to an offer, in the chip's corner: thinking, yes, no */
+.ktan-chip-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: rgba(21, 21, 21, 0.9);
+  color: var(--muted);
+}
+
+.ktan-chip-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.ktan-chip-badge.is-yes {
+  color: var(--ink);
+  border-color: var(--c);
+}
+
+.ktan-chip-badge.is-wait svg {
+  animation: ktan-think 1.4s ease-in-out infinite;
+}
+
+@keyframes ktan-think {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.ktan-chip.is-away .ktan-chip-name {
+  color: var(--muted);
+}
+
+/* ---------- Your hand: cards drawn by art.js, each stack a button to pick it up ---------- */
+
+.ktan-hand,
+.ktan-shelf {
+  pointer-events: none;
+}
+
+.ktan-stack {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ktan-stack canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+/* A stack glides to a new place or size (a new count of players, the board shown or hidden). */
+.ktan-stack {
+  transition: left 0.46s var(--ease), top 0.46s var(--ease), width 0.46s var(--ease), height 0.46s var(--ease);
+}
+
+.ktan-hand.is-instant .ktan-stack {
+  transition: none;
+}
+
+.ktan-hand-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* The pieces you have left, at a table: three glass tiles, each a piece in your colour and a count. */
+.ktan-pieces {
+  position: absolute;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.ktan-pieces-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ktan-piece {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-btn);
+  background: var(--glass);
+}
+
+.ktan-piece canvas {
+  flex: none;
+}
+
+.ktan-piece b {
+  font: 750 16px/1 var(--font-sans);
+}
+
+.ktan-piece span {
+  overflow: hidden;
+  font: 400 12px/1 var(--font-sans);
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.ktan-shelf-label {
+  position: absolute;
+  margin: 0;
+}
+
+/* ---------- The moves: Roll across the whole row, then Build, Trade and End turn ---------- */
+
+.ktan-moves {
+  z-index: 5;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.ktan-moves .btn {
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.ktan-panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+  padding: 8px 8px 12px;
+}
+
+/* nothing in a panel squeezes: where it doesn't fit, the panel scrolls */
+.ktan-panel-inner > * {
+  flex-shrink: 0;
+}
+
+.ktan-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--tap);
+  padding-left: 8px;
+}
+
+.ktan-panel-head .eyebrow {
+  margin-left: auto;
+}
+
+/* A build tile: the piece, its name and its cost as small cards, its edge lit when you can build it
+   and the whole tile dim when you can't (a tap then says why). Four in a row; with the room of a
+   phone without the board, two rows of two that also say what is left or what it still needs. */
+.ktan-builds {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: var(--tile-h, 104px);
+  gap: 8px;
+}
+
+.ktan-builds.is-big {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ktan-build {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 4px 9px;
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
+  background: var(--glass);
+  color: var(--ink);
+  font: 600 13px/1.1 var(--font-sans);
+  cursor: pointer;
+}
+
+.ktan-build:not(.is-off) {
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+}
+
+.ktan-build.is-off {
+  opacity: 0.42;
+}
+
+.ktan-build > canvas {
+  flex: none;
+  margin-bottom: auto;
+}
+
+.ktan-build .ktan-sum-cards {
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.ktan-builds.is-big .ktan-build {
+  align-items: flex-start;
+  border-radius: 16px;
+  padding: 12px 14px 14px;
+  font: 700 16px/1.1 var(--font-sans);
+}
+
+.ktan-builds.is-big .ktan-build > canvas {
+  align-self: center;
+}
+
+.ktan-builds.is-big .ktan-sum-cards {
+  gap: 3px;
+}
+
+.ktan-build-left {
+  font: 500 12px/1.15 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* Placing: the piece, where it would go (the tiles it touches), and how to move it. */
+.ktan-place {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 4px 8px;
+}
+
+.ktan-place canvas {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-btn);
+  background: #0f0f0f;
+}
+
+.ktan-place-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ktan-touches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font: 600 14px/1.2 var(--font-sans);
+}
+
+.ktan-touches span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ktan-touches i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--c);
+}
+
+/* ---------- Throwing the dice at a table: the phone shows only them ---------- */
+
+.ktan-throw {
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: none;
+}
+
+/* where the table is: a light in your colour along the top edge */
+.ktan-throw-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 30%;
+  background: linear-gradient(var(--c3), transparent);
+  pointer-events: none;
+}
+
+.ktan-throw-glow::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--c);
+  box-shadow: 0 0 14px var(--c);
+}
+
+.ktan-throw-die {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.ktan-throw-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 72%;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ktan-throw-back {
+  position: absolute;
+  left: calc(var(--safe-l) + 16px);
+  right: calc(var(--safe-r) + 16px);
+  bottom: calc(max(var(--safe-b), 12px));
+}
+
+/* ---------- Things moving between the board and the hands ---------- */
+
+.ktan-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ktan-fx > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+/* ---------- A game on one phone: handing it to the next player ---------- */
+
+.ktan-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--safe-t) + 24px) calc(var(--safe-r) + 24px) calc(var(--safe-b) + 24px) calc(var(--safe-l) + 24px);
+  background: rgba(11, 11, 11, 0.86);
+  -webkit-backdrop-filter: blur(var(--blur-sheet));
+  backdrop-filter: blur(var(--blur-sheet));
+}
+
+.ktan-cover-inner {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 360px;
+  text-align: center;
+}
+
+.ktan-cover-mark .ktan-mark {
+  --mark: 64px;
+}
+
+.ktan-cover .btn {
+  min-width: 220px;
+  margin-top: 12px;
+}
+
+/* ---------- A card up close (the proposals page's CardInspect) ---------- */
+
+.ktan-inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  color: var(--ink);
+}
+
+.ktan-inspect-veil {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(4, 4, 6, 0.55);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  cursor: default;
+}
+
+.ktan-inspect-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  perspective: 900px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.ktan-inspect-lift {
+  position: absolute;
+}
+
+.ktan-inspect-card {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.ktan-inspect-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12% / 8.57%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.ktan-inspect.is-square .ktan-inspect-face {
+  border-radius: 12%;
+}
+
+.ktan-inspect-face canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ktan-inspect-back {
+  transform: rotateY(180deg);
+}
+
+.ktan-inspect-glare,
+.ktan-inspect-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ktan-inspect-sheen {
+  background: linear-gradient(105deg, rgba(255, 226, 160, 0) 30%, rgba(255, 226, 160, 0.22) 47%, rgba(255, 226, 160, 0) 62%);
+  background-size: 240% 100%;
+  mix-blend-mode: screen;
+}
+
+.ktan-inspect-shadow {
+  position: absolute;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  filter: blur(12px);
+  pointer-events: none;
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+.ktan-inspect .sheet-inner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 560px;
+  margin: 0 auto;
+  max-height: 52%;
+  overflow-y: auto;
+  padding: 16px calc(var(--safe-r) + 16px) calc(var(--safe-b) + 21px) calc(var(--safe-l) + 16px);
+  border-top: 1px solid var(--glass-line);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  background: rgba(24, 24, 25, 0.95);
+}
+
+.ktan-inspect-title {
+  font: 700 26px/1.15 ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  color: #f3ecdc;
+}
+
+/* ---------- Sheets of the game ---------- */
+
+.ktan-sheet .sheet-inner {
+  gap: 14px;
+}
+
+/* A side of a trade or a choice of cards: the five resources, each with − and + under it. */
+.ktan-cells {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ktan-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ktan-cell canvas {
+  transition: opacity 160ms ease;
+}
+
+.ktan-cell.is-none canvas {
+  opacity: 0.4;
+}
+
+.ktan-cell.is-pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.ktan-cell.is-pick[aria-pressed="true"] canvas {
+  outline: 2.5px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* − and +: one control of two halves, radius 8 */
+.ktan-step {
+  display: flex;
+  width: 100%;
+  max-width: 66px;
+  height: 32px;
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-btn);
+  background: var(--glass);
+}
+
+/* each half still takes a tap 44 tall */
+.ktan-step button {
+  position: relative;
+}
+
+.ktan-step button::after {
+  content: "";
+  position: absolute;
+  inset: -7px 0;
+}
+
+.ktan-step button {
+  flex: 1 1 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 20px/1 var(--font-sans);
+  cursor: pointer;
+}
+
+.ktan-step button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ktan-step button:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+/* The Trade panel: give over want (or side by side where it is wide), then to whom and send (side by
+   side where they fit). */
+.ktan-trade-pick,
+.ktan-trade-foot {
+  display: grid;
+  gap: 12px;
+}
+
+.ktan-trade-pick.is-two,
+.ktan-trade-foot.is-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px 24px;
+}
+
+.ktan-trade-foot.is-row:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ktan-trade {
+  gap: 12px;
+}
+
+.ktan-panel-head.is-wide {
+  gap: 12px;
+}
+
+.ktan-panel-head.is-wide .segmented {
+  flex: 1;
+  margin-left: auto;
+  max-width: 320px;
+}
+
+.ktan-panel-head.is-wide .btn {
+  flex: none;
+  width: auto;
+  padding: 0 22px;
+}
+
+.ktan-trade .ktan-cells {
+  gap: 4px;
+}
+
+.ktan-trade .ktan-cell {
+  gap: 4px;
+}
+
+.ktan-trade .ktan-step {
+  height: 30px;
+}
+
+.ktan-label {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.ktan-label .is-ink {
+  color: var(--ink);
+}
+
+/* What is offered, both sides, a brass coin with the trade sign between them. */
+.ktan-sum {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 14px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-btn);
+  background: var(--glass);
+}
+
+.ktan-sum-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.ktan-sum-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.ktan-coin {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid #b8995a;
+  border-radius: 50%;
+  background: #161513;
+  color: #c9a961;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.ktan-coin svg {
+  width: 60%;
+  height: 60%;
+  fill: currentColor;
+}
+
+/* A player in a sheet: their mark, name, how many cards, and a status or a button. */
+.ktan-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 8px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-btn);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  font: 600 15px/1.2 var(--font-sans);
+  text-align: left;
+}
+
+button.ktan-who {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.ktan-who .ktan-mark {
+  --mark: 22px;
+}
+
+.ktan-who-sub {
+  font: 500 13px/1 var(--font-sans);
+  color: var(--muted);
+}
+
+.ktan-who-st {
+  margin-left: auto;
+}
+
+button.ktan-who .ktan-who-st {
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font: 650 14px/1 var(--font-sans);
+}
+
+.ktan-who.is-wait .ktan-who-st {
+  animation: ktan-think 1.4s ease-in-out infinite;
+}
+
+.ktan-who.is-no {
+  color: var(--muted);
+}
+
+/* The guide: a build per row, its cost as small cards on the right. */
+.ktan-guide-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
+  background: var(--glass);
+}
+
+.ktan-guide-row canvas {
+  flex: none;
+}
+
+.ktan-guide-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ktan-guide-award {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ktan-guide-award .ktan-guide-text strong {
+  font: 700 18px/1.2 ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  color: #f3ecdc;
+}
+
+.ktan-held {
+  color: #c9a961;
+}
+
+/* The end: every player, best first, with what made their points. */
+.ktan-final {
+  display: grid;
+  gap: 8px;
+}
+
+.ktan-final .ktan-who-st {
+  font: 700 22px/1 ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  color: #f3ecdc;
+}
+
+.ktan-log {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.ktan-log li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: #cfcfcf;
+}
+
+.ktan-log .ktan-mark {
+  --mark: 18px;
+}
+
+.ktan-rules h3 {
+  margin-top: 6px;
+}
+
+.ktan-rules p,
+.ktan-rules li {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #cfcfcf;
+}
+
+.ktan-rules ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+/* ---------- The table ---------- */
+
+.ktan-table {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.ktan-glows {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A seat: a line of light on the edge in front of its player and a glow spreading inward, in their
+   colour; it breathes on their turn, and carries a disc with their mark while seats are taken. */
+.ktan-glow {
+  position: absolute;
+  width: 300px;
+  height: 150px;
+  margin: -150px 0 0 -150px;
+  transform-origin: 50% 100%;
+  opacity: 0.3;
+  transition: opacity 500ms ease;
+}
+
+.ktan-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 52% 100% at 50% 100%, var(--c2), transparent 72%);
+}
+
+.ktan-glow::after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 0;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--c);
+  box-shadow: 0 0 16px var(--c);
+  transition: box-shadow 450ms ease;
+}
+
+.ktan-glow.is-on {
+  opacity: 1;
+  animation: ktan-breathe 3.4s ease-in-out infinite;
+}
+
+.ktan-glow.is-flash {
+  opacity: 1;
+  transition-duration: 120ms;
+}
+
+.ktan-glow.is-flash::after {
+  box-shadow: 0 0 36px 5px var(--c);
+  transition-duration: 120ms;
+}
+
+@keyframes ktan-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.ktan-glow-disc {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-left: -32px;
+  border-radius: 50%;
+  background: var(--c);
+  color: var(--mk);
+  box-shadow: 0 0 0 4px var(--c2), 0 0 26px var(--c2), inset 0 2px 0 rgba(255, 255, 255, 0.4), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+}
+
+.ktan-glow-disc svg {
+  width: 46%;
+  height: 46%;
+  fill: currentColor;
+}
+
+/* A player's bubble at their seat (what they are doing), or an answer to an offer, facing them. */
+.ktan-bubble {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(21, 21, 21, 0.86);
+  color: var(--ink);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+  transform: rotate(var(--r)) scale(0.7);
+  opacity: 0;
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 260ms ease, background-color 200ms ease, color 200ms ease;
+}
+
+.ktan-bubble svg {
+  width: 56%;
+  height: 56%;
+  fill: currentColor;
+}
+
+/* a yes swells and sends out a ring of the player's colour; a no shakes along the seat's edge */
+.ktan-bubble.is-pop {
+  animation: ktan-bubble-pop 0.36s var(--ease);
+}
+
+@keyframes ktan-bubble-pop {
+  50% { transform: rotate(var(--r)) scale(1.16); }
+}
+
+.ktan-bubble.is-shake {
+  animation: ktan-bubble-shake 0.5s ease-out;
+}
+
+@keyframes ktan-bubble-shake {
+  20% { transform: rotate(var(--r)) translateX(-10px); }
+  40% { transform: rotate(var(--r)) translateX(7px); }
+  60% { transform: rotate(var(--r)) translateX(-4px); }
+  80% { transform: rotate(var(--r)) translateX(2px); }
+}
+
+.ktan-bubble-ring {
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--c);
+  border-radius: 50%;
+  animation: ktan-bubble-ring 0.8s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes ktan-bubble-ring {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.2); opacity: 0; }
+}
+
+/* The island steps back under a veil while the dice are out, so they read wherever they land. */
+.ktan-table-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 6, 8, 0.6);
+  opacity: 0;
+  transition: opacity 0.5s var(--ease);
+  pointer-events: none;
+}
+
+.ktan-table-veil.is-in {
+  opacity: 1;
+  transition-duration: 0.3s;
+}
+
+.ktan-table-dice,
+.ktan-table-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ktan-table-dice canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.ktan-bubble.is-in {
+  opacity: 1;
+  transform: rotate(var(--r)) scale(1);
+}
+
+.ktan-bubble.is-sign {
+  border-color: var(--c);
+}
+
+.ktan-bubble.is-wait {
+  color: var(--muted);
+}
+
+.ktan-bubble.is-wait svg {
+  animation: ktan-think 1.4s ease-in-out infinite;
+}
+
+.ktan-bubble.is-yes {
+  border-color: var(--c);
+}
+
+.ktan-bubble.is-no.is-in {
+  opacity: 0.68;
+  color: var(--muted);
+}
+
+.ktan-bubble.is-picked {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.ktan-bubble.is-mark {
+  border-color: var(--c);
+  color: var(--c);
+}
+
+.ktan-bubble.is-mark.is-picked {
+  border-color: var(--c);
+  background: var(--c);
+  color: var(--mk);
+}
+
+/* A line on the table facing a seat, in a glass panel: what to do, said at their edge. */
+.ktan-table-hint {
+  position: absolute;
+  padding: 12px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  background: rgba(21, 21, 21, 0.86);
+  color: var(--ink);
+  font: 600 19px/1.2 var(--font-sans);
+  white-space: nowrap;
+  transform: translate(-50%, -50%) rotate(var(--r));
+  opacity: 0;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
+
+.ktan-table-hint.is-in {
+  opacity: 1;
+}
+
+/* The table before the game: the code large in the middle, read from every chair. */
+.ktan-table-lobby {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.ktan-table-code {
+  font: 800 120px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  padding-left: 0.12em;
+  color: #f3ecdc;
+}
+
+.ktan-table-brow {
+  font-size: 18px;
+  letter-spacing: 0.14em;
+}
+
+.ktan-table-note {
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.ktan-table-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  min-height: 56px;
+}
+
+.ktan-table-waiting .ktan-mark {
+  --mark: 56px;
+  border-radius: 50%;
+}
+
+.ktan-table-start {
+  height: 56px;
+  padding: 0 40px;
+  font-size: 20px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ktan-member.is-waved .facts {
+  .ktan-glow.is-on,
+  .ktan-chip-badge.is-wait svg,
+  .ktan-who.is-wait .ktan-who-st,
+  .ktan-bubble.is-wait svg,
+  .ktan-bubble.is-pop,
+  .ktan-bubble.is-shake,
+  .ktan-bubble-ring,
+  .ktan-chip.is-flash {
     animation: none;
+  }
+  .ktan-swatch-dot,
+  .ktan-bubble,
+  .ktan-glow,
+  .ktan-table-hint,
+  .ktan-table-veil,
+  .ktan-stack {
+    transition: none;
   }
 }

@@ -26,6 +26,7 @@
   --muted: #a8a8a8;
   --ink: #efefef;
   --on-ink: #0b0b0b;
+  --red-soft: #f0a39d; /* the one coloured button, .btn-red */
 
   /* Glass: a faint white fill, a hairline edge and a backdrop blur. */
   --glass: rgba(255, 255, 255, 0.07);
@@ -262,6 +263,20 @@ button {
   background: #d6d6d6;
 }
 
+/* Red: a solid pastel red in place of the primary, for the move that ends something and passes play
+   on (Ktan's End turn). The one colour among the buttons. */
+.btn-red {
+  border-color: var(--red-soft);
+  background: var(--red-soft);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--on-ink);
+}
+
+.btn-red:active {
+  background: #e3938d;
+}
+
 .btn-block {
   width: 100%;
 }
@@ -296,6 +311,10 @@ button {
 
 .btn-primary:disabled:active {
   background: var(--ink);
+}
+
+.btn-red:disabled:active {
+  background: var(--red-soft);
 }
 
 /* Small: a 32 tall button in a section header, next to a 12px label. Its tap area stays 44 tall. */
